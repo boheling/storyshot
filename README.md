@@ -194,6 +194,7 @@ music: { bpm: 120, volume: 1 }                  # or { file: track.mp3 }, or fal
 sfx: true                                       # click / whoosh / riser sounds
 voice: { provider: elevenlabs, voice: hpp4J3VqNfWAUOO0d1Us }   # optional voiceover, see below
 storageState: auth.json                         # optional Playwright login state
+ignoreHTTPSErrors: true                         # internal site with a self-signed HTTPS certificate (plain http:// needs nothing)
 captionPosition: bottom                         # or top; can also be set per step. A caption that would cover a step's click target or zoom subject moves to the other side automatically
 purpose: pitch                                  # pitch | tutorial | course | docs (sets the defaults below)
 highlight: false                                # spotlight targets before click/type (per step or per action too)

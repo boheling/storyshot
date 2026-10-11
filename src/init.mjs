@@ -9,11 +9,11 @@ import { loginAdvice } from './auth.mjs';
 const q = (s) => JSON.stringify(String(s));
 const tgt = (t) => (typeof t === 'string' ? q(t) : `{ ${Object.entries(t).map(([k, v]) => `${k}: ${typeof v === 'string' ? q(v) : v}`).join(', ')} }`);
 
-export async function initStoryboard(url, { purpose = 'pitch', topic, file, storageState, viewport = { width: 1600, height: 900 } } = {}) {
+export async function initStoryboard(url, { purpose = 'pitch', topic, file, storageState, ignoreHTTPSErrors = false, viewport = { width: 1600, height: 900 } } = {}) {
   if (!PURPOSES[purpose]) throw new Error(`purpose must be one of ${Object.keys(PURPOSES).join(', ')}`);
   file ??= defaultStoryboard(url, purpose, topic);
   if (fs.existsSync(file)) throw new Error(`${file} already exists — edit it, or choose another path`);
-  const page = await inspect(url, { viewport, storageState, outDir: path.join(path.dirname(path.resolve(file)), '.storyshot', 'inspect') });
+  const page = await inspect(url, { viewport, storageState, ignoreHTTPSErrors, outDir: path.join(path.dirname(path.resolve(file)), '.storyshot', 'inspect') });
   if (page.login?.wall) {
     throw new Error(`${url} asks to log in (${page.login.reason})${storageState ? ' even with the saved session — it has probably expired, log in again' : ''}. ` +
       `${loginAdvice(url)} Then run init again with that session (MCP: storage_state, CLI: --storage).`);
@@ -38,7 +38,7 @@ name: ${name}
 url: ${page.url}
 purpose: ${purpose}
 out: ${name}.mp4
-${storageState ? `storageState: ${path.relative(path.dirname(path.resolve(file)), path.resolve(storageState)).split(path.sep).join('/')}   # saved login (never commit it)\n` : ''}${narrated ? 'voice: { provider: kokoro }        # free, local, English. For the final: { provider: elevenlabs, voice: <voice id> } + ELEVENLABS_API_KEY' : '# voice: { provider: kokoro }      # optional voiceover; add `say:` lines to steps'}
+${storageState ? `storageState: ${path.relative(path.dirname(path.resolve(file)), path.resolve(storageState)).split(path.sep).join('/')}   # saved login (never commit it)\n` : ''}${ignoreHTTPSErrors ? 'ignoreHTTPSErrors: true   # internal site with a self-signed certificate\n' : ''}${narrated ? 'voice: { provider: kokoro }        # free, local, English. For the final: { provider: elevenlabs, voice: <voice id> } + ELEVENLABS_API_KEY' : '# voice: { provider: kokoro }      # optional voiceover; add `say:` lines to steps'}
 
 setup:                             # runs before recording; clean the frame here${dismiss ? `\n  - dismiss: ${tgt(dismiss.target)}` : '\n  # - dismiss: { role: button, name: Accept cookies }'}
 

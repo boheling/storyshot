@@ -4,7 +4,7 @@ import YAML from 'yaml';
 import { loadConfig } from './config.mjs';
 import { gitIgnored } from './auth.mjs';
 
-const TOP = ['name', 'url', 'out', 'purpose', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'colorScheme',
+const TOP = ['name', 'url', 'out', 'purpose', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'colorScheme',
   'scrollOffset', 'captionPosition', 'highlight', 'stepNumbers', 'subtitles', 'chapters', 'clips', 'maxWait', 'setup', 'steps', 'end_card'];
 const STEP = ['caption', 'say', 'sayAt', 'duration', 'zoom', 'actions', 'hidden', 'sfx', 'highlight', 'captionPosition'];
 const ZOOM = ['target', 'scale', 'start', 'end', 'ramp', 'offset'];

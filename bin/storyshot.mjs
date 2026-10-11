@@ -33,6 +33,8 @@ Options:
   --draft   (render/compose) use the free local voice instead of a paid TTS provider and write
             <out>.draft.mp4; when it looks right, run \`compose\` without --draft (reuses the recording)
   --viewport 1600x900   (inspect, init)
+  --insecure            (inspect, init) accept a self-signed HTTPS certificate (internal sites);
+                        storyboards use \`ignoreHTTPSErrors: true\`
 `;
 
 const args = process.argv.slice(2);
@@ -84,7 +86,7 @@ try {
       `\n  use it: \`storageState: ${r.file.split(/[\\/]/).pop()}\` in the storyboard (path relative to the yaml), or \`--storage ${r.file}\` for inspect/init`);
   } else if (cmd === 'init') {
     const { initStoryboard } = await import('../src/init.mjs');
-    const r = await initStoryboard(arg, { purpose: flag('purpose') ?? 'pitch', topic: flag('topic'), file: flag('file'), storageState: flag('storage'), viewport: viewport() });
+    const r = await initStoryboard(arg, { purpose: flag('purpose') ?? 'pitch', topic: flag('topic'), file: flag('file'), storageState: flag('storage'), ignoreHTTPSErrors: args.includes('--insecure'), viewport: viewport() });
     console.log(`✔ wrote ${r.file}\n  screenshot: ${r.screenshot}\n  next: edit it, then \`storyshot check ${r.file}\``);
   } else if (cmd === 'inspect') {
     await (await import('../src/doctor.mjs')).ensureBrowser();
@@ -94,7 +96,7 @@ try {
       const after = flag('after');
       console.log((await record(cfg, { log: () => {}, inspectAfter: after != null ? Number(after) : cfg.steps.length })).text);
     } else {
-      console.log((await inspect(arg, { viewport: viewport(), storageState: flag('storage') })).text);
+      console.log((await inspect(arg, { viewport: viewport(), storageState: flag('storage'), ignoreHTTPSErrors: args.includes('--insecure') })).text);
     }
   } else if (cmd === 'check') {
     const r = check(arg, { draft: args.includes('--draft') });

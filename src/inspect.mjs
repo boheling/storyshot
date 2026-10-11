@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 import { detectLogin, loginAdvice, sessionContext } from './auth.mjs';
+import { certError } from './config.mjs';
 
 // Runs in the page. Positions are relative to the top of the main scrolling content,
 // which may be the window or an inner scroll container (common in web apps).
@@ -161,11 +162,15 @@ export async function describePage(page, viewport, { maxElements = 80 } = {}) {
   return { text: lines.join('\n'), height: info.height, title: info.title, url, headings: info.headings, anchors: info.anchors, elements };
 }
 
-export async function inspect(url, { viewport = { width: 1600, height: 900 }, storageState, outDir = '.storyshot/inspect', maxElements = 80 } = {}) {
+export async function inspect(url, { viewport = { width: 1600, height: 900 }, storageState, ignoreHTTPSErrors = false, outDir = '.storyshot/inspect', maxElements = 80 } = {}) {
   const browser = await chromium.launch();
-  const context = await sessionContext(browser, { viewport, storageState });
+  const context = await sessionContext(browser, { viewport, storageState, ignoreHTTPSErrors });
   const page = await context.newPage();
-  await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 }).catch(() => page.waitForLoadState('domcontentloaded'));
+  await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 }).catch(async (e) => {
+    const cert = certError(e, url);
+    if (cert) { await browser.close(); throw cert; }
+    await page.waitForLoadState('domcontentloaded');
+  });
   await page.waitForTimeout(1500); // let late toasts / banners appear so they get listed
 
   const desc = await describePage(page, viewport, { maxElements });

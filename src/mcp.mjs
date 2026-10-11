@@ -54,11 +54,12 @@ server.registerTool('init_storyboard', {
     purpose: z.enum(['pitch', 'tutorial', 'course', 'docs']).optional().describe('pitch = 15–30s promo (default); tutorial = narrated how-to; course = narrated lesson; docs = silent per-step GIFs'),
     topic: z.string().optional().describe('Short topic for the file name, e.g. "export-pdf" → videos/<site>-tutorial-export-pdf.yaml. Use it for tutorials/lessons, since a site usually gets several'),
     storage_state: z.string().optional().describe('Absolute path to a saved login (from the login tool) for apps behind a login'),
+    ignore_https_errors: z.boolean().optional().describe('Accept a self-signed HTTPS certificate (internal sites only); also writes ignoreHTTPSErrors: true into the storyboard'),
   },
-}, async ({ url, path: file, purpose = 'pitch', topic, storage_state }) => {
+}, async ({ url, path: file, purpose = 'pitch', topic, storage_state, ignore_https_errors = false }) => {
   try {
     await ensureBrowser(() => {});
-    const r = await initStoryboard(url, { purpose, topic, file: file ? abs(file) : undefined, storageState: storage_state ? abs(storage_state) : undefined });
+    const r = await initStoryboard(url, { purpose, topic, file: file ? abs(file) : undefined, storageState: storage_state ? abs(storage_state) : undefined, ignoreHTTPSErrors: ignore_https_errors });
     return { content: [text(`${r.login?.hint ? `ℹ Login: ${r.login.hint}. If the flow needs it, call login first.\n\n` : ''}Wrote ${r.file}:\n\n${r.yaml}`), image(r.screenshot)] };
   } catch (e) { return fail(`init failed: ${e.message}`); }
 });
@@ -73,10 +74,11 @@ server.registerTool('inspect_page', {
     storyboard: z.string().optional().describe('Absolute path to a storyboard YAML (instead of url)'),
     after_step: z.number().int().min(0).optional().describe('With storyboard: run steps 1..N first (0 = only setup). Default: all steps.'),
     storage_state: z.string().optional().describe('With url: absolute path to a saved login (from the login tool)'),
+    ignore_https_errors: z.boolean().optional().describe('With url: accept a self-signed HTTPS certificate (internal sites only)'),
     viewport_width: z.number().optional(),
     viewport_height: z.number().optional(),
   },
-}, async ({ url, storyboard, after_step, storage_state, viewport_width = 1600, viewport_height = 900 }) => {
+}, async ({ url, storyboard, after_step, storage_state, ignore_https_errors = false, viewport_width = 1600, viewport_height = 900 }) => {
   try {
     await ensureBrowser(() => {});
     if (storyboard) {
@@ -85,7 +87,7 @@ server.registerTool('inspect_page', {
       return { content: [text(r.text), image(r.screenshot)] };
     }
     if (!url) return fail('give either url or storyboard');
-    const r = await inspect(url, { viewport: { width: viewport_width, height: viewport_height }, storageState: storage_state ? abs(storage_state) : undefined });
+    const r = await inspect(url, { viewport: { width: viewport_width, height: viewport_height }, storageState: storage_state ? abs(storage_state) : undefined, ignoreHTTPSErrors: ignore_https_errors });
     return { content: [text(r.text), image(r.screenshot)] };
   } catch (e) {
     const extra = [];

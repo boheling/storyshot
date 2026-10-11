@@ -29,7 +29,20 @@ export const PURPOSES = {
 // .mp4, so a promo, a tutorial and a lesson for the same app never collide or all read "demo".
 export const VIDEO_DIR = 'videos';
 export const KINDS = { pitch: 'promo', tutorial: 'tutorial', course: 'lesson', docs: 'docs' };
-export const siteOf = (url) => new URL(url).hostname.replace(/^www\./, '').split('.')[0];
+// pxgenius.ai → pxgenius; an IP or a port is kept whole so two internal apps don't share a name
+// (http://10.1.2.3:8080 → 10-1-2-3-8080, http://localhost:3000 → localhost-3000)
+export const siteOf = (url) => {
+  const { hostname, port } = new URL(url);
+  const host = hostname.replace(/^\[|\]$/g, '');
+  const ip = /^[\d.]+$/.test(host) || host.includes(':');
+  return [ip ? host.replace(/[.:]+/g, '-').replace(/^-|-$/g, '') : host.replace(/^www\./, '').split('.')[0], port].filter(Boolean).join('-');
+};
+
+// A clear message for an internal site with a self-signed / untrusted HTTPS certificate.
+export const certError = (e, url) => (/ERR_CERT|ERR_SSL/.test(e?.message ?? '')
+  ? new Error(`${url} has an untrusted HTTPS certificate (${e.message.match(/ERR_\w+/)[0]}). If it is your own internal site with a self-signed ` +
+    'certificate, add `ignoreHTTPSErrors: true` to the storyboard (inspect/init: --insecure, MCP: ignore_https_errors: true).')
+  : null);
 const slug = (s) => String(s).toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 
 export function defaultStoryboard(url, purpose = 'pitch', topic) {
@@ -108,6 +121,7 @@ export function loadConfig(file, { draft = false } = {}) {
     output,
     scale,
     colorScheme: raw.colorScheme ?? 'light',
+    ignoreHTTPSErrors: raw.ignoreHTTPSErrors === true,
     storageState: raw.storageState ? path.resolve(dir, raw.storageState) : undefined,
     scrollOffset: raw.scrollOffset ?? 40,
     captionPosition: raw.captionPosition ?? 'bottom',

@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describePage } from './inspect.mjs';
 import { detectLogin, loginAdvice, sessionContext } from './auth.mjs';
+import { certError } from './config.mjs';
 
 // Injected into every page: fake cursor, click ripple, smooth in-page anchor scrolling.
 function pageScript({ scrollOffset }) {
@@ -155,7 +156,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
 
   const browser = await chromium.launch();
   const context = await sessionContext(browser, {
-    viewport: cfg.viewport, deviceScaleFactor: cfg.scale, colorScheme: cfg.colorScheme, storageState: cfg.storageState,
+    viewport: cfg.viewport, deviceScaleFactor: cfg.scale, colorScheme: cfg.colorScheme, storageState: cfg.storageState, ignoreHTTPSErrors: cfg.ignoreHTTPSErrors,
   });
   await context.addInitScript(pageScript, { scrollOffset: cfg.scrollOffset });
   const page = await context.newPage();
@@ -354,7 +355,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
   }
 
   log(`opening ${cfg.url}`);
-  await page.goto(cfg.url, { waitUntil: 'networkidle' }).catch(() => page.goto(cfg.url));
+  await page.goto(cfg.url, { waitUntil: 'networkidle' }).catch(() => page.goto(cfg.url)).catch((e) => { throw certError(e, cfg.url) ?? e; });
   // sent to a login page instead of the start url → no (valid) session
   if (new URL(page.url()).pathname !== new URL(cfg.url).pathname || cfg.storageState) {
     const d = await detectLogin(page);

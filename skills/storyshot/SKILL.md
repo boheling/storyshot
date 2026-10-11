@@ -168,6 +168,9 @@ Rules of thumb from real renders:
   `at (x, y)`.
 - Never put real credentials in a storyboard. For logged-in apps, use
   `storageState` (see step 1).
+- Internal sites: `http://` URLs just work. If an `https://` internal site
+  fails with an untrusted certificate, add `ignoreHTTPSErrors: true` (inspect/init:
+  `ignore_https_errors`). Never turn it on for public sites.
 
 Run `check_storyboard` after every edit, and fix every ✖ before rendering. It
 checks structure, typos and leftover `TODO`s, but not whether targets exist on

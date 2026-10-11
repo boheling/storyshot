@@ -104,7 +104,7 @@ export async function finishLogin(session, { file = authFileFor(session.url), lo
     }
     // --restore-last-session reopens the user's tabs, which brings back their sessionStorage (some
     // apps, e.g. Microsoft MSAL, keep the login token there; storageState() doesn't capture it)
-    const context = await chromium.launchPersistentContext(dir, { executablePath: exe, headless: true, args: ['--restore-last-session'] });
+    const context = await chromium.launchPersistentContext(dir, { executablePath: exe, headless: true, ignoreHTTPSErrors: true, args: ['--restore-last-session'] });
     await new Promise((r) => setTimeout(r, 1000));
     const sessionStorage = {};
     for (const p of context.pages()) {
