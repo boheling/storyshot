@@ -82,9 +82,14 @@ everything.
    - Tell the user a browser window will open and that they should log in
      there, preferably with a demo account (the video shows whatever is on
      screen).
-   - Call `login` with a URL behind the login. It saves the session to
-     `videos/<site>-login.json` and adds it to `.gitignore`. If it returns
-     "still waiting", call it again.
+   - Call `login` with a URL behind the login. It opens a normal Chrome
+     window and returns at once. Tell the user to log in there and, once the
+     app shows them logged in, to leave the window open and reply "done".
+     Nothing watches the window meanwhile (Google sign-in breaks if a script
+     probes it), so wait for their reply.
+   - Then call `login` again with the same URL and `done: true`. It saves the
+     session to `videos/<site>-login.json`, adds it to `.gitignore` and closes
+     the window. (CLI: `storyshot login <url>`, then press Enter.)
    - Pass that file as `storage_state` to `inspect_page` and `init_storyboard`,
      and add `storageState: <site>-login.json` to the storyboard.
    - Never ask for, store or type a password, and never write login steps.

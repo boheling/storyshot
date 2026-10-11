@@ -19,3 +19,4 @@ videos/*-login.json
 *.srt
 *.chapters.txt
 *-steps/
+cursortest/

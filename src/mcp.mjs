@@ -14,7 +14,7 @@ import { record } from './record.mjs';
 import { guide } from './guide.mjs';
 import { check, formatCheck } from './check.mjs';
 import { initStoryboard } from './init.mjs';
-import { login, authFileFor } from './auth.mjs';
+import { openLoginWindow, finishLogin, authFileFor } from './auth.mjs';
 import { ensureBrowser, ffmpegInstallCommand } from './doctor.mjs';
 import { execFileSync } from 'node:child_process';
 
@@ -95,35 +95,41 @@ server.registerTool('inspect_page', {
   }
 });
 
-// --- login: the user logs in once in a visible browser window ---------------------------------
+// --- login: the user logs in once in a plain Chrome window ---------------------------------------
+// Two calls: the first opens the window and returns; after the user says they are logged in, the
+// second (done: true) saves the session. Nothing watches the window in between, because Google
+// sign-in breaks when a script probes it.
 const logins = new Map();
 server.registerTool('login', {
   title: 'Log in (user)',
-  description: 'For apps behind a login. Opens a visible browser window at `url` where THE USER logs in (never type passwords yourself); ' +
-    'the session is saved to a file (added to .gitignore) once they are logged in or close the window. Tell the user to look for the window first. ' +
-    `Waits up to ${Math.round(WAIT_MS / 1000)}s; if they are still logging in, call login again with the same arguments to keep waiting. ` +
+  description: 'For apps behind a login. Call 1 (`url`): opens a normal Chrome window at `url` and returns at once. ' +
+    'Then tell the user: "A Chrome window opened. Log in there (Sign in with Google and 2FA work). When you see the app logged in, ' +
+    'leave the window open and reply \'done\'." Never type passwords yourself, and do NOT make call 2 until the user replies. ' +
+    'Call 2 (same `url`, `done: true`): saves the session to a file (added to .gitignore) and closes the window. ' +
     'Then use the file as storage_state in inspect_page/init_storyboard and as `storageState:` in the storyboard.',
   inputSchema: {
     url: z.string().describe('A page of the app that requires login (its login page or a page behind it)'),
+    done: z.boolean().optional().describe('true only after the user has said they are logged in'),
     path: z.string().optional().describe('Absolute path for the session file. Default: <cwd>/videos/<site>-login.json'),
   },
-}, async ({ url, path: file }) => {
+}, async ({ url, done, path: file }) => {
   const out = abs(file ?? authFileFor(url));
-  await ensureBrowser(() => {});
-  let job = logins.get(out);
-  if (!job || job.done) {
-    job = { done: false, logs: [] };
-    job.promise = login(url, { file: out, log: (m) => job.logs.push(m) }).then((r) => { job.result = r; }, (e) => { job.error = e; }).finally(() => { job.done = true; });
-    logins.set(out, job);
+  if (!done) {
+    const old = logins.get(out);
+    if (old && !old.exited) return { content: [text(`The login window for ${url} is already open. Ask the user to log in there and reply when done, then call login with done: true.`)] };
+    await ensureBrowser(() => {});
+    try { logins.set(out, openLoginWindow(url)); } catch (e) { return fail(e.message); }
+    return { content: [text(`A Chrome window is open at ${url}. Tell the user: log in there (Sign in with Google and 2FA work); when the app shows them logged in, leave the window open and reply "done". ` +
+      'Wait for their reply, then call login again with the same url and done: true.')] };
   }
-  const deadline = Date.now() + WAIT_MS;
-  while (!job.done && Date.now() < deadline) await new Promise((r) => setTimeout(r, 1000));
-  if (!job.done) return { content: [text(`A browser window is open at ${url}. Still waiting for the user to log in — ask them to finish, then call login again with the same arguments.`)] };
-  if (job.error) return fail(`login failed: ${job.error.message}`);
-  const r = job.result;
-  return { content: [text(`✔ Saved the login session to ${r.file} (${r.how}, ${r.cookies} cookies).${r.gitignore ? ` Added it to ${r.gitignore}.` : ''}\n` +
+  const session = logins.get(out);
+  if (!session) return fail('no login window is open for this url — call login without done first');
+  logins.delete(out);
+  let r;
+  try { r = await finishLogin(session, { file: out }); } catch (e) { return fail(`login failed: ${e.message}`); }
+  return { content: [text(`✔ Saved the login session to ${r.file} (${r.how}, ${r.cookies} cookies, ${r.siteCookies} for this site).${r.gitignore ? ` Added it to ${r.gitignore}.` : ''}\n` +
     `Next: inspect_page with storage_state "${r.file}" to confirm you see the logged-in app, and put \`storageState: ${path.basename(r.file)}\` (path relative to the yaml) in the storyboard.` +
-    (r.sawWall ? '' : '\nNote: no login form was seen in that window — if the user did not log in, inspect will show the login wall again.'))] };
+    (r.siteCookies ? '' : '\nNote: no cookies were saved for this site — the user may not have finished logging in; inspect will show the login wall again if so.'))] };
 });
 
 server.registerTool('check_storyboard', {

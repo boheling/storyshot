@@ -1,7 +1,8 @@
 // Logged-in apps: detect login walls, and `storyshot login` — the user logs in once in a real
 // browser window and the session (cookies, localStorage, IndexedDB) is saved for recording.
 import { chromium } from 'playwright';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import { VIDEO_DIR, siteOf } from './config.mjs';
@@ -41,7 +42,7 @@ export function gitIgnored(file) {
 function ignore(file) {
   if (gitIgnored(file) === true) return null;
   let root = process.cwd();
-  try { root = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: path.dirname(path.resolve(file)) }).toString().trim(); } catch {}
+  try { root = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: path.dirname(path.resolve(file)), stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch {}
   const gi = path.join(root, '.gitignore');
   const rel = path.relative(root, path.resolve(file)).split(path.sep).join('/');
   const cur = fs.existsSync(gi) ? fs.readFileSync(gi, 'utf8') : '';
@@ -50,35 +51,83 @@ function ignore(file) {
   return gi;
 }
 
-// Open a visible browser at `url`; save the session when the user has logged in (a login wall
-// appeared and then went away) or closes the window. Resolves with the saved file.
-export async function login(url, { file = authFileFor(url), viewport = { width: 1600, height: 900 }, timeoutMs = 10 * 60_000, log = console.log } = {}) {
-  let browser;
-  try { browser = await chromium.launch({ headless: false }); } catch (e) {
-    throw new Error(`could not open a browser window (${e.message.split('\n')[0]}). Log in on a machine with a screen ` +
-      `(storyshot login ${url} --save ${file}) and copy the file here.`);
+// --- login ------------------------------------------------------------------------------------
+// The user logs in in a plain Chrome window that NOTHING is attached to while they do it: Google
+// (and other SSO providers) refuse automated browsers, polling the page from a script makes
+// Google's sign-in bounce between the app and accounts.google.com, and even an open DevTools port
+// gets "This browser or app may not be secure". So Chrome runs with only a temporary profile; when
+// the user is done we quit it and read the session back from that profile.
+
+function chromeExecutable() {
+  const home = os.homedir();
+  const candidates = process.platform === 'darwin'
+    ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', path.join(home, 'Applications/Google Chrome.app/Contents/MacOS/Google Chrome')]
+    : process.platform === 'win32'
+      ? [process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)'], process.env.LOCALAPPDATA].filter(Boolean).map((d) => path.join(d, 'Google', 'Chrome', 'Application', 'chrome.exe'))
+      : ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser'];
+  return candidates.find((c) => fs.existsSync(c)) ?? chromium.executablePath();
+}
+
+// Opens the window and returns at once. Pass the result to finishLogin() when the user is done.
+export function openLoginWindow(url, { viewport = { width: 1600, height: 900 }, headless = false } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'storyshot-login-'));
+  // "Continue where you left off" also keeps session cookies when the user closes the window.
+  fs.mkdirSync(path.join(dir, 'Default'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'Default', 'Preferences'), JSON.stringify({ session: { restore_on_startup: 1 } }));
+  const exe = chromeExecutable();
+  const args = [`--user-data-dir=${dir}`, '--no-first-run', '--no-default-browser-check',
+    `--window-size=${viewport.width},${viewport.height}`, ...(headless ? ['--headless=new'] : []), url];
+  let proc;
+  try { proc = spawn(exe, args, { stdio: 'ignore' }); } catch (e) {
+    throw new Error(`could not open a browser window (${e.message}). Log in on a machine with a screen (storyshot login ${url}) and copy the file here.`);
   }
-  const context = await browser.newContext({ viewport });
-  const page = await context.newPage();
-  await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
-  log(`A browser window is open at ${url}. Log in there (2FA and "Sign in with Google" work).`);
-  log('The session is saved automatically once you are logged in — or close the window when done.');
-  let state = null, sawWall = false, clearFor = 0, done = 'timeout';
-  const end = Date.now() + timeoutMs;
-  while (Date.now() < end) {
-    if (!browser.isConnected() || page.isClosed()) { done = 'closed'; break; }
-    try {
-      state = await context.storageState({ indexedDB: true });
-      const d = await detectLogin(page);
-      if (d.wall) { sawWall = true; clearFor = 0; } else if (sawWall && ++clearFor >= 3) { done = 'logged in'; break; }
-    } catch {}
-    await new Promise((r) => setTimeout(r, 1000));
+  const session = { url, dir, exe, proc, exited: false };
+  proc.on('exit', () => { session.exited = true; });
+  proc.on('error', () => { session.exited = true; });
+  return session;
+}
+
+// Quit the window (if the user hasn't), read the session back from its profile, save it and delete
+// the temporary profile.
+export async function finishLogin(session, { file = authFileFor(session.url), log = console.log } = {}) {
+  const { url, dir, exe, proc } = session;
+  const how = session.exited ? 'window closed' : 'logged in';
+  let state;
+  try {
+    if (!session.exited) {
+      // SIGTERM makes Chrome shut down cleanly and flush cookies; force it if it hangs
+      proc.kill('SIGTERM');
+      const t = setTimeout(() => proc.kill('SIGKILL'), 10_000);
+      await new Promise((r) => (session.exited ? r() : proc.once('exit', r)));
+      clearTimeout(t);
+    }
+    const context = await chromium.launchPersistentContext(dir, { executablePath: exe, headless: true });
+    const page = context.pages()[0] ?? await context.newPage();
+    // load the app once, so its localStorage / IndexedDB are part of the snapshot
+    await page.goto(url, { waitUntil: 'load', timeout: 30_000 }).catch(() => {});
+    state = await context.storageState({ indexedDB: true });
+    await context.close().catch(() => {});
+  } finally {
+    if (!session.exited) proc.kill('SIGKILL');
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
-  await browser.close().catch(() => {});
-  if (!state) throw new Error('the browser was closed before anything could be saved — run login again');
-  if (done === 'timeout') log('warning: timed out waiting for the login; saving the session as it is');
+  const host = new URL(url).hostname.replace(/^www\./, '');
+  const siteCookies = state.cookies.filter((c) => host.endsWith(c.domain.replace(/^\./, '')) || c.domain.replace(/^\./, '').endsWith(host)).length;
   fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(state, null, 1));
   const gi = ignore(file);
-  return { file: path.resolve(file), how: done, gitignore: gi, cookies: state.cookies.length, sawWall };
+  return { file: path.resolve(file), how, gitignore: gi, cookies: state.cookies.length, siteCookies };
+}
+
+// CLI: open the window, wait for Enter (or the window closing), then save.
+export async function login(url, { file = authFileFor(url), viewport, log = console.log } = {}) {
+  const session = openLoginWindow(url, { viewport });
+  log(`A Chrome window is open at ${url}. Log in there (2FA and "Sign in with Google" work).`);
+  log('When you see the app logged in, come back here and press Enter (or just close the window).');
+  await new Promise((resolve) => {
+    const done = () => { process.stdin.pause(); resolve(); };
+    process.stdin.resume(); process.stdin.once('data', done);
+    session.proc.once('exit', done);
+  });
+  return finishLogin(session, { file, log });
 }

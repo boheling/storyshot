@@ -108,11 +108,14 @@ so a change only pays for the lines that changed.
 
 When the flow is behind a login, the agent says so in its plan. Then:
 
-1. A browser window opens (the `login` tool, or `storyshot login <url>`).
-2. You log in there. 2FA and "Sign in with Google" work.
-3. The session is saved to `videos/<site>-login.json` once you're logged in, or
-   when you close the window. It includes cookies, localStorage and IndexedDB,
-   and the file is added to `.gitignore` because it holds your session.
+1. A normal Chrome window opens (the `login` tool, or `storyshot login <url>`).
+   No script is attached to it while you log in, so "Sign in with Google" and
+   2FA work as usual.
+2. You log in there. When you see the app logged in, tell the agent "done"
+   (or press Enter in the terminal). You can also just close the window.
+3. The session is saved to `videos/<site>-login.json`. It includes cookies,
+   localStorage and IndexedDB, and the file is added to `.gitignore` because
+   it holds your session. The temporary browser profile is deleted.
 4. Every recording starts logged in, so the video never shows a login screen.
 
 If the session expires, Storyshot says so ("the saved login has expired, run
