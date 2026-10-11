@@ -134,8 +134,8 @@ from `storyshot guide`.
 | `check_storyboard` | Validates in about a second: typos with "did you mean", action and target shapes, `TODO`s, keys, the session file. |
 | `render_video` / `render_status` | Renders in the background and returns the MP4 path, warnings, a per-step speed log and the preview image. If the render isn't done within 45 s, it returns a `job_id`, so client tool timeouts never kill a render. |
 
-Other MCP clients: run `npx -y storyshot mcp` (stdio). Until Storyshot is on
-npm, `setup` points to `node /path/to/checkout/bin/storyshot.mjs mcp`.
+Other MCP clients: run `npx -y storyshot mcp` (stdio). When run from a git
+checkout, `setup` points to `node /path/to/checkout/bin/storyshot.mjs mcp` instead.
 
 When a step fails, the error names the step and action, and says whether the
 target matched nothing or only hidden elements. It also includes a screenshot
