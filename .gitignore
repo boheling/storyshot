@@ -1,0 +1,21 @@
+node_modules/
+.storyshot/
+.playwright-mcp/
+out/
+.claude/scheduled_tasks.lock
+.env
+.env.*
+.DS_Store
+.claude/
+videos/*-login.json
+*-login.json
+# rendered / recorded media
+*.mp4
+*.webm
+*.gif
+*.wav
+*.mp3
+*.m4a
+*.srt
+*.chapters.txt
+*-steps/

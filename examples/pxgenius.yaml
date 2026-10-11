@@ -1,0 +1,104 @@
+# 15s promo for pxgenius.ai: homepage → try an example → pricing.
+# Render with:  npx storyshot render examples/pxgenius.yaml
+name: pxgenius
+url: https://pxgenius.ai
+out: ../out/pxgenius-demo-15s.mp4
+
+viewport: { width: 1600, height: 900 }        # what the browser sees (CSS px)
+output: { width: 1920, height: 1080, fps: 30 } # same aspect ratio, rendered sharp
+
+theme: { accent: "#d9f75b", ink: "#0f172a" }
+music: { bpm: 120 }
+voice:                                       # optional voiceover — lines go in each step's `say:`
+  provider: elevenlabs
+  voice: hpp4J3VqNfWAUOO0d1Us                # Bella
+  pronounce: { pxGenius: P X Genius }        # TTS-only spelling; subtitles keep the original
+
+# Runs before recording starts (never appears in the video).
+setup:
+  - dismiss: { role: button, name: Dismiss announcement }
+
+# Each visible step becomes one segment of the video, retimed to `duration` seconds.
+steps:
+  - caption: Turn PDFs into **editable PowerPoint**
+    say: Turn any PDF into an editable PowerPoint.
+    duration: 2.4
+    zoom: { target: h1, scale: 1.2, start: 0.25, end: 2.4, ramp: [1.45, 0.4], offset: { y: 50 } }
+    actions:
+      - move: { x: 0.55, y: 0.42, ms: 1400 }
+      - pause: 700
+      - click: { role: button, name: View Samples, ms: 800 }
+
+  - caption: Explore real examples
+    say: Pick a sample,
+    duration: 1.8
+    actions:
+      - waitForUrl: "**/examples"
+      - waitFor: { alt: Editable Slides }
+      - networkIdle: true
+      - pause: 500
+      - move: { alt: Editable Slides, ms: 700 }
+      - pause: 300
+      - click: { role: button, name: Try It, ms: 400 }
+
+  - caption: One click — **AI rebuilds your slide**
+    say: and with one click, AI rebuilds it.
+    duration: 1.8
+    zoom: { target: { role: button, name: Convert }, scale: 1.5, start: 0.9, end: 2.35, ramp: [0.75, 0.4] }
+    actions:
+      - waitForUrl: "**/v3"
+      - waitFor: { role: button, name: Convert }
+      - networkIdle: true
+      - pause: 700
+      - click: { role: button, name: Convert, ms: 800 }
+
+  - caption: One click — **AI rebuilds your slide**   # same caption → stays on screen
+    duration: 1.3        # ~30s of real AI processing, sped up
+    sfx: riser           # rising sound + success chime at the end
+    actions:
+      - waitFor: { role: button, name: Re-analyze, timeout: 180000 }
+      - pause: 400
+
+  - caption: Every text box is **fully editable**
+    say: Every text box is fully editable.
+    duration: 2.3
+    zoom: { target: { text: The pxGenius Approach, last: true }, scale: 1.35, start: 0.05, end: 2.25, ramp: [0.55, 0.9] }
+    actions:
+      - click: { text: The pxGenius Approach, last: true, offset: { x: 0.35, y: 0.5 }, ms: 800 }
+      - pause: 1300
+      - click: { text: By enforcing a schema, last: true, ms: 700 }
+      - pause: 900
+
+  - hidden: true         # cut: jump back to the homepage
+    actions:
+      - goto: /
+      - waitFor: h1
+      - dismiss: { role: button, name: Dismiss announcement }
+
+  - caption: Simple, transparent pricing
+    say: Start free,
+    duration: 1.6
+    actions:
+      - pause: 600
+      - click: { css: 'nav a[href="#pricing"]', ms: 700 }   # anchor links scroll smoothly
+      - pause: 1500
+
+  - caption: "**Free forever** · Pro just $11.99/mo"
+    say: or go Pro for just eleven ninety-nine a month.
+    duration: 2.4
+    zoom: { target: { role: button, name: Go Pro }, offset: { y: -120 }, scale: 1.4, start: 0.25, end: 3.4, ramp: [0.8, 0.3] }
+    actions:
+      - move: { text: "$0", exact: true, ms: 600 }
+      - pause: 500
+      - move: { text: "$11.99", ms: 700 }
+      - pause: 500
+      - move: { role: button, name: Go Pro, ms: 600 }
+      - pause: 1600
+
+end_card:
+  logo: { alt: pxGenius Logo }    # captured from the page (or a path to an image)
+  title: pxGenius
+  subtitle: PDFs & images → **editable PowerPoint**
+  cta: Start free at pxgenius.ai
+  say: pxGenius.
+  duration: 1.4

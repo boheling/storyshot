@@ -1,0 +1,40 @@
+{
+  "name": "storyshot",
+  "version": "0.1.0",
+  "description": "Turn a short YAML storyboard into a polished product demo video of your web app — smooth cursor, auto zoom, captions, music.",
+  "author": "boheling <boheling@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/boheling/storyshot.git"
+  },
+  "homepage": "https://github.com/boheling/storyshot#readme",
+  "type": "module",
+  "bin": {
+    "storyshot": "bin/storyshot.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skills"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "demo",
+    "video",
+    "playwright",
+    "screen-recording",
+    "product-demo"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "playwright": "^1.64.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "optionalDependencies": {
+    "kokoro-js": "^1.2.1"
+  }
+}

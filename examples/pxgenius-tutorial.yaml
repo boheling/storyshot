@@ -1,0 +1,95 @@
+# Tutorial: how to turn a slide image / PDF into an editable PowerPoint with pxGenius.
+# purpose: tutorial → steps are timed to the narration, targets are highlighted before
+# each click, captions are numbered, and subtitles + YouTube chapters are written too.
+name: pxgenius-tutorial
+purpose: tutorial
+url: https://pxgenius.ai
+out: ../out/pxgenius-tutorial.mp4
+clips: gif                     # also export one GIF per step for the help center
+
+theme: { accent: "#d9f75b", ink: "#0f172a" }
+voice:
+  provider: elevenlabs
+  voice: hpp4J3VqNfWAUOO0d1Us        # Bella
+  pronounce:                         # TTS-only spelling; subtitles keep the original
+    pxgenius.ai: P X Genius dot A I
+    pxGenius: P X Genius
+    PPTX: P P T X
+    AI: A I
+
+setup:
+  - dismiss: { role: button, name: Dismiss announcement }
+
+steps:
+  - caption: Start at pxgenius.ai
+    say: In this tutorial, you'll turn a static slide into an editable PowerPoint with pxGenius.
+    zoom: { target: h1, scale: 1.15, start: 0.3, ramp: [1.2, 0.6] }
+    actions:
+      - pause: 600
+      - move: { x: 0.55, y: 0.4, ms: 1200 }
+
+  - caption: Upload a file — or try a sample
+    say: You can drop in a PDF or an image here. To follow along, we'll use a sample.
+    actions:
+      - move: { text: Upload your file, ms: 900, highlight: true }
+      - pause: 900
+      - click: { role: button, name: View Samples, ms: 800 }
+
+  - caption: Pick an example
+    say: Choose Editable Slides, and click Try It.
+    actions:
+      - waitForUrl: "**/examples"
+      - waitFor: { alt: Editable Slides }
+      - networkIdle: true
+      - pause: 400
+      - move: { alt: Editable Slides, ms: 700 }
+      - pause: 300
+      - click: { role: button, name: Try It, ms: 400 }
+
+  - caption: Click **Convert**
+    say: The slide opens in the editor. Click Convert to start the AI conversion.
+    actions:
+      - waitForUrl: "**/v3"
+      - waitFor: { role: button, name: Convert }
+      - networkIdle: true
+      - pause: 500
+      - click: { role: button, name: Convert, ms: 900 }
+
+  - caption: AI rebuilds the slide
+    say: AI Mode reads the slide and rebuilds every element. It takes about thirty seconds, sped up here.
+    sfx: riser
+    actions:
+      - waitFor: { role: button, name: Re-analyze, timeout: 180000 }
+      - pause: 400
+
+  - caption: Every element is an **editable layer**
+    say: When it's done, each text box, image and shape is its own layer. Click any layer to select it.
+    zoom: { target: { text: The pxGenius Approach, last: true }, scale: 1.3, start: 0.6, ramp: [0.7, 0.6] }
+    actions:
+      - click: { text: The pxGenius Approach, last: true, offset: { x: 0.35, y: 0.5 }, ms: 800 }
+      - pause: 1200
+
+  - caption: Compare with the original
+    say: Use Compare to check the result against the original. Drag the slider to see both sides.
+    actions:
+      - click: { role: button, name: Compare, ms: 800 }
+      - pause: 700
+      - drag: { from: { x: 0.57, y: 0.57 }, by: [{ x: -420 }, { x: 600 }, { x: -180 }], ms: 700, dragMs: 900 }
+      - pause: 300
+      - click: { role: button, name: Compare, ms: 600, highlight: false }
+
+  - caption: Export as **PPTX**
+    say: When you're happy, open Export and choose PPTX to download an editable PowerPoint file.
+    zoom: { target: { role: button, name: PPTX (Editable) }, scale: 1.6, start: 1.6, offset: { x: -60, y: 30 }, ramp: [0.8, 0.5] }
+    actions:
+      - click: { role: button, name: Export, ms: 900 }
+      - pause: 500
+      - move: { role: button, name: PPTX (Editable), ms: 700, highlight: true }
+      - pause: 1200
+
+end_card:
+  logo: { alt: pxGenius Logo }
+  title: pxGenius
+  subtitle: PDFs & images → **editable PowerPoint**
+  cta: Try it free at pxgenius.ai
+  say: That's it. Try it free at pxgenius.ai.

@@ -1,0 +1,109 @@
+# Lesson: how AI rebuilds a flat slide into editable layers (pxGenius).
+# purpose: course → narration-led timing, spotlight on clicks, no music, no step
+# numbers, subtitles + chapters. Draft with the free local voice, then switch to
+# ElevenLabs for the final render (cached lines are never paid for twice).
+name: pxgenius-course
+purpose: course
+url: https://pxgenius.ai
+out: ../out/pxgenius-course.mp4
+
+theme: { accent: "#d9f75b", ink: "#0f172a" }
+voice:
+  provider: elevenlabs      # drafted with `provider: kokoro, voice: bf_emma` (free, local)
+  voice: Xb7hH8MSUJpSbSDYk0k2   # Alice — "Clear, Engaging Educator"
+  pronounce:
+    pxgenius.ai: P X Genius dot A I
+    pxGenius: P X Genius
+    AI: A I
+
+setup:
+  - dismiss: { role: button, name: Dismiss announcement }
+
+steps:
+  - caption: Why slides get stuck
+    say: Export a slide as an image or PDF, and every word is flattened into pixels. In this lesson, we'll see how pxGenius turns it back into editable layers.
+    zoom: { target: h1, scale: 1.15, start: 0.3, ramp: [1.5, 0.8] }
+    actions:
+      - pause: 800
+      - move: { x: 0.55, y: 0.4, ms: 1400 }
+
+  - caption: Two ways to convert
+    say: There are two modes. Local mode is free and reads text line by line. AI Mode understands the whole layout, including paragraphs, fonts, colors, and the background.
+    zoom: { target: { css: "#compare table" }, scale: 1.12, start: 1.8, ramp: [1.0, 0.8] }
+    actions:
+      - scrollTo: { css: "#compare", ms: 1400 }
+      - pause: 600
+      - move: { text: Fast & private, ms: 900 }
+      - pause: 1200
+      - move: { text: Accurate & high quality, ms: 900, highlight: true }
+      - pause: 1500
+
+  - hidden: true
+    actions:
+      - goto: /examples
+      - waitFor: { alt: Editable Slides }
+      - networkIdle: true
+
+  - caption: Load a sample slide
+    say: Let's try AI Mode on a sample slide.
+    actions:
+      - move: { alt: Editable Slides, ms: 800 }
+      - pause: 300
+      - click: { role: button, name: Try It, ms: 400 }
+
+  - caption: Convert with AI
+    say: Click Convert. The AI reads the slide like a designer would, separating text, graphics, and what sits behind them.
+    sfx: riser
+    actions:
+      - waitForUrl: "**/v3"
+      - waitFor: { role: button, name: Convert }
+      - networkIdle: true
+      - pause: 400
+      - click: { role: button, name: Convert, ms: 900 }
+      - waitFor: { role: button, name: Re-analyze, timeout: 180000 }
+      - pause: 400
+
+  # The editor's layer filters (All / Text / Objects / Background) have no stable
+  # names (they show live counts), so they are clicked by position.
+  - caption: "Layer 1: **text**"
+    say: The result has three kinds of layers. First, text. Each paragraph becomes a real text box, with its font and color.
+    actions:
+      - click: { x: 196, y: 194, ms: 800, highlight: false }
+      - pause: 1600
+
+  - caption: "Layer 2: **objects**"
+    say: Second, objects. Icons and diagrams are cut out as separate images you can move or resize.
+    actions:
+      - click: { x: 196, y: 234, ms: 600, highlight: false }
+      - pause: 1600
+
+  - caption: "Layer 3: a **clean background**"
+    say: Third, the background. The text is gone, and the AI fills in what was hidden behind it.
+    actions:
+      - click: { x: 196, y: 274, ms: 600, highlight: false }
+      - pause: 2200
+
+  - caption: Check against the original
+    say: Use Compare to check the rebuilt slide against the original. Drag the slider to see both sides.
+    actions:
+      - click: { x: 196, y: 154, ms: 600, highlight: false }
+      - pause: 400
+      - click: { role: button, name: Compare, ms: 700 }
+      - pause: 500
+      - drag: { from: { x: 0.57, y: 0.57 }, by: [{ x: -420 }, { x: 600 }, { x: -180 }], ms: 700, dragMs: 900 }
+      - pause: 300
+
+  - caption: Recap
+    say: Text boxes, objects, and a clean background. That's what makes the exported PowerPoint truly editable.
+    actions:
+      - click: { role: button, name: Compare, ms: 600, highlight: false }
+      - pause: 400
+      - move: { role: button, name: Export, ms: 900, highlight: true }
+      - pause: 1200
+
+end_card:
+  logo: { alt: pxGenius Logo }
+  title: pxGenius
+  subtitle: Flat slides → **editable layers**
+  cta: Try it free at pxgenius.ai
+  say: Try it yourself at pxgenius.ai.
