@@ -15,6 +15,35 @@ second or two on screen.
 The agent plans, writes and fixes the storyboard. Storyshot does the
 recording and editing, and the same storyboard always renders the same video.
 
+## Next to similar tools
+
+Storyshot, [promo-video-recorder](https://github.com/palamut62/promo-video-recorder)
+and [demo-dev](https://www.npmjs.com/package/demo-dev) each made a promo of this
+repo's page, with the same storyline and free local voices only. The grid
+below is muted; open the full videos to hear them.
+
+<!-- VIDEO: comparison.mp4 (2x2 grid) -->
+
+<details>
+<summary>The three full videos, with sound</summary>
+
+**Storyshot**
+
+<!-- VIDEO: storyshot.mp4 -->
+
+**promo-video-recorder**
+
+<!-- VIDEO: promo-video-recorder.mp4 -->
+
+**demo-dev**
+
+<!-- VIDEO: demo-dev.mp4 -->
+
+</details>
+
+How each one was made, what we saw, and the caveats:
+[docs/comparison](docs/comparison/README.md).
+
 ## Quick start
 
 Open your project in Cursor or Claude Code and paste this into the agent chat:

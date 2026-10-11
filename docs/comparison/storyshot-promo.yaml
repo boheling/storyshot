@@ -1,0 +1,61 @@
+# The Storyshot run in docs/comparison: its own promo, recorded on its GitHub page, local voice only.
+# storyshot render docs/comparison/storyshot-promo.yaml
+name: storyshot-promo
+purpose: pitch
+url: https://github.com/boheling/storyshot
+out: storyshot.mp4
+theme: { accent: "#d9f75b", ink: "#0f172a" }
+voice:
+  provider: kokoro
+  voice: af_heart
+  pronounce:
+    YAML: yammel
+    MP4: M P 4
+    npx: N P X
+
+steps:
+  - caption: "Storyshot: **product videos** from your coding agent"
+    duration: auto
+    say: Meet Storyshot. Ask your coding agent for a video of your web app.
+    zoom: { target: { role: link, name: "storyshot", exact: true, nth: 1 }, scale: 1.4, start: 0.2, ramp: [0.8, 0.8] }
+    actions:
+      - pause: 600
+      - move: { role: link, name: "storyshot", exact: true, nth: 1, ms: 900 }
+      - pause: 1200
+
+  - caption: "One **YAML storyboard** in, a polished **1080p MP4** out"
+    duration: auto
+    say: The agent writes a YAML storyboard. Storyshot records a real browser and edits the video.
+    zoom: { target: h1, scale: 1.25, start: 1.2, ramp: [0.8, 0.8], offset: { y: 120 } }
+    actions:
+      - scrollTo: { role: heading, name: Storyshot, ms: 1200 }
+      - pause: 2200
+
+  - caption: "Cursor, **zoom**, captions, voice and music, automatically"
+    duration: auto
+    say: Smooth cursor, automatic zoom, captions, voiceover and music, with loading time squeezed out.
+    actions:
+      - scrollTo: { role: heading, name: What happens when you ask, ms: 1300 }
+      - pause: 2600
+
+  - caption: "Promos, **tutorials**, lessons and docs GIFs"
+    duration: auto
+    say: Make promos, narrated tutorials, lessons, or step by step GIFs for your docs.
+    zoom: { target: { role: heading, name: What you can make }, scale: 1.3, start: 1.4, ramp: [0.8, 0.8], offset: { y: 160 } }
+    actions:
+      - scrollTo: { role: heading, name: What you can make, ms: 1300 }
+      - pause: 2600
+
+  - caption: "Works with **logged-in apps**"
+    duration: auto
+    say: It even works behind a login.
+    actions:
+      - scrollTo: { role: heading, name: Logged-in apps, ms: 1300 }
+      - pause: 1800
+
+end_card:
+  title: Storyshot
+  subtitle: "Same storyboard, **same video**, every time"
+  cta: npx -y storyshot setup cursor
+  say: Same storyboard, same video, every time. Try it with N P X storyshot.
+  duration: 5
