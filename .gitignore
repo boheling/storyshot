@@ -20,11 +20,3 @@ videos/*-login.json
 *.chapters.txt
 *-steps/
 cursortest/
-# Storyshot login session (contains your session cookies — never commit)
-../../../../../tmp/ss-OPEN.json
-# Storyshot login session (contains your session cookies — never commit)
-../../../../../tmp/ss-CLOSED.json
-# Storyshot login session (contains your session cookies — never commit)
-../../../../../tmp/ss-open.json
-# Storyshot login session (contains your session cookies — never commit)
-../../../../../tmp/ss-closed.json

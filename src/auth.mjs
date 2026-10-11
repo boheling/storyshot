@@ -45,6 +45,7 @@ function ignore(file) {
   try { root = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: path.dirname(path.resolve(file)), stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch {}
   const gi = path.join(root, '.gitignore');
   const rel = path.relative(root, path.resolve(file)).split(path.sep).join('/');
+  if (rel.startsWith('../') || path.isAbsolute(rel)) return null; // outside the project: nothing to ignore
   const cur = fs.existsSync(gi) ? fs.readFileSync(gi, 'utf8') : '';
   if (cur.split('\n').includes(rel)) return null;
   fs.writeFileSync(gi, `${cur}${cur && !cur.endsWith('\n') ? '\n' : ''}# Storyshot login session (contains your session cookies — never commit)\n${rel}\n`);
