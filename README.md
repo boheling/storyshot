@@ -114,7 +114,7 @@ When the flow is behind a login, the agent says so in its plan. Then:
 2. You log in there. When you see the app logged in, tell the agent "done"
    (or press Enter in the terminal). You can also just close the window.
 3. The session is saved to `videos/<site>-login.json`. It includes cookies,
-   localStorage and IndexedDB, and the file is added to `.gitignore` because
+   localStorage, IndexedDB and sessionStorage, and the file is added to `.gitignore` because
    it holds your session. The temporary browser profile is deleted.
 4. Every recording starts logged in, so the video never shows a login screen.
 

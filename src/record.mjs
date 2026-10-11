@@ -4,7 +4,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describePage } from './inspect.mjs';
-import { detectLogin, loginAdvice } from './auth.mjs';
+import { detectLogin, loginAdvice, sessionContext } from './auth.mjs';
 
 // Injected into every page: fake cursor, click ripple, smooth in-page anchor scrolling.
 function pageScript({ scrollOffset }) {
@@ -154,7 +154,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
   const { width: VW, height: VH } = cfg.viewport;
 
   const browser = await chromium.launch();
-  const context = await browser.newContext({
+  const context = await sessionContext(browser, {
     viewport: cfg.viewport, deviceScaleFactor: cfg.scale, colorScheme: cfg.colorScheme, storageState: cfg.storageState,
   });
   await context.addInitScript(pageScript, { scrollOffset: cfg.scrollOffset });

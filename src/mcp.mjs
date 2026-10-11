@@ -127,9 +127,9 @@ server.registerTool('login', {
   logins.delete(out);
   let r;
   try { r = await finishLogin(session, { file: out }); } catch (e) { return fail(`login failed: ${e.message}`); }
-  return { content: [text(`✔ Saved the login session to ${r.file} (${r.how}, ${r.cookies} cookies, ${r.siteCookies} for this site).${r.gitignore ? ` Added it to ${r.gitignore}.` : ''}\n` +
+  return { content: [text(`✔ Saved the login session to ${r.file} (${r.how}, ${r.cookies} cookies, ${r.siteCookies} for this site${r.sessionStorage ? `, sessionStorage for ${r.sessionStorage} site(s)` : ''}).${r.gitignore ? ` Added it to ${r.gitignore}.` : ''}\n` +
     `Next: inspect_page with storage_state "${r.file}" to confirm you see the logged-in app, and put \`storageState: ${path.basename(r.file)}\` (path relative to the yaml) in the storyboard.` +
-    (r.siteCookies ? '' : '\nNote: no cookies were saved for this site — the user may not have finished logging in; inspect will show the login wall again if so.'))] };
+    (r.siteCookies || r.sessionStorage ? '' : '\nNote: no cookies were saved for this site — the user may not have finished logging in; inspect will show the login wall again if so.'))] };
 });
 
 server.registerTool('check_storyboard', {

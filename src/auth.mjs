@@ -101,11 +101,23 @@ export async function finishLogin(session, { file = authFileFor(session.url), lo
       await new Promise((r) => (session.exited ? r() : proc.once('exit', r)));
       clearTimeout(t);
     }
-    const context = await chromium.launchPersistentContext(dir, { executablePath: exe, headless: true });
-    const page = context.pages()[0] ?? await context.newPage();
-    // load the app once, so its localStorage / IndexedDB are part of the snapshot
+    // --restore-last-session reopens the user's tabs, which brings back their sessionStorage (some
+    // apps, e.g. Microsoft MSAL, keep the login token there; storageState() doesn't capture it)
+    const context = await chromium.launchPersistentContext(dir, { executablePath: exe, headless: true, args: ['--restore-last-session'] });
+    await new Promise((r) => setTimeout(r, 1000));
+    const sessionStorage = {};
+    for (const p of context.pages()) {
+      if (!/^https?:/.test(p.url())) continue;
+      await p.waitForLoadState('load', { timeout: 15_000 }).catch(() => {});
+      const items = await p.evaluate(() => Object.entries(window.sessionStorage)).catch(() => []);
+      if (items.length) Object.assign(sessionStorage[new URL(p.url()).origin] ??= {}, Object.fromEntries(items));
+    }
+    // load the app once in a fresh tab, so its localStorage / IndexedDB are part of the snapshot
+    const page = await context.newPage();
     await page.goto(url, { waitUntil: 'load', timeout: 30_000 }).catch(() => {});
     state = await context.storageState({ indexedDB: true });
+    const extra = Object.entries(sessionStorage).map(([origin, items]) => ({ origin, items: Object.entries(items).map(([name, value]) => ({ name, value })) }));
+    if (extra.length) state.sessionStorage = extra;
     await context.close().catch(() => {});
   } finally {
     if (!session.exited) proc.kill('SIGKILL');
@@ -116,7 +128,23 @@ export async function finishLogin(session, { file = authFileFor(session.url), lo
   fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(state, null, 1));
   const gi = ignore(file);
-  return { file: path.resolve(file), how, gitignore: gi, cookies: state.cookies.length, siteCookies };
+  return { file: path.resolve(file), how, gitignore: gi, cookies: state.cookies.length, siteCookies, sessionStorage: state.sessionStorage?.length ?? 0 };
+}
+
+// A browser context with a saved login: storageState plus the sessionStorage that login() saved
+// alongside it (Playwright has no sessionStorage in storageState, so it is restored by a script).
+export async function sessionContext(browser, { storageState, ...options } = {}) {
+  let state = storageState;
+  if (typeof state === 'string') state = JSON.parse(fs.readFileSync(state, 'utf8'));
+  const { sessionStorage, ...rest } = state ?? {};
+  const context = await browser.newContext({ ...options, storageState: state ? rest : undefined });
+  if (sessionStorage?.length) {
+    await context.addInitScript((saved) => {
+      const s = saved.find((o) => o.origin === location.origin);
+      if (s) for (const { name, value } of s.items) if (window.sessionStorage.getItem(name) === null) window.sessionStorage.setItem(name, value);
+    }, sessionStorage);
+  }
+  return context;
 }
 
 // CLI: open the window, wait for Enter (or the window closing), then save.

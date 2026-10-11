@@ -80,7 +80,7 @@ try {
   } else if (cmd === 'login') {
     const { login, authFileFor } = await import('../src/auth.mjs');
     const r = await login(arg, { file: flag('save') ?? authFileFor(arg), viewport: viewport() });
-    console.log(`✔ saved the login session to ${r.file} (${r.how}, ${r.cookies} cookies, ${r.siteCookies} for this site)${r.gitignore ? `\n  added it to ${r.gitignore}` : ''}` +
+    console.log(`✔ saved the login session to ${r.file} (${r.how}, ${r.cookies} cookies, ${r.siteCookies} for this site${r.sessionStorage ? `, sessionStorage for ${r.sessionStorage} site(s)` : ''})${r.gitignore ? `\n  added it to ${r.gitignore}` : ''}` +
       `\n  use it: \`storageState: ${r.file.split(/[\\/]/).pop()}\` in the storyboard (path relative to the yaml), or \`--storage ${r.file}\` for inspect/init`);
   } else if (cmd === 'init') {
     const { initStoryboard } = await import('../src/init.mjs');

@@ -3,7 +3,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
-import { detectLogin, loginAdvice } from './auth.mjs';
+import { detectLogin, loginAdvice, sessionContext } from './auth.mjs';
 
 // Runs in the page. Positions are relative to the top of the main scrolling content,
 // which may be the window or an inner scroll container (common in web apps).
@@ -163,7 +163,7 @@ export async function describePage(page, viewport, { maxElements = 80 } = {}) {
 
 export async function inspect(url, { viewport = { width: 1600, height: 900 }, storageState, outDir = '.storyshot/inspect', maxElements = 80 } = {}) {
   const browser = await chromium.launch();
-  const context = await browser.newContext({ viewport, storageState });
+  const context = await sessionContext(browser, { viewport, storageState });
   const page = await context.newPage();
   await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 }).catch(() => page.waitForLoadState('domcontentloaded'));
   await page.waitForTimeout(1500); // let late toasts / banners appear so they get listed
