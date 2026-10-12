@@ -92,8 +92,14 @@ export async function soundtrack(cfg, events, silentVideo, { log = console.log }
 
   // --- sound effects ------------------------------------------------------------------------
   if (cfg.sfx) {
+    // a mouse click: the press (band-passed noise with a small body thump), then a quieter release
     for (const c of events.clicks) {
-      add(sfx, c, 0.05, (t) => (Math.sin(2 * Math.PI * 2900 * t) * 0.6 + rand() * 0.4) * Math.exp(-t * 140), 0.45);
+      const fa = svf(), fb = svf();
+      add(sfx, c, 0.1, (t) => {
+        const press = t < 0.02 ? (fa(rand(), 3200, 2.5).bp * 1.4 + Math.sin(2 * Math.PI * 190 * t) * 0.5) * Math.exp(-t * 320) : 0;
+        const r = t - 0.075, release = r > 0 && r < 0.015 ? fb(rand(), 4200, 3).bp * 0.8 * Math.exp(-r * 420) : 0;
+        return press + release;
+      }, 0.55);
     }
     for (const c of events.whooshes) {
       const filt = svf(), len = 0.45;

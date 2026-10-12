@@ -4,7 +4,7 @@ import YAML from 'yaml';
 import { loadConfig } from './config.mjs';
 import { gitIgnored } from './auth.mjs';
 
-const TOP = ['name', 'url', 'out', 'purpose', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'intro', 'frame', 'pace', 'follow', 'colorScheme',
+const TOP = ['name', 'url', 'out', 'purpose', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'intro', 'frame', 'pace', 'follow', 'article', 'cards', 'lang', 'colorScheme',
   'scrollOffset', 'captionPosition', 'highlight', 'stepNumbers', 'subtitles', 'chapters', 'clips', 'maxWait', 'setup', 'steps', 'end_card'];
 const STEP = ['caption', 'say', 'sayAt', 'duration', 'zoom', 'actions', 'hidden', 'sfx', 'highlight', 'captionPosition', 'card', 'follow', 'doc'];
 const ZOOM = ['target', 'scale', 'start', 'end', 'ramp', 'offset'];
@@ -12,9 +12,9 @@ const END = ['logo', 'title', 'subtitle', 'cta', 'duration', 'say', 'kicker', 'b
 const TARGET = ['role', 'name', 'text', 'label', 'placeholder', 'alt', 'testId', 'css', 'exact', 'last', 'nth'];
 const OPTS = ['ms', 'offset', 'timeout', 'highlight', 'color', 'box'];
 const ACTIONS = {
-  pause: 'number', wait: 'number', move: 'target', hover: 'target', click: 'target', dismiss: 'target', waitFor: 'target',
+  pause: 'number', wait: 'number', move: 'target', hover: 'target', click: 'target', dblclick: 'target', dismiss: 'target', waitFor: 'target',
   waitForUrl: 'string', networkIdle: 'any', goto: 'string', scrollTo: 'target', scroll: 'any', type: 'type', drag: 'drag', press: 'any',
-  mark: 'mark', unmark: 'any', note: 'note', select: 'select',
+  mark: 'mark', unmark: 'any', note: 'note', select: 'select', hide: 'any', slide: 'slide', paste: 'type',
 };
 
 const dist = (a, b) => {
@@ -73,7 +73,7 @@ export function check(file, { draft = false } = {}) {
     // tutorials: one thing per step, so the viewer can follow (and the narration can explain it)
     const purpose = raw.purpose ?? 'pitch';
     if ((purpose === 'tutorial' || purpose === 'course') && !s.hidden) {
-      const doing = (s.actions ?? []).filter((a) => a && ['click', 'type', 'drag', 'press', 'goto', 'select'].includes(Object.keys(a)[0]) && !(Object.keys(a)[0] === 'press' && /^(Enter|Tab)$/.test(String(Object.values(a)[0]))));
+      const doing = (s.actions ?? []).filter((a) => a && ['click', 'dblclick', 'type', 'drag', 'press', 'goto', 'select', 'slide', 'paste'].includes(Object.keys(a)[0]) && !(Object.keys(a)[0] === 'press' && /^(Enter|Tab)$/.test(String(Object.values(a)[0]))));
       if (doing.length > 2) warnings.push(`${where}: does ${doing.length} things (${doing.map((a) => Object.keys(a)[0]).join(', ')}) in one step — in a ${purpose}, split it so each action gets its own explanation and the viewer can keep up`);
       if (doing.length && !s.say) warnings.push(`${where}: does something but has no say: line — in a ${purpose}, tell the viewer what and why`);
       const kinds = (s.actions ?? []).map((a) => a && Object.keys(a)[0]);
@@ -84,7 +84,8 @@ export function check(file, { draft = false } = {}) {
   }
   if (raw.end_card) unknown(raw.end_card, END, 'end_card');
   if (raw.intro) unknown(raw.intro, END, 'intro');
-  if (raw.frame && typeof raw.frame === 'object') unknown(raw.frame, ['background'], 'frame');
+  if (raw.article) unknown(raw.article, ['title', 'intro'], 'article');
+  if (raw.frame && typeof raw.frame === 'object') unknown(raw.frame, ['background', 'style'], 'frame');
   const todo = (fs.readFileSync(file, 'utf8').split('\n').map((l, i) => [l.replace(/#.*$/, ''), i + 1]).filter(([l]) => /\bTODO\b/.test(l)));
   for (const [, n] of todo) errors.push(`line ${n}: replace the TODO placeholder`);
 
@@ -101,18 +102,23 @@ export function check(file, { draft = false } = {}) {
     if (type === 'string' && typeof v !== 'string') errors.push(`${where}: ${kind} takes a string`);
     if (type === 'target') target(v, `${where} (${kind})`);
     if (type === 'mark' && typeof v !== 'string') target(v, `${where} (mark)`); // a string is a phrase to highlight
+    if (type === 'slide') {
+      if (!v?.target || typeof v?.to !== 'number' || v.to < 0 || v.to > 1) errors.push(`${where}: slide needs { target: <slider>, to: 0..1 } (0 = start of the track, 1 = end)`);
+      else target(v.target, `${where} (slide.target)`);
+    }
     if (type === 'select') {
       if (!v?.target || v?.option == null) errors.push(`${where}: select needs { target: <dropdown>, option: "visible text of the option" }`);
       else target(v.target, `${where} (select.target)`);
     }
     if (type === 'note') {
       if (!v?.target || !v?.text) errors.push(`${where}: note needs { target: <target>, text: "short label" }`);
+      else if (isPoint(v.target)) errors.push(`${where}: a note points at an element, not a screen position — target the element (a label, button, cell…) next to that spot`);
       else { target(v.target, `${where} (note.target)`); unknown(v, ['target', 'text', 'side', 'ms', 'timeout'], `${where} (note)`); }
       if (v?.side && !['auto', 'left', 'right', 'top', 'bottom'].includes(v.side)) errors.push(`${where}: note side must be auto, left, right, top or bottom`);
     }
     if (type === 'type') {
       if (typeof v === 'string' || typeof v === 'number') return;
-      if (v?.text == null) errors.push(`${where}: type needs text — "type: hello" types into the focused element, "type: { target: <target>, text: hello }" clicks the target first`);
+      if (v?.text == null) errors.push(`${where}: ${kind} needs text — "type: hello" types into the focused element, "type: { target: <target>, text: hello }" clicks the target first`);
       else if (v.target) target(v.target, `${where} (type.target)`);
     }
     if (type === 'drag') {

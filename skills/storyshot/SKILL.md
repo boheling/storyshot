@@ -38,6 +38,12 @@ is missing, a tool says so and gives the install command. Run that command
 yourself (with the user's approval), then retry. `storyshot doctor` checks
 everything.
 
+**Never fake the video.** Storyshot records the real site in a real browser. If
+the browser can't start (an agent sandbox that blocks it, a missing Chromium),
+or the tools keep failing, stop and tell the user what blocked it and how to
+allow it. Never produce a substitute: no mock-ups, redrawn screens, scripted
+frames or stock footage presented as a recording of their app.
+
 ## 1. Look, then confirm the brief
 
 1. **Look first.** `inspect_page` the start URL (about 5 s). Note what the site
@@ -55,9 +61,9 @@ everything.
 
    ```
    Here's the plan. Reply "ok", or change any line:
-   1. Type: pitch: a 15–30 s promo (other options: tutorial = narrated how-to;
-      course = narrated lesson; docs = silent step-by-step GIFs)
-   2. Length: about 15 s, 6 shots
+   1. Type: pitch: a promo for the landing page (other options: tutorial =
+      narrated how-to; course = narrated lesson; docs = silent step-by-step GIFs)
+   2. Length: about 20 s, 6 shots (it follows from the flow below)
    3. Flow: hero → Examples → Try It → AI result → pricing → end card
    4. Voice: none (other options: free local English voice; ElevenLabs, best
       quality and Chinese support, key found in .env)
@@ -67,14 +73,16 @@ everything.
       window for you to log in once; please use a demo account)
    ```
 
-   Defaults by type (propose these unless the request says otherwise):
+   Defaults by type (propose these unless the request says otherwise). There
+   is no target length: it follows from the purpose and the content. Estimate
+   it from the flow and say it in the plan, so the user can react.
 
-   | type | length | voice | music | on screen / files |
+   | type | length comes from | voice | music | on screen / files |
    |---|---|---|---|---|
-   | `pitch` | 15 s (or 30 s), 5–7 shots | optional | upbeat | captions |
-   | `tutorial` | 1–3 min, one action per step, 2 examples | yes | soft | step numbers, spotlight, camera follows, part cards, recap, .srt, chapters |
-   | `course` | 2–5 min | yes | none | spotlight, camera follows, part cards, recap, .srt, chapters |
-   | `docs` | one GIF per step | none | none | step numbers, spotlight, GIFs |
+   | `pitch` | where it's shown and its one message: a landing-page loop or social clip is a handful of shots; a launch video can tell a longer story | optional | upbeat | captions, intro, frame |
+   | `tutorial` | every step of the workflow, each explained, plus a second example; as long as that takes | yes | soft | step numbers, spotlight, camera follows, part cards, recap, .srt, chapters |
+   | `course` | the concepts to teach: each idea, shown in the app, checked with a question | yes | none | spotlight, camera follows, concept and question cards, recap, .srt, chapters |
+   | `docs` | one clip per step, each just long enough to see its result | none | none | step numbers, spotlight, cropped GIFs + PNGs, README.md article |
 
    Captions match the site's language. `kokoro` (free, local) speaks English
    only; for other languages, use ElevenLabs.
@@ -164,7 +172,9 @@ small controls are readable. Your job is the structure:
   cropped to what it touches and holds the result before looping; a PNG of
   each result and `<out>-steps/README.md` are written too. Give every step a
   short `caption` (the heading) and a `doc:` line (the article text), and
-  `note` the field the reader must not miss.
+  `note` the field the reader must not miss. Set the article's heading and
+  first paragraph with `article: { title: …, intro: … }`. Downloads show a
+  "Downloaded" bubble; `paste` and copy-to-clipboard work.
 - **End with a recap**: `end_card` with `bullets` listing the steps or rules
   to remember, and a `say` that repeats them.
 - **Narrating real results.** You can't know the numbers (scores, counts,
@@ -175,14 +185,15 @@ small controls are readable. Your job is the structure:
 - **Waiting is part of the lesson.** Long computations are still compressed,
   but say what is happening ("BLAST is now comparing your sequence against
   the database; this usually takes under a minute").
-- Length follows the content: 1–3 minutes is normal. Don't cut explanation
-  to hit a length.
+- Length follows the content. Don't cut explanation to hit a length, and
+  don't pad: if a part is long, split it into more parts rather than
+  speeding it up.
 
 Rules of thumb from real renders (promos and tutorials):
 
 - **One idea per step.**
-  - `pitch`: 1.5–3 s per step (`duration:`). A 15 s video is 5–7 visible
-    steps plus a 1–1.5 s `end_card`. Typical shape: `intro` → hero → 2–4
+  - `pitch`: 1.5–3 s per step (`duration:`), so the viewer gets one beat per
+    shot; the number of shots comes from the story, plus a 1–1.5 s `end_card`. Typical shape: `intro` → hero → 2–4
     steps of the core flow ending on a visible result → pricing or CTA → end
     card. Promos sit in a browser window on a backdrop (`frame: false` turns
     that off).
@@ -216,8 +227,9 @@ Rules of thumb from real renders (promos and tutorials):
   `mark` the claims as they are spoken, zoom on 2–3 of them, and end on a
   command or URL. If the product has a real flow, show that instead.
 - **Cut boring navigation** with a `hidden: true` step (e.g. `goto: /pricing`).
-- **Clean the frame** in `setup`: dismiss cookie banners, announcement bars and
-  chat widgets. `dismiss` is a no-op when the element isn't there.
+- **Clean the frame** in `setup`: dismiss cookie banners and announcement bars
+  (`dismiss` is a no-op when the element isn't there), and `hide` survey
+  pop-ups, feedback tabs and chat widgets, which often appear late.
 - **Keep the caption off the subject.** Captions sit bottom-centre. When one
   would cover a target the step clicks, hovers, types into or drags, or the
   zoom subject, it moves to the top automatically (with a warning). Other things

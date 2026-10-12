@@ -1,0 +1,158 @@
+# Tutorial: run a protein BLAST search and read the results (written by an agent with the
+# Storyshot skill, then two steps given row marks). purpose: tutorial → slow pace, camera follows
+# each action, part cards, a second example, recap card.
+name: blast-tutorial
+url: https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastp&PAGE_TYPE=BlastSearch
+purpose: tutorial
+out: blast-tutorial.mp4
+voice: { provider: kokoro, voice: af_heart, pronounce: { BLAST: blast, blastp: blast P, NCBI: N C B I, E-value: E value, Swiss-Prot: Swiss Prot, UniProtKB: Uni Prot K B } }
+subtitles: true
+chapters: true
+
+intro:
+  title: Protein BLAST for beginners
+  subtitle: NCBI **blastp**, step by step
+  bullets:
+    - Paste a protein sequence and run blastp
+    - Read the hits table
+    - Judge a match by E value and percent identity
+    - Open one alignment
+  say: In this video you will learn to run a protein BLAST search at N C B I, read the hits table, judge a match by its E value and percent identity, and open an alignment. All you need is a protein sequence.
+
+setup:
+  - hide: '[id*="QSI"], [class*="QSI"], #feedback, .feedback-tab'   # NCBI survey pop-up and feedback tab
+  - dismiss: { role: button, name: "Tell us what you think!", exact: true }
+
+steps:
+  - caption: The protein BLAST search page
+    say: This is the N C B I protein BLAST page. The blast P tab is already selected, which means a protein query searched against a protein database.
+    actions:
+      - pause: 400
+      - move: { css: "#blastpTab", highlight: true }
+
+  - card: { kicker: Part 1, title: Set up the search }
+    caption: Paste the query sequence
+    say: Click the query box and paste your protein sequence. Here we use human hemoglobin beta, UniProt P68871. You can also enter an accession number or a FASTA record.
+    actions:
+      - type: { target: { label: "Enter accession number(s), gi(s), or FASTA sequence(s)" }, text: "MVHLTPEEKSAVTALWGKVNVDEVGGEALGRLLVVYPWTQRFFESFGDLSTPDAVMGNPKVKAHGKKVLGAFSDGLAHLDNLKGTFATLSELHCDKLHVDPENFRLLGNVLVCVLAHHFGKEFTPPVQAAYQKVVAGVANALAHKYH", delay: 6 }
+
+  - caption: Choose the database
+    say: Next, choose the database to search. We pick UniProt K B Swiss Prot, a smaller, expert curated set, so the hits are well annotated and the search is fast.
+    actions:
+      - select: { target: { label: "Database", exact: true }, option: "UniProtKB/Swiss-Prot(swissprot)" }
+      - note: { target: { label: "Database", exact: true }, text: "Curated, fast: good for learning" }
+
+  - caption: Run the search
+    say: Leave the algorithm on blast P, and click the blue BLAST button.
+    actions:
+      - click: { role: button, name: "BLAST", exact: true }
+
+  - caption: Wait for the results page
+    say: BLAST now compares your sequence against every protein in the database. This usually takes under a minute; the page refreshes by itself.
+    sfx: riser
+    actions:
+      - waitFor: { text: "Sequences producing significant alignments", timeout: 240000 }
+
+  - card: { kicker: Part 2, title: Read the hits table }
+    caption: The search summary
+    say: When the search finishes you land on the results page. The top shows a summary of your job, including the database and your query length, 147 amino acids.
+    actions:
+      - mark: "Query Length"
+
+  - caption: Each row is one **hit**
+    say: Below is the Descriptions table. Each row is a database protein that matches your query, sorted from best to worst.
+    actions:
+      - scrollTo: { css: "#tabDescr", ms: 1200 }
+      - mark: { css: "#dscTable tbody tr:nth-child(1)" }
+
+  - caption: The best hit is the protein itself
+    say: The first hit is human hemoglobin beta itself, with a query cover of 100 percent. That is the sanity check that your search worked.
+    actions:
+      - note: { target: { role: link, name: "Query Cover", exact: true }, text: "How much of your query is aligned" }
+
+  - caption: "E value: could this be **chance**?"
+    say: The E value is the number of hits this good you would expect by pure chance in a database this size. Smaller is better. Anything below about 1 e minus 5 is usually a real relationship, and 6 e minus 106 is essentially zero.
+    actions:
+      - note: { target: { role: link, name: "E value", exact: true }, text: "Smaller = less likely by chance" }
+
+  - caption: "Percent identity: how **similar**"
+    say: Percent identity is the share of aligned positions with the same amino acid. 100 percent is an identical sequence; gorilla is 99 percent and gibbon 98 percent, because these are close relatives.
+    actions:
+      - note: { target: { role: link, name: "Per. Ident", exact: true }, text: "Same amino acid at each position" }
+
+  - caption: Further down, **distant** relatives
+    say: Further down, identity drops as the species get more distant. Other mammals are around 90 percent identical, and the E values are still tiny, near 1 e minus 90. These are true beta globins from other animals.
+    actions:
+      - mark: { css: "#dscTable tbody tr:nth-child(24)" }
+      - note: { target: { css: "#dscTable tbody tr:nth-child(24) td.c10" }, text: "Lower identity, still tiny E value" }
+
+  - card: { kicker: Part 3, title: Open one alignment }
+    caption: Click a description to see its alignment
+    say: To see how a hit lines up with your query, click its description. Let's open the gorilla hit, the second row.
+    actions:
+      - scrollTo: { css: "#tabDescr", ms: 1000 }
+      - click: { css: "a[href='#alnHdr_P02024']" }
+      - pause: 1200
+
+  - caption: Query on top, **hit** below
+    say: Each alignment shows your query on top and the database protein below. The middle line shows a letter where they are identical, a plus sign where the amino acids are similar, and a blank where they differ.
+    actions:
+      - mark: { css: "#ar_P02024_1" }
+
+  - caption: "146 of 147 identical: **one** change"
+    say: The header line sums it up. 146 of 147 positions are identical, so 99 percent identity, with no gaps. The single difference is at position 104, where human has arginine and gorilla has lysine, a similar amino acid, shown by the plus sign.
+    actions:
+      - note: { target: { css: "#ar_P02024_1" }, text: "Score, E value, Identities, Gaps" , side: top }
+
+  - hidden: true
+    actions:
+      - goto: "https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastp&PAGE_TYPE=BlastSearch"
+      - networkIdle: true
+
+  - card: { kicker: Part 4, title: Now a second example, subtitle: Human insulin }
+    caption: Paste the insulin sequence
+    say: Now let's repeat the search with a different protein, human insulin, UniProt P01308. Back on a fresh search page, paste the sequence.
+    actions:
+      - type: { target: { label: "Enter accession number(s), gi(s), or FASTA sequence(s)" }, text: "MALWMRLLPLLALLALWGPDPAAAFVNQHLCGSHLVEALYLVCGERGFFYTPKTRREAEDLQVGQVELGGGPGAGSLQPLALEGSLQKRGIVEQCCTSICSLYQLENYCN", delay: 6 }
+
+  - caption: Same database, then BLAST
+    captionPosition: top
+    say: Choose the same database, Swiss Prot, so the two results are comparable, and click BLAST.
+    actions:
+      - select: { target: { label: "Database", exact: true }, option: "UniProtKB/Swiss-Prot(swissprot)" }
+      - click: { role: button, name: "BLAST", exact: true }
+
+  - caption: BLAST is searching
+    say: Again, wait while BLAST compares insulin with the database.
+    sfx: riser
+    actions:
+      - waitFor: { text: "Sequences producing significant alignments", timeout: 240000 }
+
+  - caption: Insulin's hits table
+    say: Human insulin is again the top hit, at 100 percent identity. That always happens when your protein is in the database.
+    actions:
+      - scrollTo: { css: "#tabDescr", ms: 1200 }
+      - mark: { css: "#dscTable tbody tr:nth-child(1)" }
+
+  - caption: Identity falls **faster**
+    say: Now compare with hemoglobin. Apes are still above 97 percent, but the rat is already down to 83 percent. Insulin's precursor contains a signal peptide and a C peptide that change quickly in evolution, so identity falls off much sooner.
+    actions:
+      - note: { target: { role: link, name: "Per. Ident", exact: true }, text: "Compare with hemoglobin" }
+
+  - caption: Lower identity, still **significant**
+    say: Further down, fish and bird insulins are only 45 to 55 percent identical and cover about three quarters of the query. Their E values, around 1 e minus 15 to 1 e minus 20, are larger than hemoglobin's, yet still far below 1 e minus 5, so these are real insulins. Judge a hit by its E value first, then by identity and coverage.
+    actions:
+      - mark: { css: "#dscTable tbody tr:nth-child(40)" }
+      - note: { target: { css: "#dscTable tbody tr:nth-child(40) td.c9" }, text: "Still far below 1e-5" }
+
+end_card:
+  title: You can now run blastp
+  subtitle: Recap
+  bullets:
+    - Paste a sequence or accession
+    - Pick a database, e.g. Swiss-Prot
+    - Click BLAST and wait
+    - "E value: small means not chance"
+    - "Identity: share of same amino acids"
+    - Click a description to see the alignment
+  say: To recap. Paste your sequence, pick a database, and click BLAST. In the hits table, check the E value first, small means the match is not by chance, then percent identity and query cover. Click a description to see the alignment itself.

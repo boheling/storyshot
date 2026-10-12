@@ -51,7 +51,7 @@ server.registerTool('init_storyboard', {
   inputSchema: {
     url: z.string().describe('Start page of the web app'),
     path: z.string().optional().describe('Absolute path for the YAML (must not exist yet). Default: <cwd>/videos/<site>-<kind>[-<topic>].yaml, kind = promo/tutorial/lesson/docs from purpose'),
-    purpose: z.enum(['pitch', 'tutorial', 'course', 'docs']).optional().describe('pitch = 15–30s promo (default); tutorial = narrated how-to; course = narrated lesson; docs = silent per-step GIFs'),
+    purpose: z.enum(['pitch', 'tutorial', 'course', 'docs']).optional().describe('pitch = short promo (default); tutorial = narrated how-to, paced to follow along; course = narrated lesson that explains the why; docs = per-step GIFs/PNGs + a Markdown article'),
     topic: z.string().optional().describe('Short topic for the file name, e.g. "export-pdf" → videos/<site>-tutorial-export-pdf.yaml. Use it for tutorials/lessons, since a site usually gets several'),
     storage_state: z.string().optional().describe('Absolute path to a saved login (from the login tool) for apps behind a login'),
     ignore_https_errors: z.boolean().optional().describe('Accept a self-signed HTTPS certificate (internal sites only); also writes ignoreHTTPSErrors: true into the storyboard'),

@@ -6,7 +6,7 @@ docs.
 
 > *"make a 15 s promo video of https://myapp.com"*
 
-Storyshot gives Cursor, Claude Code and other coding agents what they need to
+Storyshot gives coding agents (Cursor, Claude Code, Codex, Gemini CLI, Copilot in VS Code, Windsurf, Cline) what they need to
 do this well. A real browser clicks through your site, and the recording gets
 a smooth cursor, automatic zoom, captions, an optional AI voiceover, music
 and an end card. Loading time is squeezed out, so a 30-second AI job takes a
@@ -14,6 +14,13 @@ second or two on screen.
 
 The agent plans, writes and fixes the storyboard. Storyshot does the
 recording and editing, and the same storyboard always renders the same video.
+
+## Gallery
+
+**[boheling.github.io/storyshot-gallery](https://boheling.github.io/storyshot-gallery/)**: promos,
+tutorials, lessons and help-center docs of real web apps (Squoosh, Excalidraw, NCBI BLAST, Desmos,
+regex101, RCSB PDB, Datasette and more, two of them in Chinese). Each one was made by an agent from a
+one-paragraph request, and comes with its storyboard and notes on how it went.
 
 ## Next to similar tools
 
@@ -46,11 +53,28 @@ How each one was made, what we saw, and the caveats:
 
 ## Quick start
 
-Open your project in Cursor or Claude Code and paste this into the agent chat:
+Open your project in your coding agent and paste this into its chat, with your
+agent's name (`cursor`, `claude`, `codex`, `gemini`, `vscode`, `windsurf` or `cline`):
 
-> Set up Storyshot in this project: run `npx -y storyshot setup cursor` (use
-> `setup claude` in Claude Code) and do everything it says. Then make a 15 s
-> promo video of https://myapp.com
+> Set up Storyshot in this project: run `npx -y storyshot setup cursor` and do
+> everything it says. Then make a short promo video of https://myapp.com
+
+| agent | what `setup` writes |
+|---|---|
+| Cursor | `.cursor/mcp.json` and the skill in `.cursor/skills/storyshot/` |
+| Claude Code | `.mcp.json` and the skill in `.claude/skills/storyshot/` |
+| Codex | the skill in `.agents/skills/storyshot/`, a short section in `AGENTS.md` pointing to it, and the MCP server through `codex mcp add` (in `~/.codex/config.toml`, for your user). Storyshot launches a browser, which Codex's sandbox blocks: approve it when Codex asks, or run Codex with `--sandbox danger-full-access` |
+| Gemini CLI | `.gemini/settings.json`, a section in `GEMINI.md`, the skill in `.agents/skills/storyshot/` (trust the folder when Gemini asks, or it ignores project settings) |
+| Copilot in VS Code (`vscode`) | `.vscode/mcp.json`, a section in `.github/copilot-instructions.md`, the skill in `.agents/skills/storyshot/` |
+| Windsurf | `.windsurf/rules/storyshot.md`, the skill in `.agents/skills/storyshot/`, and the MCP server in `~/.codeium/windsurf/mcp_config.json` (for your user) |
+| Cline | `.clinerules/storyshot.md`, the skill in `.agents/skills/storyshot/`, and the MCP server in Cline's own settings in each editor it is installed in (for your user) |
+
+Existing files are merged, not replaced: other MCP servers stay, and instruction files get one marked
+Storyshot section that a second `setup` updates instead of duplicating.
+
+**Tested end to end** (setup, then an agent making a real video from a plain request): **Claude Code,
+Cursor and Codex**. Gemini CLI, Copilot in VS Code, Windsurf and Cline get the configuration their docs
+describe, but haven't been tested with a real session yet; reports are welcome.
 
 The agent does the rest:
 - `setup` writes the MCP server config and the Storyshot skill, adds
@@ -61,7 +85,7 @@ The agent does the rest:
 - The agent reads the skill and starts on your video in the same chat, using
   the CLI.
 
-Reload Cursor (or restart Claude Code) when convenient. From the next chat on,
+Restart or reload your agent when convenient (`setup` says how for each one). From the next chat on,
 the agent uses the Storyshot MCP tools automatically, and you can just ask:
 
 - *"make a 15 s promo video of https://myapp.com"*, or type `/storyshot`
@@ -80,8 +104,8 @@ macOS, Linux and Windows.
 
    ```
    Here's the plan. Reply "ok", or change any line:
-   1. Type: pitch: a 15–30 s promo
-   2. Length: about 15 s, 6 shots
+   1. Type: pitch: a promo for the landing page
+   2. Length: about 20 s, 6 shots
    3. Flow: hero → Examples → Try It → AI result → pricing → end card
    4. Voice: none (other options: free local English voice; ElevenLabs, key found in .env)
    5. Music: upbeat · Captions: English · Subtitle file (.srt): no
@@ -111,10 +135,13 @@ After your next release, re-render it and you have an up-to-date video.
 
 | ask for | type (`purpose`) | you get |
 |---|---|---|
-| a promo / launch / landing-page clip | `pitch` | 15–30 s, music, captions, tightly cut |
-| a how-to or onboarding video | `tutorial` | narrated, a spotlight on each click, numbered steps, soft music, `.srt` + chapters |
-| a lesson or explainer | `course` | narrated and explains the *why*, no music, `.srt` + chapters |
-| help-center snippets | `docs` | silent, one GIF per step |
+| a promo / launch / landing-page clip | `pitch` | short and tightly cut: intro card, the app in a browser frame, music, captions |
+| a how-to or onboarding video | `tutorial` | paced to follow along: one narrated action per step, the camera following each click, part cards, a second example, a recap; `.srt` + chapters |
+| a lesson or explainer | `course` | explains the *why*: concept cards, the idea shown in the app, question cards, a recap, no music; `.srt` + chapters |
+| help-center snippets | `docs` | silent per-step GIFs and PNGs cropped to the action, plus a ready-to-paste Markdown article |
+
+Length follows the purpose and the content, not a target: a promo is as short as
+its message, a tutorial as long as the workflow takes to explain.
 
 Any type can also be vertical (9:16) or in another language.
 
@@ -166,7 +193,7 @@ from `storyshot guide`.
 | `check_storyboard` | Validates in about a second: typos with "did you mean", action and target shapes, `TODO`s, keys, the session file. |
 | `render_video` / `render_status` | Renders in the background and returns the MP4 path, warnings, a per-step speed log and the preview image. If the render isn't done within 45 s, it returns a `job_id`, so client tool timeouts never kill a render. |
 
-Other MCP clients: run `npx -y storyshot mcp` (stdio). When run from a git
+Any other MCP client: run `npx -y storyshot mcp` (stdio), and point the agent at the playbook (`storyshot guide`). When run from a git
 checkout, `setup` points to `node /path/to/checkout/bin/storyshot.mjs mcp` instead.
 
 When a step fails, the error names the step and action, and says whether the
@@ -189,7 +216,7 @@ Everything the agent does is also a command:
 | `storyshot compose videos/acme-promo.yaml [--draft]` | Rebuild from the last recording, in seconds. |
 | `storyshot record videos/acme-promo.yaml` | Only record. |
 | `storyshot guide` | Print the playbook and the reference. |
-| `storyshot setup cursor\|claude` | Set up the MCP server and the skill in this project, and install or check what Storyshot needs. |
+| `storyshot setup <agent>` (`cursor`, `claude`, `codex`, `gemini`, `vscode`, `windsurf`, `cline`) | Set up the MCP server and the skill in this project, and install or check what Storyshot needs. |
 | `storyshot doctor` | Check Node, ffmpeg, Chromium and voices; install Chromium if it's missing. |
 | `storyshot mcp` | Run the MCP server. |
 
@@ -231,7 +258,9 @@ stepNumbers: false                              # numbered caption badges
 subtitles: false                                # write <out>.srt (narration, else captions); `burn` also burns the narration into the video, each word lighting up as it is spoken (captions move to the top)
 pace: slow                                      # fast (pitch) | normal (docs) | slow (tutorial, course): cursor and typing speed, a beat after each click, hold after narration, voice speed, how much of a wait is shown
 follow: true                                    # tutorial/course default: the camera zooms in on what each step touches and pans between steps (a step's own zoom wins; follow: false on a step skips it); or { scale: 1.8 }
-frame: true                                     # pitch default: the recording sits in a browser window on a backdrop; false = full frame, or { background: <css> }
+article: { title: Export a drawing, intro: … }  # docs: heading and first paragraph of <out>-steps/README.md
+cards: auto                                     # intro/section/end cards: auto follows the frame (dark frames get dark cards), or light | dark
+frame: aurora                                   # the recording sits in a browser window on a backdrop: aurora (dark, grain; pitch default), studio (light, grain; tutorial and course default), dark, pastel, blur (the page itself, blurred); false = full frame; or { style, background: <css> }
 chapters: false                                 # write <out>.chapters.txt for YouTube
 clips: null                                     # gif | webm | mp4 | png, or a list (docs default: [gif, png]): one file per step in <out>-steps/, cropped to what the step touches, plus README.md, a ready-to-paste article (step captions, `doc:` text, images)
 maxWait: 1.0                                    # with duration: auto, the longest a wait is shown
@@ -290,8 +319,9 @@ You can add `exact: true`, `last: true` or `nth: 2` to any of them.
 | action | example |
 |---|---|
 | `click` | `click: { role: button, name: Convert, ms: 800, offset: { x: 0.3, y: 0.5 } }` |
+| `dblclick` | `dblclick: { text: Start }` double-clicks (e.g. to edit a label in place) |
 | `move` / `hover` | `move: { text: "$0" }` or `move: { x: 0.5, y: 0.4, ms: 1200 }` |
-| `type` | `type: { target: { label: Email }, text: hi@acme.com, delay: 60 }`, or `type: hello` to type into whatever has focus |
+| `type` | `type: { target: { label: Email }, text: hi@acme.com, delay: 60 }`, or `type: hello` to type into whatever has focus. `clear: true` empties a pre-filled field first |
 | `drag` | `drag: { from: { css: ".slider" }, by: [{ x: -300 }, { x: 450 }] }` (several moves while held), or `to: <target or point>` |
 | `press` | `press: Enter`, `press: "^"`, `press: { key: Meta+K, show: true }`. When highlighting, shortcuts and special keys show an on-screen badge; plain characters don't. `show: false` hides it. |
 | `pause` | `pause: 700` (ms) |
@@ -302,9 +332,12 @@ You can add `exact: true`, `last: true` or `nth: 2` to any of them.
 | `scrollTo` | `scrollTo: { css: "#pricing", ms: 1200 }` |
 | `scroll` | `scroll: 600` |
 | `dismiss` | `dismiss: { role: button, name: Close }` (clicks only if visible) |
+| `hide` | `hide: '[id*="QSI"], .chat-widget'` hides pop-ups, survey prompts, feedback tabs and chat widgets for the whole video, including ones that appear late (use it in `setup`) |
 | `mark` | `mark: "automatic zoom, captions"` sweeps a highlighter over that phrase, even inside a paragraph (scrolling to it if needed). `mark: { css: "table tr:nth-child(3)" }` marks any target with a box. Options: `ms` (sweep time, default 700), `color` (default: theme accent), `box: true/false`. Marks stay until the step ends. |
 | `unmark` | `unmark: true` clears the marks (and notes) earlier |
 | `note` | `note: { target: { label: Database }, text: Curated proteins only }` puts a short label with an arrow next to the element, on the side with the most room (or `side: left/right/top/bottom`). It stays until the step ends and gets reading time (about 3 words a second, or `ms`). |
+| `paste` | `paste: { target: { label: JSON }, text: '{"a": 1}' }` pastes text in one go through the real clipboard (with a ⌘V badge), so editors react as to a real paste; `paste: "..."` pastes into whatever has focus |
+| `slide` | `slide: { target: { label: Quality }, to: 0.2 }` drags a slider to a position along its track (0 = start, 1 = end), found from the element, not pixels |
 | `select` | `select: { target: { label: Database }, option: "UniProtKB/Swiss-Prot" }` picks an option in a dropdown (by its visible text, or part of it). `inspect` lists each dropdown's options. |
 
 `ms` sets how long the cursor takes to travel to the target (`dragMs` for each

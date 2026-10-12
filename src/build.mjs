@@ -10,9 +10,9 @@ export async function build(cfg, mode = 'render', { log = console.log } = {}) {
   if (mode !== 'compose') await record(cfg, { log });
   if (mode === 'record') return { warnings: [] };
   const voiceLens = await measureVoice(cfg, { log });
-  const { silent, events, preview, warnings, captions, cards, segs } = await compose(cfg, { log, voiceLens });
+  const { silent, clean, events, preview, warnings, captions, cards, segs } = await compose(cfg, { log, voiceLens });
   const audio = await soundtrack(cfg, events, silent, { log });
   if (cfg.subtitles === 'burn') burnSubtitles(cfg, audio.narration ?? [], { log });
-  const extras = await writeOutputs(cfg, { captions, cards, segs, narration: audio.narration, total: events.total }, { log });
+  const extras = await writeOutputs(cfg, { captions, cards, segs, clean, narration: audio.narration, total: events.total }, { log });
   return { out: audio.out, extras, preview, warnings: [...warnings, ...audio.warnings], duration: events.total, seconds: Math.round((Date.now() - t0) / 1000) };
 }

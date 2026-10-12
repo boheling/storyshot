@@ -24,7 +24,8 @@ Usage:
                                     (after changing captions, durations, zoom, music, voice, end card)
   storyshot record  <storyboard.yaml>     only (re-)record the browser session
   storyshot guide                   print the agent playbook + storyboard reference
-  storyshot setup cursor|claude     add the MCP server + playbook to this project for Cursor / Claude Code,
+  storyshot setup <agent>          add the MCP server + playbook to this project for your coding agent:
+                                    cursor, claude, codex, gemini, vscode (Copilot), windsurf, cline —
                                     and install / check everything Storyshot needs
   storyshot doctor                  check (and install what it can of) Chromium, ffmpeg, voices
   storyshot mcp                     run as an MCP server (stdio)
@@ -77,7 +78,14 @@ try {
       `  show up in this session, use the CLI instead: ${cliCommand()} <command>`,
       arg === 'cursor'
         ? '  User: reload Cursor (Cmd/Ctrl+Shift+P → "Reload Window") so the storyshot MCP tools load; future chats use them automatically.'
-        : '  User: restart Claude Code in this project and approve the storyshot MCP server; future sessions use it automatically.',
+        : ({
+          claude: '  User: restart Claude Code in this project and approve the storyshot MCP server; future sessions use it automatically.',
+          codex: '  User: start a new Codex session in this project; it reads AGENTS.md and loads the storyshot MCP server. Storyshot needs to launch a browser, which Codex\'s sandbox blocks: approve it when Codex asks, or start Codex with --sandbox danger-full-access.',
+          gemini: '  User: restart Gemini CLI in this project and trust the folder when asked (Gemini ignores project settings in untrusted folders); /mcp then lists the storyshot tools.',
+          vscode: '  User: in VS Code, open .vscode/mcp.json and click Start on "storyshot", then use Copilot Chat in Agent mode.',
+          windsurf: '  User: in Windsurf, open Cascade → MCP servers and refresh; the storyshot tools then appear.',
+          cline: '  User: in Cline, open MCP Servers and make sure "storyshot" is enabled (restart the editor if it is not listed).',
+        })[arg],
     ].join('\n'));
   } else if (cmd === 'login') {
     const { login, authFileFor } = await import('../src/auth.mjs');

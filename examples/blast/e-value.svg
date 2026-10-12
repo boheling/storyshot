@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="330" font-family="Helvetica, Arial" font-size="30">
+<rect width="1100" height="330" fill="#ffffff"/>
+<defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#16a34a"/><stop offset="0.62" stop-color="#facc15"/><stop offset="1" stop-color="#dc2626"/></linearGradient></defs>
+<rect x="60" y="120" width="980" height="44" rx="22" fill="url(#g)"/>
+<g font-size="26" text-anchor="middle" fill="#0f172a">
+<line x1="110" y1="110" x2="110" y2="174" stroke="#0f172a" stroke-width="3"/><text x="110" y="205">1e-100</text>
+<line x1="410" y1="110" x2="410" y2="174" stroke="#0f172a" stroke-width="3"/><text x="410" y="205">1e-20</text>
+<line x1="660" y1="104" x2="660" y2="180" stroke="#0f172a" stroke-width="5"/><text x="660" y="205" font-weight="bold">1e-5</text>
+<line x1="870" y1="110" x2="870" y2="174" stroke="#0f172a" stroke-width="3"/><text x="870" y="205">0.01</text>
+<line x1="1010" y1="110" x2="1010" y2="174" stroke="#0f172a" stroke-width="3"/><text x="1010" y="205">1</text></g>
+<text x="300" y="80" text-anchor="middle" fill="#15803d" font-weight="bold">real relative</text>
+<text x="900" y="80" text-anchor="middle" fill="#b91c1c" font-weight="bold">could be chance</text>
+<text x="550" y="280" text-anchor="middle" fill="#334155">E value = hits this good expected by chance alone</text>
+</svg>

@@ -118,8 +118,10 @@ export async function describePage(page, viewport, { maxElements = 80 } = {}) {
     seen.add(key);
     let target = null;
     if (el.kind === 'role') {
+      // sliders, inputs and dropdowns: their label is stable, their value (often their name) is not
+      if (['slider', 'textbox', 'combobox', 'searchbox', 'spinbutton'].includes(el.role) && el.label) target = await verify(page.getByLabel(el.label, { exact: true }), { label: el.label, exact: true }, el);
       // our name guess can differ from the browser's accessible name, so fall back gracefully
-      if (el.name) target = await verify(page.getByRole(el.role, { name: el.name, exact: true }), { role: el.role, name: el.name, exact: true }, el);
+      if (!target && el.name) target = await verify(page.getByRole(el.role, { name: el.name, exact: true }), { role: el.role, name: el.name, exact: true }, el);
       if (!target && el.alt) target = await verify(page.getByAltText(el.alt, { exact: true }), { alt: el.alt, exact: true }, el);
       if (!target && el.name) target = await verify(page.getByRole(el.role, { name: el.name }), { role: el.role, name: el.name }, el);
       if (!target && el.name) target = await verify(page.getByText(el.name, { exact: true }), { text: el.name, exact: true }, el);
@@ -156,7 +158,7 @@ export async function describePage(page, viewport, { maxElements = 80 } = {}) {
     '',
     '## Clickable elements — verified targets (each matches exactly one visible element) for click/move/zoom',
     '   Copy targets exactly; `name` is the accessible name, which may differ from the on-screen label.',
-    ...elements.map((e) => `${fold(e.y)} y=${e.y}\tat (${e.cx}, ${e.cy})\t${yaml(e.target)}${e.role === 'textbox' ? `  (text input ${e.w}×${e.h} — click it, then \`type: …\`)` : e.options ? `  (dropdown — \`select: { target: …, option: "…" }\`; options: ${e.options.map((o) => `"${o.text}"${o.on ? ' (selected)' : ''}`).join(', ')})` : shows(e)}${e.href ? `  → ${e.href}` : ''}${e.kind === 'pointer' ? '  (custom clickable)' : ''}`),
+    ...elements.map((e) => `${fold(e.y)} y=${e.y}\tat (${e.cx}, ${e.cy})\t${yaml(e.target)}${e.role === 'textbox' ? `  (text input ${e.w}×${e.h} — click it, then \`type: …\`)` : e.role === 'slider' ? '  (slider — `slide: { target: …, to: 0..1 }`)' : e.options ? `  (dropdown — \`select: { target: …, option: "…" }\`; options: ${e.options.map((o) => `"${o.text}"${o.on ? ' (selected)' : ''}`).join(', ')})` : shows(e)}${e.href ? `  → ${e.href}` : ''}${e.kind === 'pointer' ? '  (custom clickable)' : ''}`),
     '',
     '## Images with alt text (target: { alt: "..." })',
     ...(info.images.length ? info.images.map((i) => `${fold(i.y)} y=${i.y}\t"${i.alt}"`) : ['(none)']),

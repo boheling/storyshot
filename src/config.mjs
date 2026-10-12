@@ -19,9 +19,9 @@ export function loadEnv(dir) {
 
 // What the video is for sets sensible defaults; anything in the YAML overrides them.
 export const PURPOSES = {
-  pitch:    { duration: null,   music: { bpm: 120, volume: 1 },    sfx: true,  highlight: false, stepNumbers: false, subtitles: false, chapters: false, clips: null, frame: true, pace: 'fast', follow: false },
-  tutorial: { duration: 'auto', music: { bpm: 96, volume: 0.35 },  sfx: true,  highlight: true,  stepNumbers: true,  subtitles: true,  chapters: true,  clips: null, frame: false, pace: 'slow', follow: true },
-  course:   { duration: 'auto', music: false,                     sfx: true,  highlight: true,  stepNumbers: false, subtitles: true,  chapters: true,  clips: null, frame: false, pace: 'slow', follow: true },
+  pitch:    { duration: null,   music: { bpm: 120, volume: 1 },    sfx: true,  highlight: false, stepNumbers: false, subtitles: false, chapters: false, clips: null, frame: 'aurora', pace: 'fast', follow: false },
+  tutorial: { duration: 'auto', music: { bpm: 96, volume: 0.35 },  sfx: true,  highlight: true,  stepNumbers: true,  subtitles: true,  chapters: true,  clips: null, frame: 'studio', pace: 'slow', follow: true },
+  course:   { duration: 'auto', music: false,                     sfx: true,  highlight: true,  stepNumbers: false, subtitles: true,  chapters: true,  clips: null, frame: 'studio', pace: 'slow', follow: true },
   docs:     { duration: 'auto', music: false,                     sfx: false, highlight: true,  stepNumbers: true,  subtitles: false, chapters: false, clips: ['gif', 'png'], frame: false, pace: 'normal', follow: false },
 };
 
@@ -35,6 +35,8 @@ export const PACES = {
   normal: { cursor: 900,  type: 70,  beat: 350, tail: 0.8, maxWait: 1.5, voiceSpeed: 1 },
   slow:   { cursor: 1200, type: 95,  beat: 800, tail: 1.6, maxWait: 3.0, voiceSpeed: 0.92 },
 };
+
+export const FRAME_STYLES = ['aurora', 'studio', 'dark', 'pastel', 'blur'];
 
 export const VIDEO_DIR = 'videos';
 export const KINDS = { pitch: 'promo', tutorial: 'tutorial', course: 'lesson', docs: 'docs' };
@@ -110,7 +112,11 @@ export function loadConfig(file, { draft = false } = {}) {
   // follow: the camera zooms in on what each step touches and pans from step to step (tutorials)
   const follow0 = pick('follow');
   const follow = follow0 ? { scale: 1.8, ...(typeof follow0 === 'object' ? follow0 : {}) } : null;
-  const frame = frame0 ? { background: null, ...(typeof frame0 === 'object' ? frame0 : {}) } : null;
+  // frame: false | true | a style name | { style, background: <css> }. Styles: aurora (dark, grain),
+  // studio (light, grain), dark, pastel, blur (the page itself, blurred, behind the window)
+  const styleOf = (f) => (typeof f === 'string' ? f : f?.style) ?? (typeof P.frame === 'string' ? P.frame : 'aurora');
+  const frame = frame0 ? { background: null, ...(typeof frame0 === 'object' ? frame0 : {}), style: styleOf(frame0) } : null;
+  if (frame && !FRAME_STYLES.includes(frame.style)) throw new Error(`frame style must be one of ${FRAME_STYLES.join(', ')}`);
 
   let voice = null;
   if (raw.voice) {
@@ -155,6 +161,10 @@ export function loadConfig(file, { draft = false } = {}) {
     steps,
     endCard,
     intro,
+    article: raw.article ?? null,
+    cards: raw.cards ?? 'auto',
+    // language of the built-in labels ("Pause and think", "Introduction"): `lang`, else guessed from the captions
+    lang: raw.lang ?? (/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(JSON.stringify(raw.steps ?? [])) ? 'zh' : 'en'),
     frame,
     follow,
     music,

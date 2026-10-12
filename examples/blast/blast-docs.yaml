@@ -1,0 +1,35 @@
+# Help-center article: set up a protein BLAST search. purpose: docs → per-step GIFs and PNGs
+# cropped to the action, a held result before each loop, and blast-docs-steps/README.md.
+# It stops before clicking BLAST, so it submits no search.
+name: blast-docs
+purpose: docs
+url: https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastp&PAGE_TYPE=BlastSearch
+out: blast-docs.mp4
+intro: { title: Set up a protein BLAST search }
+
+setup:
+  - hide: '[id*="QSI"], [class*="QSI"], #feedback, .feedback-tab'   # NCBI survey pop-up and feedback tab
+  - dismiss: { role: button, name: "Tell us what you think!", exact: true }
+
+steps:
+  - caption: Enter your sequence
+    doc: Paste a protein sequence, a FASTA record or an accession number (for example P68871) into the query box.
+    actions:
+      - type: { target: { css: "#seq" }, text: ">HBB_HUMAN\nMVHLTPEEKSAVTALWGKVNVDEVGGEALGRLLVVYPWTQRFFESFGDLSTPDAVMGNPKVKAHGKKVLGAFSDGLAHLDNLKGTFATLSELHCDKLHVDPENFRLLGNVLVCVLAHHFGKEFTPPVQAAYQKVVAGVANALAHKYH", delay: 4 }
+      - note: { target: { css: "#seq" }, text: "Sequence, FASTA or accession" }
+
+  - caption: Name the job (optional)
+    doc: A job title helps you find this search later under Recent Results.
+    actions:
+      - type: { target: { label: Job Title, exact: true }, text: Hemoglobin beta vs Swiss-Prot, clear: true }
+
+  - caption: Choose a database
+    doc: "Pick the database to search. UniProtKB/Swiss-Prot is small and expert-curated: fast, with well-annotated hits. Use nr to search everything."
+    actions:
+      - select: { target: { label: Database, exact: true }, option: "UniProtKB/Swiss-Prot" }
+      - note: { target: { label: Database, exact: true }, text: "Swiss-Prot: curated and fast" }
+
+  - caption: Run the search
+    doc: Click BLAST. Results usually appear within a minute; the page refreshes by itself.
+    actions:
+      - note: { target: { role: button, name: "BLAST", exact: true }, text: Click to run }

@@ -1,0 +1,63 @@
+# Promo: what BLAST does, in a handful of shots. purpose: pitch → fast pace, browser frame,
+# intro card, music, captions; long waits squeezed to a beat.
+name: blast-promo
+purpose: pitch
+url: https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastp&PAGE_TYPE=BlastSearch
+out: blast-promo.mp4
+follow: true          # dense scientific pages: let the camera follow each action between the explicit zooms
+voice: { provider: kokoro, voice: af_heart, pronounce: { BLAST: blast, NCBI: N C B I } }
+
+intro:
+  title: Protein BLAST
+  subtitle: "Find a protein's **relatives** in seconds"
+  say: Got a protein? Find its relatives in seconds.
+
+setup:
+  - hide: '[id*="QSI"], [class*="QSI"], #feedback, .feedback-tab'   # NCBI survey pop-up and feedback tab
+  - dismiss: { role: button, name: "Tell us what you think!", exact: true }
+
+steps:
+  - caption: Paste a **sequence**
+    duration: auto
+    say: Paste a sequence.
+    zoom: { target: { css: "#seq" }, scale: 1.5, start: 0.2, ramp: [0.5, 0.4] }
+    actions:
+      - type: { target: { css: "#seq" }, text: "MVHLTPEEKSAVTALWGKVNVDEVGGEALGRLLVVYPWTQRFFESFGDLSTPDAVMGNPKVKAHGKKVLGAFSDGLAHLDNLKGTFATLSELHCDKLHVDPENFRLLGNVLVCVLAHHFGKEFTPPVQAAYQKVVAGVANALAHKYH", delay: 3 }
+
+  - caption: Pick a **database**
+    duration: auto
+    say: Pick a database.
+    zoom: { target: { label: Database, exact: true }, scale: 1.5, start: 0.2, ramp: [0.5, 0.4] }
+    actions:
+      - select: { target: { label: Database, exact: true }, option: "UniProtKB/Swiss-Prot" }
+
+  - caption: One click
+    duration: auto
+    say: One click,
+    sfx: riser
+    actions:
+      - click: { role: button, name: "BLAST", exact: true }
+      - waitFor: { text: "Sequences producing significant alignments", timeout: 240000 }
+
+  - caption: Every relative, **ranked**
+    duration: auto
+    say: and every relative, ranked by how strong the match is.
+    zoom: { target: { css: "#dscTable tbody tr:nth-child(3)" }, scale: 1.35, start: 0.6, ramp: [0.6, 0.5] }
+    actions:
+      - scrollTo: { css: "#tabDescr", ms: 900 }
+      - mark: { css: "#dscTable tbody tr:nth-child(2)", ms: 400 }
+      - mark: { css: "#dscTable tbody tr:nth-child(3)", ms: 400 }
+
+  - caption: Down to the **amino acid**
+    duration: auto
+    say: Down to the single amino acid.
+    actions:
+      - click: { css: "a[href='#alnHdr_P02024']" }
+      - pause: 600
+      - mark: { css: "#ar_P02024_1" }
+
+end_card:
+  title: Protein BLAST
+  subtitle: "Free at **NCBI**"
+  cta: blast.ncbi.nlm.nih.gov
+  say: Free, at N C B I.

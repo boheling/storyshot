@@ -1,0 +1,69 @@
+# Lesson: what an E value and percent identity tell you. purpose: course → explains the why:
+# concept card with a diagram, the idea shown on real results, a question card with a pause,
+# recap. The search itself is set up in hidden steps (the lesson is about reading, not clicking).
+name: blast-lesson
+purpose: course
+url: https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastp&PAGE_TYPE=BlastSearch
+out: blast-lesson.mp4
+voice: { provider: kokoro, voice: af_heart, pronounce: { BLAST: blast, NCBI: N C B I, E-value: E value } }
+
+intro:
+  title: Reading a BLAST hit
+  subtitle: "Is it a **real** relative?"
+  bullets: [What an E value measures, Why identity is a different question, How to judge a hit]
+  say: When BLAST lists a hit, is it a real relative, or a coincidence? Two numbers answer two different questions.
+
+setup:
+  - hide: '[id*="QSI"], [class*="QSI"], #feedback, .feedback-tab'   # NCBI survey pop-up and feedback tab
+  - dismiss: { role: button, name: "Tell us what you think!", exact: true }
+
+steps:
+  - hidden: true
+    actions:
+      - type: { target: { css: "#seq" }, text: "MVHLTPEEKSAVTALWGKVNVDEVGGEALGRLLVVYPWTQRFFESFGDLSTPDAVMGNPKVKAHGKKVLGAFSDGLAHLDNLKGTFATLSELHCDKLHVDPENFRLLGNVLVCVLAHHFGKEFTPPVQAAYQKVVAGVANALAHKYH", delay: 0 }
+      - select: { target: { label: Database, exact: true }, option: "UniProtKB/Swiss-Prot" }
+      - click: { role: button, name: "BLAST", exact: true }
+      - waitFor: { text: "Sequences producing significant alignments", timeout: 240000 }
+      - scrollTo: { css: "#tabDescr", ms: 0 }
+
+  - card:
+      kicker: Concept
+      title: The E value
+      image: e-value.svg
+      say: The E value is how many hits this good you would expect by pure chance, in a database this size. Far below one in a hundred thousand, chance is ruled out. Near one, the hit could be luck.
+    caption: Human hemoglobin beta, searched in Swiss-Prot
+    say: Here is a real search, human hemoglobin beta against Swiss Prot.
+    actions:
+      - mark: { css: "#dscTable tbody tr:nth-child(1)" }
+
+  - caption: "E value: chance is **ruled out**"
+    say: The top hit has an E value of about 1 e minus 106. You would expect essentially zero hits this good by chance. This is not luck.
+    actions:
+      - note: { target: { css: "#dscTable tbody tr:nth-child(1) td.c9" }, text: "≈ 0 hits expected by chance" }
+
+  - card:
+      kicker: Question
+      title: "Gorilla: 99% identical. Rat: about 80%. Which one is the **real** relative?"
+      think: 4
+      say: Gorilla is 99 percent identical, rat about 80. Which one is the real relative?
+    caption: Both are real relatives
+    say: Both. Look at the E values. Both are tiny, so neither match is chance. Identity tells you how close the relative is, not whether it is real.
+    actions:
+      - mark: { css: "#dscTable tbody tr:nth-child(2)" }
+      - mark: { css: "#dscTable tbody tr:nth-child(24)" }
+      - note: { target: { css: "#dscTable tbody tr:nth-child(24) td.c9" }, text: "Still tiny" }
+
+  - card:
+      kicker: Concept
+      title: Two questions, two numbers
+      bullets: ["E value: **is** it related?", "Identity: **how closely**?", "Judge the E value first"]
+      say: So, two numbers for two questions. The E value asks whether it is related at all. Identity asks how closely. Always judge the E value first.
+    caption: Identity tells you **how close**
+    say: Down the list, identity drops as species get more distant, while the E values stay far below the threshold.
+    actions:
+      - note: { target: { css: "#dscTable tbody tr:nth-child(24) td.c10" }, text: "Lower identity = more distant" }
+
+end_card:
+  title: Recap
+  bullets: ["Small E value: not chance", "Identity: how close, not whether", "Check the E value first"]
+  say: Small E value, not chance. Identity, how close. And check the E value first.

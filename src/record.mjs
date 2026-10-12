@@ -233,13 +233,52 @@ function pageScript({ scrollOffset }) {
     const x0 = Math.min(r.left, p.left), y0 = Math.min(r.top, p.top);
     return { x: x0, y: y0, width: Math.max(r.right, p.right) - x0, height: Math.max(r.bottom, p.bottom) - y0 };
   };
-  window.__demoUnnote = () => {
-    const layer = document.getElementById('__demo_notes');
-    if (layer) { layer.style.opacity = '0'; setTimeout(() => layer.remove(), 300); }
+  // native <select> popups are drawn by the OS, not the page, so they never appear in a recording:
+  // draw a look-alike menu under the dropdown, return where the chosen option is
+  window.__demoMenu = (r, items, pick) => {
+    document.getElementById('__demo_menu')?.remove();
+    const m = document.createElement('div');
+    m.id = '__demo_menu';
+    const fs = Math.max(13, Math.min(18, r.height * 0.6));
+    Object.assign(m.style, { position: 'fixed', left: `${r.x}px`, top: `${r.y + r.height + 4}px`, minWidth: `${r.width}px`, zIndex: '2147483645', pointerEvents: 'none',
+      background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', boxShadow: '0 12px 32px rgba(15,23,42,.22)', padding: '4px', font: `${fs}px -apple-system, "Segoe UI", sans-serif`, color: '#0f172a' });
+    items.forEach((t, i) => {
+      const o = document.createElement('div');
+      o.textContent = t;
+      Object.assign(o.style, { padding: `${fs * 0.35}px ${fs * 0.7}px`, borderRadius: '5px', whiteSpace: 'nowrap', transition: 'background .15s' });
+      o.dataset.i = i;
+      m.appendChild(o);
+    });
+    document.documentElement.appendChild(m);
+    // keep it on screen: open upwards if there is no room below
+    const b = m.getBoundingClientRect();
+    if (b.bottom > innerHeight - 8) m.style.top = `${Math.max(8, r.y - b.height - 4)}px`;
+    m.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: 160, easing: 'ease-out' });
+    const q = m.children[pick].getBoundingClientRect();
+    return { x: q.x + Math.min(q.width / 2, 120), y: q.y + q.height / 2 };
   };
-  window.__demoUnmark = () => {
+  window.__demoMenuHover = (i) => { const m = document.getElementById('__demo_menu'); if (m) [...m.children].forEach((o, k) => { o.style.background = k === i ? '#e0ecff' : ''; }); };
+  window.__demoMenuClose = () => document.getElementById('__demo_menu')?.remove();
+  // downloads leave no trace in a recording: show a browser-style "downloaded" bubble instead
+  window.__demoDownload = (name) => {
+    const el = document.createElement('div');
+    el.innerHTML = `<span style="display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#22c55e;color:#fff;font-weight:700">✓</span><span><b style="display:block;font-weight:600">${name.replace(/[<&]/g, '')}</b><span style="color:#64748b;font-size:14px">Downloaded</span></span>`;
+    Object.assign(el.style, { position: 'fixed', right: '24px', top: '20px', zIndex: '2147483646', pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: '12px',
+      background: '#fff', color: '#0f172a', font: '16px -apple-system, "Segoe UI", sans-serif', padding: '12px 18px 12px 14px', borderRadius: '12px', boxShadow: '0 12px 32px rgba(15,23,42,.25)', border: '1px solid #e2e8f0' });
+    document.documentElement.appendChild(el);
+    el.animate([{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'none', offset: 0.1 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }], { duration: 2800, easing: 'ease-out' }).onfinish = () => el.remove();
+  };
+  window.__demoUnnote = (instant) => {
+    // detach it first, so a note or mark added during the fade gets a fresh layer instead of vanishing with this one
+    const layer = document.getElementById('__demo_notes');
+    if (layer && instant) layer.remove();
+    else if (layer) { layer.id = ''; layer.style.opacity = '0'; setTimeout(() => layer.remove(), 300); }
+  };
+  window.__demoUnmark = (instant) => {
+    // detach it first, so a note or mark added during the fade gets a fresh layer instead of vanishing with this one
     const layer = document.getElementById('__demo_marks');
-    if (layer) { layer.style.opacity = '0'; setTimeout(() => layer.remove(), 300); }
+    if (layer && instant) layer.remove();
+    else if (layer) { layer.id = ''; layer.style.opacity = '0'; setTimeout(() => layer.remove(), 300); }
   };
   // in-page anchor links scroll smoothly instead of jumping. Runs after the page's own handlers
   // (bubble phase) and only when none of them handled the click, so app links like
@@ -299,9 +338,14 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
   const browser = await chromium.launch();
   const context = await sessionContext(browser, {
     viewport: cfg.viewport, deviceScaleFactor: cfg.scale, colorScheme: cfg.colorScheme, storageState: cfg.storageState, ignoreHTTPSErrors: cfg.ignoreHTTPSErrors,
+    permissions: ['clipboard-read', 'clipboard-write'], // for `paste`
   });
   await context.addInitScript(pageScript, { scrollOffset: cfg.scrollOffset });
   const page = await context.newPage();
+  page.on('download', (d) => {
+    page.evaluate((n) => window.__demoDownload?.(n), d.suggestedFilename()).catch(() => {});
+    marks.push({ t: Date.now() / 1000, box: { x: cfg.viewport.width - 360, y: 10, width: 340, height: 80 } }); // so docs crops include the bubble
+  });
   const sleep = (ms) => page.waitForTimeout(ms);
   const now = () => Date.now() / 1000;
 
@@ -309,7 +353,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
   let cur = { x: VW * 0.62, y: VH * 0.55 };
   const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
   async function moveTo(x, y, ms = 700) {
-    if (fast) ms = 40;
+    if (fast) ms = Math.min(ms, 160); // still along the real path: menus that open on hover must behave as in the recording
     const from = { ...cur }, steps = Math.max(8, Math.round(ms / 16));
     for (let i = 1; i <= steps; i++) {
       const k = ease(i / steps);
@@ -322,6 +366,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
   // a pause after an action that changes the page (tutorial pace), counted like a `pause`
   const beat = async () => { if (fast || !cfg.pace.beat) return; holds += cfg.pace.beat / 1000; await sleep(cfg.pace.beat); };
   const clicks = [];
+  const gotos = []; // deliberate scene changes (a whoosh); other navigations are the app's own
   async function press() { clicks.push(now()); await page.mouse.down(); await sleep(70); await page.mouse.up(); }
   // Time spent waiting on the page (loads, AI processing…) is tracked separately so
   // compose can compress it hard while keeping cursor motion at a natural speed.
@@ -394,15 +439,26 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
         await moveTo(p.x, p.y, opt.ms ?? cfg.pace.cursor);
         break;
       }
-      case 'click': {
+      case 'click': case 'dblclick': {
         const p = await pointOf(spec, opt);
         const lit = await spot(p.box, hl);
         await moveTo(p.x, p.y, opt.ms ?? cfg.pace.cursor);
         await sleep(lit ? 350 + cfg.pace.beat / 3 : 120);
-        await press();
+        if (kind === 'dblclick') { clicks.push(now()); await page.mouse.dblclick(p.x, p.y); } else await press();
         if (lit) { await sleep(150); await spotOff(); }
         await settle();
         await beat(); // let the viewer see what the click did
+        break;
+      }
+      case 'hide': {
+        // hide: ".chat-widget, [id*=QSI]" — keep pop-ups, survey prompts, feedback tabs and chat widgets
+        // out of the video for good, on this page and every page after it (they often appear late)
+        const css = `${[].concat(value).join(', ')} { display: none !important; visibility: hidden !important; }`;
+        await context.addInitScript((c) => {
+          const add = () => { if (!document.getElementById('__demo_hide')) document.documentElement.appendChild(Object.assign(document.createElement('style'), { id: '__demo_hide', textContent: c })); };
+          if (document.documentElement) add(); else document.addEventListener('DOMContentLoaded', add);
+        }, css);
+        await page.evaluate((c) => document.documentElement.appendChild(Object.assign(document.createElement('style'), { textContent: c })), css);
         break;
       }
       case 'dismiss': {
@@ -413,7 +469,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
       case 'waitFor': await waiting(() => locate(page, spec).waitFor({ state: 'visible', timeout: opt.timeout ?? 180000 })); await settle(); await nudge(); break;
       case 'waitForUrl': await waiting(() => page.waitForURL(value, { timeout: 60000 })); await settle(); await nudge(); break;
       case 'networkIdle': await waiting(() => page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {})); await settle(); break;
-      case 'goto': await waiting(() => page.goto(new URL(value, cfg.url).href, { waitUntil: 'domcontentloaded' })); await settle(); await nudge(); break;
+      case 'goto': gotos.push(now()); await waiting(() => page.goto(new URL(value, cfg.url).href, { waitUntil: 'domcontentloaded' })); await settle(); await nudge(); break;
       case 'scrollTo': {
         const h = await locate(page, spec).elementHandle({ timeout: opt.timeout ?? 15000 });
         await page.evaluate(([el, ms]) => window.__demoScrollTo(el, ms), [h, opt.ms ?? 1200]);
@@ -423,6 +479,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
       case 'type': {
         // type: "text" or { text } types into whatever has focus; { target, text } clicks the target first
         const v = typeof value === 'object' ? value : { text: value };
+        // clear: true empties the field first (the page may have pre-filled it)
         let lit = false;
         if (v.target) {
           const p = await pointOf(v.target, v);
@@ -430,6 +487,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
           await moveTo(p.x, p.y, v.ms ?? cfg.pace.cursor * 0.85);
           await press();
         }
+        if (v.clear) { await page.keyboard.press('ControlOrMeta+A'); await page.keyboard.press('Delete'); }
         await page.keyboard.type(String(v.text), { delay: fast ? 0 : v.delay ?? cfg.pace.type });
         if (lit) await spotOff();
         break;
@@ -456,15 +514,75 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
         const p = await pointOf(value.target, value);
         const lit = await spot(p.box, hl);
         await moveTo(p.x, p.y, value.ms ?? cfg.pace.cursor);
-        clicks.push(now());
-        await page.evaluate(([x, y]) => document.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true })), [p.x, p.y]);
-        await sleep(250);
         const l = locate(page, value.target), want = String(value.option);
         const options = await l.evaluate((s) => [...(s.options ?? [])].map((o) => ({ text: o.text.trim(), value: o.value })));
-        const hit = options.find((o) => o.text === want) ?? options.find((o) => o.value === want) ?? options.find((o) => o.text.toLowerCase().includes(want.toLowerCase()));
-        if (!hit) throw new Error(`no option "${want}" in that dropdown — options: ${options.map((o) => `"${o.text}"`).join(', ')}`);
-        await l.selectOption({ value: hit.value });
+        const k = [(o) => o.text === want, (o) => o.value === want, (o) => o.text.toLowerCase().includes(want.toLowerCase())].map((f) => options.findIndex(f)).find((i) => i >= 0);
+        if (k == null) throw new Error(`no option "${want}" in that dropdown — options: ${options.map((o) => `"${o.text}"`).join(', ')}`);
+        // click it open (a drawn menu, since the real one never shows on video), move to the option, pick it
+        await press();
+        if (!fast && options.length <= 14) {
+          const at = await page.evaluate(([r, items, i]) => window.__demoMenu(r, items, i), [p.box, options.map((o) => o.text), k]);
+          await sleep(350);
+          await moveTo(at.x, at.y, Math.min(900, cfg.pace.cursor));
+          await page.evaluate((i) => window.__demoMenuHover(i), k);
+          await sleep(250);
+          clicks.push(now());
+          await sleep(120);
+          await page.evaluate(() => window.__demoMenuClose());
+        }
+        await page.keyboard.press('Escape').catch(() => {}); // in case the click opened the real one
+        await l.selectOption({ value: options[k].value });
         if (lit) { await sleep(300); await spotOff(); }
+        await settle();
+        await beat();
+        break;
+      }
+      case 'paste': {
+        // paste: { target: <field>, text: "..." } or paste: "..." (into whatever has focus) — the text arrives
+        // at once, the way a real paste does, with a ⌘V / Ctrl+V badge; real paste events, so editors that
+        // reformat on paste (code editors, rich text) behave as they would for a user
+        const v = typeof value === 'object' ? value : { text: value };
+        if (v.text == null) throw new Error('paste needs text: paste: "..." or paste: { target: <field>, text: "..." }');
+        let lit = false;
+        if (v.target) {
+          const p = await pointOf(v.target, v);
+          lit = await spot(p.box, hl);
+          await moveTo(p.x, p.y, v.ms ?? cfg.pace.cursor * 0.85);
+          await press();
+        }
+        const text = String(v.text);
+        const before = await page.evaluate(() => (document.activeElement?.value ?? document.activeElement?.textContent ?? '').length).catch(() => 0);
+        const copied = await page.evaluate((t) => navigator.clipboard.writeText(t).then(() => true, () => false), text).catch(() => false);
+        if (!fast) await page.evaluate((l) => window.__demoKeys(l), process.platform === 'darwin' ? '⌘ V' : 'Ctrl V').catch(() => {});
+        if (copied) await page.keyboard.press('ControlOrMeta+V');
+        await sleep(200);
+        const after = await page.evaluate(() => (document.activeElement?.value ?? document.activeElement?.textContent ?? '').length).catch(() => 0);
+        if (!copied || after === before) await page.keyboard.insertText(text); // no clipboard access: insert it in one go
+        if (lit) await spotOff();
+        await settle();
+        await beat();
+        break;
+      }
+      case 'slide': {
+        // slide: { target: <slider>, to: 0.2 } — drag a slider to a position along its track (0 = start,
+        // 1 = end), found from the element instead of pixel positions that break when the layout moves
+        if (!value?.target || typeof value?.to !== 'number') throw new Error('slide needs { target: <slider>, to: 0..1 }');
+        const p = await pointOf(value.target, value);
+        const b = p.box;
+        const from = await locate(page, value.target).evaluate((el) => {
+          const r = el.type === 'range' ? el : el.querySelector?.('input[type=range]');
+          if (r) return (Number(r.value) - Number(r.min || 0)) / ((Number(r.max || 100) - Number(r.min || 0)) || 1);
+          const now = Number(el.getAttribute('aria-valuenow')), lo = Number(el.getAttribute('aria-valuemin') ?? 0), hi = Number(el.getAttribute('aria-valuemax') ?? 100);
+          return Number.isFinite(now) ? (now - lo) / ((hi - lo) || 1) : 0.5;
+        }).catch(() => 0.5);
+        const x0 = b.x + b.width * from, x1 = b.x + b.width * Math.max(0, Math.min(1, value.to)), y = b.y + b.height / 2;
+        await moveTo(x0, y, value.ms ?? cfg.pace.cursor);
+        await sleep(120);
+        clicks.push(now());
+        await page.mouse.down();
+        await moveTo(x1, y, value.dragMs ?? 900);
+        await sleep(120);
+        await page.mouse.up();
         await settle();
         await beat();
         break;
@@ -638,7 +756,8 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
     await runAll(s.actions, `step ${i + 1}`);
     const end = now(); // before clearing: a step that is held for its narration keeps its marks
     await spotOff();
-    await page.evaluate(() => { window.__demoUnmark(); window.__demoUnnote(); }).catch(() => {});
+    // docs clips start where the step starts: clear at once, so no fading callout leaks into the next clip
+    await page.evaluate((i) => { window.__demoUnmark(i); window.__demoUnnote(i); }, cfg.clips.length > 0).catch(() => {});
     let zoomBox = null;
     if (s.zoom?.target) {
       if (isPoint(s.zoom.target)) {
@@ -658,7 +777,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
   await cdp.send('Page.stopScreencast');
   await browser.close();
 
-  const timeline = { frames, steps, clicks, navs, scale: cfg.scale };
+  const timeline = { frames, steps, clicks, navs, gotos, scale: cfg.scale };
   fs.writeFileSync(path.join(cfg.work, 'timeline.json'), JSON.stringify(timeline, null, 1));
   log(`recorded ${frames.length} frames`);
   return timeline;

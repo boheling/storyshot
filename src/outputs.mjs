@@ -11,7 +11,7 @@ const srtTime = (t) => {
 const clock = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const slug = (s) => plain(s).toLowerCase().replace(/[^a-z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
 
-export async function writeOutputs(cfg, { captions, cards = [], segs, narration, total }, { log = console.log } = {}) {
+export async function writeOutputs(cfg, { captions, cards = [], segs, clean, narration, total }, { log = console.log } = {}) {
   const base = cfg.out.replace(/\.[^.]+$/, '');
   const files = [];
 
@@ -27,7 +27,7 @@ export async function writeOutputs(cfg, { captions, cards = [], segs, narration,
   if (cfg.chapters && (captions.length || cards.length)) {
     // section cards make the chapters when there are any; otherwise one chapter per caption
     const lines = cards.length
-      ? [...(cards[0].t > 1 ? [`0:00 Introduction`] : []), ...cards.map((c, k) => `${clock(k === 0 && cards[0].t <= 1 ? 0 : c.t)} ${plain(c.title)}`)]
+      ? [...(cards[0].t > 1 ? [`0:00 ${cfg.lang === 'zh' ? '开场' : 'Introduction'}`] : []), ...cards.map((c, k) => `${clock(k === 0 && cards[0].t <= 1 ? 0 : c.t)} ${plain(c.title)}`)]
       : captions.map((c, k) => `${clock(k === 0 ? 0 : c.t[0])} ${cfg.stepNumbers ? `${c.n}. ` : ''}${plain(c.text)}`);
     fs.writeFileSync(`${base}.chapters.txt`, `${lines.join('\n')}\n`);
     files.push(`${base}.chapters.txt`);
@@ -40,12 +40,17 @@ export async function writeOutputs(cfg, { captions, cards = [], segs, narration,
     const dir = `${base}-steps`;
     fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(dir, { recursive: true });
-    const article = [`# ${plain(cfg.intro?.title ?? cfg.name)}`, ''];
+    // title and intro: `article: { title, intro }`, else the intro card, else the name in words
+    const art = cfg.article ?? {};
+    const title = art.title ?? cfg.intro?.title ?? cfg.name.replace(/[-_]+/g, ' ').replace(/^./, (c) => c.toUpperCase());
+    const intro = art.intro ?? cfg.intro?.subtitle;
+    const article = [`# ${plain(title)}`, '', ...(intro ? [String(intro), ''] : [])];
     for (const [k, g] of segs.entries()) {
       const stem = `${String(k + 1).padStart(2, '0')}${g.caption ? `-${slug(g.caption)}` : ''}`;
       const crop = g.crop ? `crop=${g.crop.w}:${g.crop.h}:${g.crop.x}:${g.crop.y},` : '';
       const cw = g.crop?.w ?? cfg.output.width;
-      const span = ['-ss', g.o0.toFixed(3), '-t', (g.o1 - g.o0).toFixed(3), '-i', cfg.out];
+      const src = clean && fs.existsSync(clean) ? clean : cfg.out; // the caption-free copy
+      const span = ['-ss', g.o0.toFixed(3), '-t', (g.o1 - g.o0).toFixed(3), '-i', src];
       const made = [];
       for (const kind of cfg.clips) {
         const f = path.join(dir, `${stem}.${kind}`);
@@ -54,7 +59,7 @@ export async function writeOutputs(cfg, { captions, cards = [], segs, narration,
           execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...span, '-filter_complex',
             `${crop}fps=12,scale=${w}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=160:stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a:diff_mode=rectangle`, f]);
         } else if (kind === 'png') {
-          execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', Math.max(g.o0, g.o1 - 0.2).toFixed(3), '-i', cfg.out, '-frames:v', '1', ...(crop ? ['-vf', crop.slice(0, -1)] : []), f]);
+          execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', Math.max(g.o0, g.o1 - 0.2).toFixed(3), '-i', src, '-frames:v', '1', ...(crop ? ['-vf', crop.slice(0, -1)] : []), f]);
         } else if (kind === 'webm') {
           execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...span, '-an', '-vf', `${crop}scale=${Math.min(cw, 1280)}:-2`, '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '34', '-row-mt', '1', f]);
         } else {
@@ -62,7 +67,7 @@ export async function writeOutputs(cfg, { captions, cards = [], segs, narration,
         }
         files.push(f); made.push(path.basename(f));
       }
-      article.push(`${k + 1}. **${plain(g.caption ?? `Step ${k + 1}`)}**${g.doc ? `\n\n   ${plain(g.doc)}` : ''}`, '');
+      article.push(`${k + 1}. **${plain(g.caption ?? `Step ${k + 1}`)}**${g.doc ? `\n\n   ${String(g.doc)}` : ''}`, ''); // doc text keeps its **bold**
       const show = made.find((m) => m.endsWith('.gif') || m.endsWith('.png'));
       if (show) article.push(`   ![${plain(g.caption ?? `Step ${k + 1}`)}](${encodeURI(show)})`, '');
     }

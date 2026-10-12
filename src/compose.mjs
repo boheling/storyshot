@@ -116,17 +116,30 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     const tw = 160, th = 90, rate = 10;
     const buf = execFileSync('ffmpeg', ['-loglevel', 'error', '-framerate', `${FPS}`, '-i', path.join(SEQ, '%05d.jpg'),
       '-vf', `fps=${rate},scale=${tw}:${th},format=gray`, '-f', 'rawvideo', 'pipe:1'], { maxBuffer: 1 << 28 });
-    const n = Math.floor(buf.length / (tw * th)), score = [];
+    // plus the share of 8x8 blocks with no detail at all: an empty canvas or image area that is still
+    // loading (dark or light) next to toolbars that are already there
+    const n = Math.floor(buf.length / (tw * th)), score = [], flat = [];
     for (let f = 0; f < n; f++) {
       let e = 0;
+      const blocks = new Float64Array(Math.ceil(tw / 8) * Math.ceil(th / 8));
       for (let y = 0, o = f * tw * th; y < th - 1; y++) for (let x = 0; x < tw - 1; x++) {
-        const k = o + y * tw + x;
-        e += Math.abs(buf[k] - buf[k + 1]) + Math.abs(buf[k] - buf[k + tw]);
+        const k = o + y * tw + x, d = Math.abs(buf[k] - buf[k + 1]) + Math.abs(buf[k] - buf[k + tw]);
+        e += d; blocks[Math.floor(y / 8) * Math.ceil(tw / 8) + Math.floor(x / 8)] += d;
       }
       score.push(e / (tw * th));
+      flat.push(blocks.filter((b) => b / 64 < 0.6).length / blocks.length);
     }
     const median = [...score].sort((a, b) => a - b)[Math.floor(n / 2)] ?? 0;
     const blank = score.map((e) => e < 3 && e < median * 0.4);
+    for (const g of segs) {
+      // compared with how the step ends (its content loaded): much emptier = still loading. Only right
+      // after the step waited for something (a load), so drawing on an empty canvas isn't flagged.
+      const last = Math.min(n - 1, Math.max(0, Math.floor(g.o1 * rate) - 1));
+      const loading = (tl.steps[g.i].waits ?? []).map(([a, b]) => [toOut(a), toOut(b)]).filter(([a]) => a != null).map(([a, b]) => [a, (b ?? a) + 1.5]);
+      for (let f = Math.ceil(g.o0 * rate); f <= last; f++) {
+        if (flat[f] > 0.55 && flat[f] - flat[last] > 0.25 && loading.some(([a, b]) => f / rate >= a - 0.1 && f / rate <= b)) blank[f] = true;
+      }
+    }
     for (const g of segs) {
       let run = 0, from = 0;
       const report = (to) => { if (run / rate >= 0.2) warn(`step ${g.i + 1}: ${(run / rate).toFixed(1)}s of near-blank frames at ${from.toFixed(1)}–${to.toFixed(1)}s (the page is still loading) — move that load into a hidden step, or wait for the loaded content before the step starts`); };
@@ -172,7 +185,9 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     if (t && typeof t === 'object' && typeof t.x === 'number' && typeof t.y === 'number' && !t.role && !t.css && !t.text) {
       // a point needs no measuring, so it works even if the zoom was added after recording
       const { width: VW, height: VH } = cfg.viewport;
-      g.zoomBox = { x: t.x <= 1 ? t.x * VW : t.x, y: t.y <= 1 ? t.y * VH : t.y, width: 0, height: 0 };
+      // a point names the middle of the subject: give it some area, so captions keep off it too
+      const px = t.x <= 1 ? t.x * VW : t.x, py = t.y <= 1 ? t.y * VH : t.y, bw = VW * 0.12, bh = VH * 0.1;
+      g.zoomBox = { x: px - bw / 2, y: py - bh / 2, width: bw, height: bh };
     } else if (t && 'zoomTarget' in tl.steps[g.i] && JSON.stringify(tl.steps[g.i].zoomTarget) !== JSON.stringify(t)) {
       warn(`step ${g.i + 1}: zoom target was added or changed after recording, so its position is unknown — re-render with mode "render" (or use a point target)`);
       g.zoomBox = null;
@@ -213,7 +228,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   };
   // browser-window frame: the page is drawn at (FX, FY), FW x FH, inside a window on a backdrop
   const even = (x) => 2 * Math.round(x / 2);
-  const FW = cfg.frame ? even(W * 0.86) : W, FH = cfg.frame ? even(H * 0.86) : H, BAR = cfg.frame ? Math.round(H * 0.034) : 0;
+  const FW = cfg.frame ? even(W * 0.82) : W, FH = cfg.frame ? even(H * 0.82) : H, BAR = cfg.frame ? Math.round(H * 0.034) : 0;
   const FX = even((W - FW) / 2), FY = cfg.frame ? even((H - FH - BAR) / 2 + BAR) : 0, F = FW / W;
   const onScreen = (b, t) => {
     const v = view(t);
@@ -280,51 +295,61 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       warn(`step ${g.i + 1}: the ${want} caption would cover ${hit.what}, so it was moved to the ${other}` + (explicit ? ` (despite captionPosition: ${explicit})` : '') + ` — set captionPosition: ${other} to make this explicit`);
     } else if (hit) warn(`step ${g.i + 1}: the caption covers ${hit.what} at both top and bottom — shorten the caption, or change the zoom`);
     if (prev && n === prev.n && prev.pos === pos) prev.t[1] = g.o1;
-    else captions.push({ text: g.step.caption, t: [g.o0, g.o1], pos, n });
+    else captions.push({ text: g.step.caption, t: [g.o0, g.o1], pos, n, h });
   }
   for (const [i, c] of captions.entries()) await shot(bubble(c.text, c.n, c.pos), path.join(cfg.work, `cap${i}.png`), true);
   // Intro and end cards are short animations (logo pops, title rises, the highlight sweeps, a command
   // CTA types itself out), rendered frame by frame by seeking the page's CSS animations.
   const u = H / 1080;
+  // cards follow the frame: dark backdrops (aurora, dark, blur) get dark cards, so a dark app doesn't
+  // cut to a white card; `cards: light | dark` overrides
+  const darkCards = cfg.cards === 'dark' || (cfg.cards !== 'light' && ['aurora', 'dark', 'blur'].includes(cfg.frame?.style));
+  const CK = darkCards
+    ? { bg: `radial-gradient(${W * 0.62}px ${H * 0.65}px at 50% 40%,#1e2a44 0%,#111830 60%,#0b1020 100%)`, title: '#f1f5f9', sub: '#cbd5e1', muted: '#94a3b8', item: '#e2e8f0', track: '#26314d',
+      pillBg: '#1a2238', pillFg: '#e2e8f0', pillLine: '1px solid #33405f', ctaBg: accent, ctaFg: ink, shadow: 'rgba(0,0,0,.45)' }
+    : { bg: `radial-gradient(${W * 0.62}px ${H * 0.65}px at 50% 40%,#ffffff 0%,#eef2f7 60%,#e2e8f0 100%)`, title: ink, sub: '#334155', muted: '#64748b', item: '#1e293b', track: '#e2e8f0',
+      pillBg: ink, pillFg: '#e2e8f0', pillLine: 'none', ctaBg: ink, ctaFg: '#fff', shadow: 'rgba(15,23,42,.25)' };
   const card = (c, logoPath, { thinkAt = 0 } = {}) => {
     const image = c.imageFile && fs.existsSync(c.imageFile)
       ? `<img class="a rise" src="data:image/${path.extname(c.imageFile).slice(1).replace('jpg', 'jpeg').replace('svg', 'svg+xml')};base64,${fs.readFileSync(c.imageFile).toString('base64')}" style="animation-delay:.4s;max-width:${W * 0.6}px;max-height:${H * 0.42}px;border-radius:${12 * H / 1080}px;box-shadow:0 ${12 * H / 1080}px ${36 * H / 1080}px rgba(15,23,42,.18)">` : '';
-    const think = c.think ? `<div class="a rise" style="animation-delay:${thinkAt.toFixed(2)}s;position:absolute;left:50%;bottom:${H * 0.1}px;transform:translateX(-50%);width:${W * 0.3}px;text-align:center;font-size:${26 * H / 1080}px;color:#64748b">
-        <div style="margin-bottom:${12 * H / 1080}px">Pause and think</div>
-        <div style="height:${8 * H / 1080}px;border-radius:99px;background:#e2e8f0;overflow:hidden"><div style="height:100%;background:${accent};transform-origin:left;animation:drain ${c.think}s linear ${thinkAt.toFixed(2)}s both"></div></div></div>
+    const think = c.think ? `<div class="a rise" style="animation-delay:${thinkAt.toFixed(2)}s;position:absolute;left:50%;bottom:${H * 0.1}px;transform:translateX(-50%);width:${W * 0.3}px;text-align:center;font-size:${26 * H / 1080}px;color:${CK.muted}">
+        <div style="margin-bottom:${12 * H / 1080}px">${cfg.lang === 'zh' ? '先想一想' : 'Pause and think'}</div>
+        <div style="height:${8 * H / 1080}px;border-radius:99px;background:${CK.track};overflow:hidden"><div style="height:100%;background:${accent};transform-origin:left;animation:drain ${c.think}s linear ${thinkAt.toFixed(2)}s both"></div></div></div>
         <style>@keyframes drain{from{transform:scaleX(1)}to{transform:scaleX(0)}}</style>` : '';
     const logo = fs.existsSync(logoPath)
-      ? `<img class="a pop" src="data:image/${path.extname(logoPath).slice(1).replace('jpg', 'jpeg').replace('svg', 'svg+xml')};base64,${fs.readFileSync(logoPath).toString('base64')}" style="height:${Math.round(H * 0.09)}px">` : '';
+      ? `<img class="a pop" src="data:image/${path.extname(logoPath).slice(1).replace('jpg', 'jpeg').replace('svg', 'svg+xml')};base64,${fs.readFileSync(logoPath).toString('base64')}" style="height:${Math.round(H * 0.09)}px;${darkCards ? `background:#fff;padding:${Math.round(10 * u)}px ${Math.round(16 * u)}px;border-radius:${Math.round(14 * u)}px;box-shadow:0 ${8 * u}px ${24 * u}px rgba(0,0,0,.35)` : ''}">` : ''; // logos captured from a light page often carry its white: give them a plate on dark cards
     const cmd = c.cta && /^\$?\s*(npx|npm|pnpm|yarn|bun|pip|pipx|uv|brew|curl|git|docker|cargo|go)\b/.test(c.cta);
     const ctaText = String(c.cta ?? '').replace(/^\$\s*/, '');
     return `<body style="margin:0;width:${W}px;height:${H}px;${fontCss}
-      background:radial-gradient(${W * 0.62}px ${H * 0.65}px at 50% 40%,#ffffff 0%,#eef2f7 60%,#e2e8f0 100%);
+      background:${CK.bg};
       display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${28 * u}px;text-align:center">
       <style>
         .a{animation-fill-mode:both;animation-timing-function:cubic-bezier(.2,.8,.2,1)}
         .pop{animation-name:pop;animation-duration:.55s;animation-delay:.05s}
         .rise{animation-name:rise;animation-duration:.6s}
-        .hl{background:linear-gradient(transparent 62%,${accent} 62%) no-repeat 0 0/0% 100%;animation:sweep .6s cubic-bezier(.4,0,.2,1) .75s both}
+        ${darkCards
+          ? `.hl{color:${accent};background:linear-gradient(${accent},${accent}) no-repeat 0 100%/0% ${Math.max(2, Math.round(3 * u))}px;padding-bottom:${Math.round(4 * u)}px;animation:sweep .6s cubic-bezier(.4,0,.2,1) .75s both}`
+          : `.hl{background:linear-gradient(transparent 60%,${accent} 60%) no-repeat 0 0/0% 100%;animation:sweep .6s cubic-bezier(.4,0,.2,1) .75s both}`}
         .type{display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;width:0;animation:type ${(ctaText.length * 0.045).toFixed(2)}s steps(${ctaText.length || 1}) .8s both}
         .caret{display:inline-block;width:.55em;height:1.1em;margin-left:.1em;vertical-align:-.15em;background:${accent};animation:blink 1s steps(1) .8s infinite}
         @keyframes pop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:none}}
         @keyframes rise{from{opacity:0;transform:translateY(${24 * u}px)}to{opacity:1;transform:none}}
-        @keyframes sweep{to{background-size:100% 100%}}
+        @keyframes sweep{to{background-size:100% ${darkCards ? `${Math.max(2, Math.round(3 * u))}px` : '100%'}}}
         @keyframes type{to{width:${ctaText.length}ch}}
         @keyframes blink{50%{opacity:0}}
       </style>
-      ${c.kicker ? `<div class="a rise" style="font-size:${30 * u}px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#64748b">${esc(c.kicker)}</div>` : ''}
+      ${c.kicker ? `<div class="a rise" style="font-size:${30 * u}px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:${CK.muted}">${esc(c.kicker)}</div>` : ''}
       <div style="display:flex;align-items:center;gap:${22 * u}px">${logo}
-        ${c.title ? `<span class="a rise" style="animation-delay:.12s;font-size:${92 * u}px;font-weight:600;letter-spacing:-.03em;color:${ink}">${esc(c.title).replace(/\*\*(.+?)\*\*/g, '<span class="hl">$1</span>')}</span>` : ''}</div>
-      ${c.subtitle ? `<div class="a rise" style="animation-delay:.3s;font-size:${44 * u}px;color:#334155;letter-spacing:-.01em">${esc(c.subtitle).replace(/\*\*(.+?)\*\*/g, '<span class="hl">$1</span>')}</div>` : ''}
+        ${c.title ? `<span class="a rise" style="animation-delay:.12s;display:block;max-width:${W * 0.8}px;text-wrap:balance;line-height:1.15;font-size:${(c.title.length > 40 ? 68 : 92) * u}px;font-weight:600;letter-spacing:-.03em;color:${CK.title}">${esc(c.title).replace(/\*\*(.+?)\*\*/g, '<span class="hl">$1</span>')}</span>` : ''}</div>
+      ${c.subtitle ? `<div class="a rise" style="animation-delay:.3s;font-size:${44 * u}px;color:${CK.sub};letter-spacing:-.01em">${esc(c.subtitle).replace(/\*\*(.+?)\*\*/g, '<span class="hl">$1</span>')}</div>` : ''}
       ${image}${think}
       ${c.bullets?.length ? `<ol style="margin:${10 * u}px 0 0;padding:0;list-style:none;text-align:left;display:flex;flex-direction:column;gap:${18 * u}px">${c.bullets.map((b, k) =>
-        `<li class="a rise" style="animation-delay:${(0.6 + 0.4 * k).toFixed(2)}s;display:flex;align-items:center;gap:${20 * u}px;font-size:${38 * u}px;color:#1e293b">
+        `<li class="a rise" style="animation-delay:${(0.6 + 0.4 * k).toFixed(2)}s;display:flex;align-items:center;gap:${20 * u}px;font-size:${38 * u}px;color:${CK.item}">
           <span style="flex:none;display:inline-flex;align-items:center;justify-content:center;width:${52 * u}px;height:${52 * u}px;border-radius:50%;background:${accent};color:${ink};font-weight:700;font-size:${28 * u}px">${k + 1}</span>
-          <span>${md(b, ink)}</span></li>`).join('')}</ol>` : ''}
+          <span>${md(b, darkCards ? accent : ink)}</span></li>`).join('')}</ol>` : ''}
       ${!c.cta ? '' : cmd
-        ? `<div class="a rise" style="animation-delay:.45s;margin-top:${18 * u}px;font:500 ${36 * u}px ui-monospace,SFMono-Regular,Menlo,monospace;color:#e2e8f0;background:${ink};padding:${20 * u}px ${36 * u}px;border-radius:${16 * u}px;text-align:left;box-shadow:0 ${16 * u}px ${40 * u}px rgba(15,23,42,.25)"><span style="color:${accent}">$</span> <span class="type">${esc(ctaText)}</span><span class="caret"></span></div>`
-        : `<div class="a rise" style="animation-delay:.45s;margin-top:${18 * u}px;font-size:${38 * u}px;font-weight:600;color:#fff;background:${ink};padding:${20 * u}px ${46 * u}px;border-radius:${16 * u}px">${esc(c.cta)}</div>`}
+        ? `<div class="a rise" style="animation-delay:.45s;margin-top:${18 * u}px;font:500 ${36 * u}px ui-monospace,SFMono-Regular,Menlo,monospace;color:${CK.pillFg};background:${CK.pillBg};border:${CK.pillLine};padding:${20 * u}px ${36 * u}px;border-radius:${16 * u}px;text-align:left;box-shadow:0 ${16 * u}px ${40 * u}px ${CK.shadow}"><span style="color:${accent}">$</span> <span class="type">${esc(ctaText)}</span><span class="caret"></span></div>`
+        : `<div class="a rise" style="animation-delay:.45s;margin-top:${18 * u}px;font-size:${38 * u}px;font-weight:600;color:${CK.ctaFg};background:${CK.ctaBg};padding:${20 * u}px ${46 * u}px;border-radius:${16 * u}px">${esc(c.cta)}</div>`}
       </body>`;
   };
   const animate = async (html, seconds, dir) => {
@@ -343,20 +368,32 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   for (const [k, c] of cards.entries()) await animate(card(c.card, c.card.logoFile ?? '', { thinkAt: c.thinkAt }), c.t1 - c.t0, path.join(cfg.work, `card${k}`));
   if (in0) await animate(card(in0, in0.logoFile ?? path.join(cfg.work, 'intro-logo.png')), INTRO, path.join(cfg.work, 'intro'));
   if (cfg.frame) {
-    // backdrop + window (under the page) and the backdrop again with a rounded hole (over it, for the corners)
-    const bg = cfg.frame.background ?? `radial-gradient(${W * 0.7}px ${H * 0.8}px at 15% 0%, ${accent}66, transparent 70%), radial-gradient(${W * 0.7}px ${H * 0.8}px at 100% 100%, #6366f166, transparent 70%), linear-gradient(135deg, #1e293b, ${ink})`;
-    const R = Math.round(12 * u), host = new URL(cfg.url).host.replace(/^www\./, '') + new URL(cfg.url).pathname.replace(/\/$/, '');
-    const dot = (c) => `<span style="width:${13 * u}px;height:${13 * u}px;border-radius:50%;background:${c};display:inline-block"></span>`;
-    await shot(`<body style="margin:0;width:${W}px;height:${H}px;background:${bg};${fontCss}">
-      <div style="position:absolute;left:${FX}px;top:${FY - BAR}px;width:${FW}px;height:${FH + BAR}px;border-radius:${R}px;background:#fff;box-shadow:0 ${30 * u}px ${80 * u}px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.08)"></div>
-      <div style="position:absolute;left:${FX}px;top:${FY - BAR}px;width:${FW}px;height:${BAR}px;border-radius:${R}px ${R}px 0 0;background:#e8ebef;display:flex;align-items:center;border-bottom:1px solid #d5d9df">
+    // three layers: the backdrop (a picture, or the page itself blurred), the window chrome (shadow and
+    // title bar), and the page with rounded bottom corners
+    const grain = `url('data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .09 0"/></filter><rect width="200" height="200" filter="url(#n)"/></svg>')}')`;
+    const STYLES = {
+      aurora: { dark: true, bg: `${grain}, radial-gradient(${W * 0.47}px ${H * 0.65}px at 20% 20%, #22d3ee99, transparent 60%), radial-gradient(${W * 0.47}px ${H * 0.65}px at 80% 30%, #a78bfa99, transparent 60%), radial-gradient(${W * 0.52}px ${H * 0.74}px at 50% 100%, #34d39988, transparent 60%), #0b1020` },
+      studio: { dark: false, bg: `${grain}, radial-gradient(${W * 0.73}px ${H * 0.83}px at 50% 0%, #ffffff, #e9edf3 60%, #d6dce6)` },
+      dark: { dark: true, bg: `radial-gradient(${W * 0.7}px ${H * 0.8}px at 15% 0%, ${accent}66, transparent 70%), radial-gradient(${W * 0.7}px ${H * 0.8}px at 100% 100%, #6366f166, transparent 70%), linear-gradient(135deg, #1e293b, ${ink})` },
+      pastel: { dark: false, bg: 'linear-gradient(135deg, #fde2e4 0%, #e2ece9 35%, #dfe7fd 70%, #f0e6ff 100%)' },
+      blur: { dark: true, bg: null },
+    };
+    const st = STYLES[cfg.frame.style], bg = cfg.frame.background ?? st.bg;
+    const R = Math.round(14 * u), host = new URL(cfg.url).host.replace(/^www\./, '') + new URL(cfg.url).pathname.replace(/\/$/, '');
+    const dot = (col) => `<span style="width:${13 * u}px;height:${13 * u}px;border-radius:50%;background:${col};display:inline-block"></span>`;
+    const [barBg, barFg, pill, line] = st.dark ? ['#1f2430', '#9aa4b2', '#2b3140', '#11151d'] : ['#e8ebef', '#4b5563', '#fff', '#d5d9df'];
+    if (bg) await shot(`<body style="margin:0;width:${W}px;height:${H}px;background:${bg}"></body>`, path.join(cfg.work, 'frame-bg.png'), false);
+    await shot(`<body style="margin:0;width:${W}px;height:${H}px;background:transparent;${fontCss}">
+      <div style="position:absolute;left:${FX}px;top:${FY - BAR}px;width:${FW}px;height:${FH + BAR}px;border-radius:${R}px;background:#fff;box-shadow:0 ${30 * u}px ${80 * u}px rgba(0,0,0,${st.dark ? '.5' : '.25'}),0 0 0 1px rgba(255,255,255,.08)"></div>
+      <div style="position:absolute;left:${FX}px;top:${FY - BAR}px;width:${FW}px;height:${BAR}px;border-radius:${R}px ${R}px 0 0;background:${barBg};display:flex;align-items:center;border-bottom:1px solid ${line}">
         <div style="display:flex;gap:${8 * u}px;margin-left:${16 * u}px">${dot('#ff5f57')}${dot('#febc2e')}${dot('#28c840')}</div>
-        <div style="position:absolute;left:50%;transform:translateX(-50%);font-size:${15 * u}px;color:#4b5563;background:#fff;border-radius:${8 * u}px;padding:${4 * u}px ${60 * u}px">${esc(host)}</div>
-      </div></body>`, path.join(cfg.work, 'frame-bg.png'), false);
-    const hole = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect x="${FX}" y="${FY - BAR}" width="${FW}" height="${FH + BAR}" rx="${R}"/></svg>`);
-    await shot(`<body style="margin:0;width:${W}px;height:${H}px;background:transparent">
-      <div style="position:absolute;inset:0;background:${bg};-webkit-mask:linear-gradient(#000 0 0),url('data:image/svg+xml,${hole}');-webkit-mask-composite:xor;mask-composite:exclude"></div></body>`,
-      path.join(cfg.work, 'frame-fg.png'), true);
+        <div style="position:absolute;left:50%;transform:translateX(-50%);font-size:${15 * u}px;color:${barFg};background:${pill};border-radius:${8 * u}px;padding:${4 * u}px ${60 * u}px">${esc(host)}</div>
+      </div></body>`, path.join(cfg.work, 'frame-chrome.png'), true);
+    // alpha mask for the page: rounded bottom corners (the title bar covers the top ones)
+    await pg.setViewportSize({ width: FW, height: FH });
+    await pg.setContent(`<body style="margin:0;width:${FW}px;height:${FH}px;background:#000"><div style="width:100%;height:100%;background:#fff;border-radius:0 0 ${R}px ${R}px"></div></body>`);
+    await pg.screenshot({ path: path.join(cfg.work, 'frame-mask.png') });
+    await pg.setViewportSize({ width: W, height: H });
   }
   await browser.close();
 
@@ -367,11 +404,23 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     `:d=1:fps=${FPS}:s=${W}x${H},format=yuv420p${END ? `,tpad=stop_mode=clone:stop_duration=${END}` : ''}[v0];\n`;
   let last = 'v0', idx = 1;
   if (cfg.frame) {
-    inputs.push('-loop', '1', '-t', `${TOTAL}`, '-framerate', `${FPS}`, '-i', path.join(cfg.work, 'frame-bg.png'),
-      '-loop', '1', '-t', `${TOTAL}`, '-framerate', `${FPS}`, '-i', path.join(cfg.work, 'frame-fg.png'));
-    graph += `[v0]scale=${FW}:${FH}:flags=lanczos[pg];[${idx}:v][pg]overlay=${FX}:${FY}[fb];[fb][${idx + 1}:v]overlay=0:0,format=yuv420p[vf];\n`;
-    last = 'vf'; idx += 2;
+    const still = (f) => inputs.push('-loop', '1', '-t', `${TOTAL}`, '-framerate', `${FPS}`, '-i', path.join(cfg.work, f));
+    const blur = !cfg.frame.background && cfg.frame.style === 'blur';
+    let base;
+    if (blur) {
+      graph += `[v0]split[v0a][v0b];[v0b]scale=${even(W / 12)}:${even(H / 12)},gblur=sigma=4,scale=${W}:${H},eq=brightness=-0.12:saturation=1.3[fbg];\n`;
+      base = 'fbg';
+    } else { still('frame-bg.png'); base = `${idx++}:v`; }
+    still('frame-chrome.png'); const chrome = idx++;
+    still('frame-mask.png'); const mask = idx++;
+    graph += `[${blur ? 'v0a' : 'v0'}]scale=${FW}:${FH}:flags=lanczos,format=rgba[pg0];[${mask}:v]format=gray,scale=${FW}:${FH}[pm];[pg0][pm]alphamerge[pg];\n` +
+      `[${base}][${chrome}:v]overlay=0:0[fc];[fc][pg]overlay=${FX}:${FY},format=yuv420p[vf];\n`;
+    last = 'vf';
   }
+  // docs: a second, caption-free copy for the per-step clips and stills (the article carries the
+  // text), so crops never have to dodge a caption
+  const clean = cfg.clips.length ? path.join(cfg.work, 'video-clean.mp4') : null;
+  if (clean) { graph += `[${last}]split[vmain][vclean0];\n`; last = 'vmain'; }
   for (const [i, c] of captions.entries()) {
     const a = c.t[0] + 0.1, b = c.t[1] - 0.1;
     // each caption is an input only as long as it is on screen (decoding a looped PNG for the whole
@@ -401,6 +450,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     last = `v${idx}`;
   }
   graph += `[${last}]trim=duration=${TOTAL},format=yuv420p[out]`;
+  if (clean) graph += `;\n[vclean0]trim=duration=${TOTAL},format=yuv420p[clean]`;
   const graphFile = path.join(cfg.work, 'graph.txt');
   fs.writeFileSync(graphFile, graph);
   const silent = path.join(cfg.work, 'video-silent.mp4');
@@ -409,7 +459,8 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   const major = Number((execFileSync('ffmpeg', ['-version']).toString().match(/ffmpeg version n?(\d+)/) ?? [])[1] ?? 7);
   const graphArgs = major >= 7 ? ['-/filter_complex', graphFile] : ['-filter_complex_script', graphFile];
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...inputs, ...graphArgs, '-map', '[out]',
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', `${FPS}`, silent]);
+    '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', `${FPS}`, silent,
+    ...(clean ? ['-map', '[clean]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', `${FPS}`, clean] : [])]);
 
   // --- 6. preview contact sheet: one frame per step (at its zoom peak) + end card ------------
   // zoomed steps: at the zoom peak; others: late in the step, where its actions' result is visible
@@ -441,7 +492,10 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     endCard: ec ? VIDEO : null,
     clicks: tl.clicks.map(toOut).filter((t) => t != null),
     whooshes: dedupe([
-      ...tl.navs.map(toOut).filter((t) => t != null && t > 0.2),
+      // whoosh on deliberate scene changes (goto) only: a page the app opens after a click, or a
+      // results page reloading itself while you wait, is not a scene change
+      ...(tl.gotos ?? tl.navs.filter((n) => !tl.clicks.some((c) => n - c >= 0 && n - c < 2) && !tl.steps.some((s) => (s.waits ?? []).some(([a, b]) => n >= a - 0.5 && n <= b + 0.5))))
+        .map(toOut).filter((t) => t != null && t > 0.2),
       ...segs.filter((g) => g.afterHidden).map((g) => g.o0),
       ...(in0 ? [INTRO - 0.3] : []),
       ...cards.flatMap((c) => [c.t0, c.t1 - 0.3]),
@@ -472,8 +526,8 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     let w = Math.max(x1 - x0 + 2 * pad, W * 0.5), h = Math.max(y1 - y0 + 2 * pad, H * 0.5);
     if (w / h > W / H) h = w * H / W; else w = h * W / H;
     w = Math.min(W, w); h = Math.min(H, h);
-    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    let cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
     g.crop = { x: even(Math.max(0, Math.min(W - w, cx - w / 2))), y: even(Math.max(0, Math.min(H - h, cy - h / 2))), w: even(w), h: even(h) };
   }
-  return { silent, events, preview, warnings, captions, cards: cards.map((c) => ({ t: c.t0, title: [c.card.kicker, c.card.title].filter(Boolean).join(' · ') })), segs: segs.map((g) => ({ i: g.i, o0: g.o0, o1: g.o1, caption: g.step.caption, doc: g.step.doc ?? g.step.say, crop: g.crop })) };
+  return { silent, clean, events, preview, warnings, captions, cards: cards.map((c) => ({ t: c.t0, title: [c.card.kicker, c.card.title].filter(Boolean).join(' · ') })), segs: segs.map((g) => ({ i: g.i, o0: g.o0, o1: g.o1, caption: g.step.caption, doc: g.step.doc ?? g.step.say, crop: g.crop })) };
 }
