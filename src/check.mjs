@@ -4,16 +4,17 @@ import YAML from 'yaml';
 import { loadConfig } from './config.mjs';
 import { gitIgnored } from './auth.mjs';
 
-const TOP = ['name', 'url', 'out', 'purpose', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'colorScheme',
+const TOP = ['name', 'url', 'out', 'purpose', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'intro', 'frame', 'colorScheme',
   'scrollOffset', 'captionPosition', 'highlight', 'stepNumbers', 'subtitles', 'chapters', 'clips', 'maxWait', 'setup', 'steps', 'end_card'];
 const STEP = ['caption', 'say', 'sayAt', 'duration', 'zoom', 'actions', 'hidden', 'sfx', 'highlight', 'captionPosition'];
 const ZOOM = ['target', 'scale', 'start', 'end', 'ramp', 'offset'];
 const END = ['logo', 'title', 'subtitle', 'cta', 'duration', 'say'];
 const TARGET = ['role', 'name', 'text', 'label', 'placeholder', 'alt', 'testId', 'css', 'exact', 'last', 'nth'];
-const OPTS = ['ms', 'offset', 'timeout', 'highlight'];
+const OPTS = ['ms', 'offset', 'timeout', 'highlight', 'color', 'box'];
 const ACTIONS = {
   pause: 'number', wait: 'number', move: 'target', hover: 'target', click: 'target', dismiss: 'target', waitFor: 'target',
   waitForUrl: 'string', networkIdle: 'any', goto: 'string', scrollTo: 'target', scroll: 'any', type: 'type', drag: 'drag', press: 'any',
+  mark: 'mark', unmark: 'any',
 };
 
 const dist = (a, b) => {
@@ -70,6 +71,8 @@ export function check(file, { draft = false } = {}) {
     for (const [j, a] of (s.actions ?? []).entries()) checkAction(a, `${where} action ${j + 1}`);
   }
   if (raw.end_card) unknown(raw.end_card, END, 'end_card');
+  if (raw.intro) unknown(raw.intro, END, 'intro');
+  if (raw.frame && typeof raw.frame === 'object') unknown(raw.frame, ['background'], 'frame');
   const todo = (fs.readFileSync(file, 'utf8').split('\n').map((l, i) => [l.replace(/#.*$/, ''), i + 1]).filter(([l]) => /\bTODO\b/.test(l)));
   for (const [, n] of todo) errors.push(`line ${n}: replace the TODO placeholder`);
 
@@ -85,6 +88,7 @@ export function check(file, { draft = false } = {}) {
     if (type === 'number' && typeof v !== 'number') errors.push(`${where}: ${kind} takes milliseconds, e.g. "${kind}: 800"`);
     if (type === 'string' && typeof v !== 'string') errors.push(`${where}: ${kind} takes a string`);
     if (type === 'target') target(v, `${where} (${kind})`);
+    if (type === 'mark' && typeof v !== 'string') target(v, `${where} (mark)`); // a string is a phrase to highlight
     if (type === 'type') {
       if (typeof v === 'string' || typeof v === 'number') return;
       if (v?.text == null) errors.push(`${where}: type needs text — "type: hello" types into the focused element, "type: { target: <target>, text: hello }" clicks the target first`);
@@ -104,7 +108,7 @@ export function check(file, { draft = false } = {}) {
   let summary = '';
   if (cfg) {
     const visible = cfg.steps.filter((s) => !s.hidden);
-    const says = visible.filter((s) => s.say).length + (cfg.endCard?.say ? 1 : 0);
+    const says = visible.filter((s) => s.say).length + (cfg.endCard?.say ? 1 : 0) + (cfg.intro?.say ? 1 : 0);
     if (cfg.voice && !says) warnings.push('voice is set but no step has a `say:` line');
     if (!cfg.voice && says) warnings.push('steps have `say:` lines but there is no `voice:` block, so they will not be spoken');
     if (!draft && cfg.voice && ['elevenlabs', 'openai'].includes(cfg.voice.provider)) {
@@ -126,7 +130,7 @@ export function check(file, { draft = false } = {}) {
     const fixed = visible.filter((s) => s.duration !== 'auto').reduce((a, s) => a + s.duration, 0);
     const auto = visible.filter((s) => s.duration === 'auto').length;
     const ec = cfg.endCard ? (cfg.endCard.duration === 'auto' ? null : cfg.endCard.duration) : 0;
-    const length = auto ? `${fixed ? `${fixed.toFixed(1)}s fixed + ` : ''}${auto} steps timed to narration${cfg.endCard ? ' + end card' : ''}`
+    const length = auto ? `${fixed ? `${fixed.toFixed(1)}s fixed + ` : ''}${auto} steps timed to narration${cfg.endCard ? ' + end card' : ''}${cfg.intro ? ' + intro' : ''}`
       : `${fixed.toFixed(1)}s of steps${cfg.endCard ? ` + ${ec ?? 'auto'}s end card` : ''}${ec != null ? ` = ${(fixed + ec).toFixed(1)}s total` : ''}`;
     summary = `${cfg.name}: purpose ${cfg.purpose}, ${visible.length} visible steps, ${length}` +
       (cfg.voice ? `, voice ${cfg.voice.provider}` : '') + ` → ${cfg.out}`;

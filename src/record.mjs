@@ -102,6 +102,88 @@ function pageScript({ scrollOffset }) {
     el.animate([{ opacity: 0, transform: 'translateX(-50%) scale(.9)' }, { opacity: 1, transform: 'translateX(-50%) scale(1)', offset: 0.15 },
       { opacity: 1, offset: 0.8 }, { opacity: 0 }], { duration: 1400, easing: 'ease-out' }).onfinish = () => el.remove();
   };
+  // `mark`: a highlighter sweeps over a phrase (a text Range, even across inline elements) or an
+  // element, line by line. Marks follow scrolling (positions are re-read every frame).
+  window.__demoFind = (phrase) => {
+    const norm = (s) => s.replace(/\s+/g, ' ');
+    const want = norm(phrase).trim();
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => (n.parentElement?.closest('script,style,noscript,#__demo_cursor') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    });
+    let text = '';
+    const map = []; // map[i] = [node, offset] for text[i]
+    for (let n; (n = walker.nextNode());) {
+      for (let i = 0; i < n.data.length; i++) {
+        const ch = /\s/.test(n.data[i]) ? ' ' : n.data[i];
+        if (ch === ' ' && text.endsWith(' ')) continue;
+        text += ch; map.push([n, i]);
+      }
+    }
+    const ranges = [];
+    for (const hay of [text, text.toLowerCase()]) {
+      const needle = hay === text ? want : want.toLowerCase();
+      for (let at = hay.indexOf(needle); at >= 0; at = hay.indexOf(needle, at + 1)) {
+        const r = document.createRange();
+        const [sn, so] = map[at], [en, eo] = map[at + needle.length - 1];
+        r.setStart(sn, so); r.setEnd(en, eo + 1);
+        const rects = [...r.getClientRects()].filter((q) => q.width > 1 && q.height > 1);
+        if (rects.length) ranges.push(r);
+      }
+      if (ranges.length) break;
+    }
+    const inView = (r) => { const q = r.getBoundingClientRect(); return q.top >= 0 && q.bottom <= innerHeight; };
+    const r = ranges.find(inView) ?? ranges[0];
+    if (!r) return null;
+    window.__demoFound = r;
+    return { inView: inView(r), count: ranges.length };
+  };
+  window.__demoMark = (what, { ms = 700, color, box = false }) => {
+    const layer = document.getElementById('__demo_marks') ?? document.documentElement.appendChild(Object.assign(document.createElement('div'), { id: '__demo_marks' }));
+    // multiply on the layer itself (its children are isolated inside it), so text under a mark stays readable
+    Object.assign(layer.style, { position: 'fixed', inset: '0', zIndex: '2147483644', pointerEvents: 'none', transition: 'opacity .3s ease', mixBlendMode: 'multiply' });
+    const src = what === 'found' ? window.__demoFound : window.__demoMarkEl;
+    const rectsOf = () => {
+      const all = what === 'found' ? [...src.getClientRects()] : [src.getBoundingClientRect()];
+      // one rect per line: merge the pieces of inline elements that sit on the same line
+      const lines = [];
+      for (const q of all.filter((q) => q.width > 1 && q.height > 1)) {
+        const l = lines.find((l) => Math.abs(l.top - q.top) < q.height * 0.5);
+        if (l) { l.left = Math.min(l.left, q.left); l.right = Math.max(l.right, q.right); l.top = Math.min(l.top, q.top); l.bottom = Math.max(l.bottom, q.bottom); }
+        else lines.push({ left: q.left, right: q.right, top: q.top, bottom: q.bottom });
+      }
+      return lines;
+    };
+    const first = rectsOf();
+    const total = first.reduce((s, q) => s + q.right - q.left, 0) || 1;
+    let delay = 0;
+    const els = first.map((q) => {
+      const el = document.createElement('div');
+      Object.assign(el.style, box
+        ? { position: 'fixed', borderRadius: '8px', background: `${color}88`, boxShadow: `0 0 0 2px color-mix(in srgb, ${color} 55%, #000)`, clipPath: 'inset(0 100% 0 0)' }
+        : { position: 'fixed', borderRadius: '3px', background: color, opacity: '.9', clipPath: 'inset(0 100% 0 0)' });
+      layer.appendChild(el);
+      const d = ms * (q.right - q.left) / total;
+      el.animate([{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0 0 0)' }], { duration: d, delay, easing: 'ease-in-out', fill: 'forwards' });
+      delay += d;
+      return el;
+    });
+    const place = () => {
+      if (!els[0]?.isConnected) return;
+      rectsOf().forEach((q, i) => {
+        const el = els[i]; if (!el) return;
+        const pad = box ? 6 : 2;
+        Object.assign(el.style, { left: `${q.left - pad}px`, top: `${q.top - (box ? pad : 0)}px`, width: `${q.right - q.left + 2 * pad}px`, height: `${q.bottom - q.top + (box ? 2 * pad : 0)}px` });
+      });
+      requestAnimationFrame(place);
+    };
+    place();
+    const u = first.reduce((a, q) => ({ x: Math.min(a.x, q.left), y: Math.min(a.y, q.top), r: Math.max(a.r, q.right), b: Math.max(a.b, q.bottom) }), { x: 1e9, y: 1e9, r: -1e9, b: -1e9 });
+    return { x: u.x, y: u.y, width: u.r - u.x, height: u.b - u.y };
+  };
+  window.__demoUnmark = () => {
+    const layer = document.getElementById('__demo_marks');
+    if (layer) { layer.style.opacity = '0'; setTimeout(() => layer.remove(), 300); }
+  };
   // in-page anchor links scroll smoothly instead of jumping
   document.addEventListener('click', (e) => {
     const a = e.target.closest?.('a[href^="#"]');
@@ -115,7 +197,7 @@ function pageScript({ scrollOffset }) {
 }
 
 // --- locators ------------------------------------------------------------------------
-const OPTION_KEYS = new Set(['ms', 'offset', 'timeout', 'highlight']);
+const OPTION_KEYS = new Set(['ms', 'offset', 'timeout', 'highlight', 'color', 'box']);
 // All elements matching a target spec (visible or not).
 function locateAll(page, spec) {
   if (typeof spec === 'string') return page.locator(spec);
@@ -304,6 +386,34 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
         await page.mouse.up();
         break;
       }
+      case 'mark': {
+        // mark: "a phrase" | { text: "a phrase" } (a text range, even inside a paragraph) | any target
+        // (e.g. a table row: { css: "tr:nth-child(3)" }) → highlighter sweep, kept until the step ends
+        const v = typeof value === 'string' ? { text: value } : spec;
+        const ms = fast ? 0 : opt.ms ?? 700, color = opt.color ?? cfg.theme.accent;
+        let box = null;
+        const phraseOnly = v.text && Object.keys(v).every((k) => ['text', 'exact'].includes(k));
+        if (phraseOnly) {
+          const found = await page.evaluate((t) => window.__demoFind(t), v.text);
+          if (found && !found.inView) {
+            await page.evaluate((ms) => window.__demoScrollTo(window.__demoFound.startContainer.parentElement, ms), fast ? 0 : 900);
+            await sleep(fast ? 50 : 950);
+          }
+          if (found) box = await page.evaluate(([ms, color, b]) => window.__demoMark('found', { ms, color, box: b }), [ms, color, opt.box ?? false]);
+        }
+        if (!box) {
+          const l = locate(page, v);
+          await waiting(() => l.waitFor({ state: 'visible', timeout: opt.timeout ?? 15000 }));
+          await l.scrollIntoViewIfNeeded();
+          await l.evaluate((el) => { window.__demoMarkEl = el; });
+          box = await page.evaluate(([ms, color, b]) => window.__demoMark('el', { ms, color, box: b }), [ms, color, opt.box ?? !phraseOnly]);
+        }
+        marks.push({ t: now(), box });
+        boxes.set(keyOf(v), box);
+        await sleep(ms + (fast ? 0 : 300)); // let the sweep finish on screen
+        break;
+      }
+      case 'unmark': await page.evaluate(() => window.__demoUnmark()).catch(() => {}); break;
       case 'press': {
         const key = typeof value === 'object' ? value.key : String(value);
         // on-screen key badge: shortcuts and special keys only (not plain characters), when highlighting
@@ -367,8 +477,9 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
     }
   }
   await runAll(cfg.setup, 'setup');
-  if (cfg.endCard?.logo && !cfg.endCard.logoFile) {
-    await locate(page, cfg.endCard.logo).screenshot({ path: path.join(cfg.work, 'logo.png'), omitBackground: true })
+  for (const [card, file] of [[cfg.endCard, 'logo.png'], [cfg.intro, 'intro-logo.png']]) {
+    if (!card?.logo || card.logoFile) continue;
+    await locate(page, card.logo).screenshot({ path: path.join(cfg.work, file), omitBackground: true, timeout: 5000 })
       .catch((e) => log(`warning: could not capture logo (${e.message.split('\n')[0]})`));
   }
   await nudge();
@@ -417,7 +528,9 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
     const zoomTarget = s.zoom?.target && !isPoint(s.zoom.target);
     const startBox = zoomTarget ? await boxNow() : null;
     await runAll(s.actions, `step ${i + 1}`);
+    const end = now(); // before clearing: a step that is held for its narration keeps its marks
     await spotOff();
+    await page.evaluate(() => window.__demoUnmark()).catch(() => {});
     let zoomBox = null;
     if (s.zoom?.target) {
       if (isPoint(s.zoom.target)) {
@@ -430,7 +543,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
         zoomBox = boxes.get(keyOf(s.zoom.target)) ?? (early ? startBox ?? endBox : endBox ?? startBox);
       }
     }
-    steps.push({ start, end: now(), hidden: !!s.hidden, zoomBox, zoomTarget: s.zoom?.target ?? null, waits, holds, marks });
+    steps.push({ start, end, hidden: !!s.hidden, zoomBox, zoomTarget: s.zoom?.target ?? null, waits, holds, marks });
     log(`step ${i + 1}/${cfg.steps.length}${s.hidden ? ' (hidden)' : ''}: ${(now() - start).toFixed(1)}s raw${s.caption ? ` — ${s.caption}` : ''}`);
   }
   await sleep(300);

@@ -125,8 +125,10 @@ Rules of thumb from real renders:
 
 - **One idea per step.**
   - `pitch`: 1.5–3 s per step (`duration:`). A 15 s video is 5–7 visible
-    steps plus a 1–1.5 s `end_card`. Typical shape: hero → 2–4 steps of the
-    core flow ending on a visible result → pricing or CTA → end card.
+    steps plus a 1–1.5 s `end_card`. Typical shape: `intro` → hero → 2–4
+    steps of the core flow ending on a visible result → pricing or CTA → end
+    card. Promos sit in a browser window on a backdrop (`frame: false` turns
+    that off).
   - Other purposes: leave out `duration`. `auto` times each step to its
     narration and plays motion in real time.
 - **Captions ≤ 7 words.** `**bold**` the payoff ("Every text box is
@@ -148,6 +150,14 @@ Rules of thumb from real renders:
   and `press: "^"` send single keys. In `tutorial`/`course`, the spotlight
   highlights each click target automatically; add `highlight: true` to a
   `move` to point at something without clicking it.
+- **Point at what the narration names.** `mark: "the exact phrase"` sweeps a
+  highlighter over words on the page (or `mark: <target>` boxes a table row,
+  card or code line) while the voice says them. On text-heavy pages a mark
+  plus a zoom tells the viewer where to look.
+- **Static pages (a landing page, docs, a README) have nothing to click.**
+  Don't make a slideshow of scrolls: open with an `intro` (the promise),
+  `mark` the claims as they are spoken, zoom on 2–3 of them, and end on a
+  command or URL. If the product has a real flow, show that instead.
 - **Cut boring navigation** with a `hidden: true` step (e.g. `goto: /pricing`).
 - **Clean the frame** in `setup`: dismiss cookie banners, announcement bars and
   chat widgets. `dismiss` is a no-op when the element isn't there.

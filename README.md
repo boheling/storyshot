@@ -228,10 +228,16 @@ captionPosition: bottom                         # or top; can also be set per st
 purpose: pitch                                  # pitch | tutorial | course | docs (sets the defaults below)
 highlight: false                                # spotlight targets before click/type (per step or per action too)
 stepNumbers: false                              # numbered caption badges
-subtitles: false                                # write <out>.srt (narration, else captions)
+subtitles: false                                # write <out>.srt (narration, else captions); `burn` also burns the narration into the video, each word lighting up as it is spoken (captions move to the top)
+frame: true                                     # pitch default: the recording sits in a browser window on a backdrop; false = full frame, or { background: <css> }
 chapters: false                                 # write <out>.chapters.txt for YouTube
 clips: null                                     # gif | webm | mp4: one file per step in <out>-steps/
 maxWait: 1.0                                    # with duration: auto, the longest a wait is shown
+
+intro:                                          # optional title card before the recording (same fields as end_card)
+  title: Acme
+  subtitle: Ship **faster**
+  say: Meet Acme.
 
 setup:                                          # runs before recording starts
   - dismiss: { role: button, name: Accept cookies }
@@ -289,6 +295,8 @@ You can add `exact: true`, `last: true` or `nth: 2` to any of them.
 | `scrollTo` | `scrollTo: { css: "#pricing", ms: 1200 }` |
 | `scroll` | `scroll: 600` |
 | `dismiss` | `dismiss: { role: button, name: Close }` (clicks only if visible) |
+| `mark` | `mark: "automatic zoom, captions"` sweeps a highlighter over that phrase, even inside a paragraph (scrolling to it if needed). `mark: { css: "table tr:nth-child(3)" }` marks any target with a box. Options: `ms` (sweep time, default 700), `color` (default: theme accent), `box: true/false`. Marks stay until the step ends. |
+| `unmark` | `unmark: true` clears the marks earlier |
 
 `ms` sets how long the cursor takes to travel to the target (`dragMs` for each
 drag move). `highlight: true/false` on `click`, `type` or `move` overrides the
@@ -355,9 +363,14 @@ changed. Write names the way they should be pronounced (`say: P X Genius.`),
 and spell out prices (`eleven ninety-nine`) in `pronounce` or in the line itself. At normal pace that comes to
 about 2.5 words per second, or roughly 35 words for a 15 s video.
 
-### End card
+### Intro and end card
 
-Every field is optional; leave out `end_card` entirely for no end card.
+Every field is optional; leave out `intro` / `end_card` for none. Both are short
+animations: the logo pops in, the title rises, the `**bold**` highlight sweeps,
+and a `cta` that is a command (`npx …`, `npm …`, `pip …`, `brew …`, `curl …`)
+types itself out in a terminal pill. `init` writes an `intro` for promos;
+tutorials and lessons can add one (e.g. "How to export a report"), docs GIFs
+usually shouldn't.
 
 | field | meaning |
 |---|---|
@@ -365,7 +378,7 @@ Every field is optional; leave out `end_card` entirely for no end card.
 | `title` | Large product name next to the logo. |
 | `subtitle` | One line; `**bold**` gets an accent highlight. |
 | `cta` | Dark call-to-action pill, e.g. `Start free at acme.com`. |
-| `duration` | Seconds (default 1.0). |
+| `duration` | Seconds. Default: fits the `say` line, else 1.0 (end card) or 2.2 (intro). |
 | `say` | Voiceover line played over the end card. |
 
 ## License

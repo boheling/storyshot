@@ -102,11 +102,12 @@ export function tempo(pcm, factor) {
 // Synthesize every narration line up front and return their lengths (seconds),
 // so `duration: auto` steps can be timed to the voice.
 export async function measureVoice(cfg, { log = console.log } = {}) {
-  const lens = { steps: {}, endCard: null };
+  const lens = { steps: {}, endCard: null, intro: null };
   if (!cfg.voice) return lens;
   for (const [i, s] of cfg.steps.entries()) {
     if (s.say && !s.hidden) lens.steps[i] = (await speak(cfg, s.say, { log })).length / 2 / SR;
   }
+  if (cfg.intro?.say) lens.intro = (await speak(cfg, cfg.intro.say, { log })).length / 2 / SR;
   if (cfg.endCard?.say) lens.endCard = (await speak(cfg, cfg.endCard.say, { log })).length / 2 / SR;
   return lens;
 }

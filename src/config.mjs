@@ -19,10 +19,10 @@ export function loadEnv(dir) {
 
 // What the video is for sets sensible defaults; anything in the YAML overrides them.
 export const PURPOSES = {
-  pitch:    { duration: null,   music: { bpm: 120, volume: 1 },    sfx: true,  highlight: false, stepNumbers: false, subtitles: false, chapters: false, clips: null },
-  tutorial: { duration: 'auto', music: { bpm: 96, volume: 0.35 },  sfx: true,  highlight: true,  stepNumbers: true,  subtitles: true,  chapters: true,  clips: null },
-  course:   { duration: 'auto', music: false,                     sfx: true,  highlight: true,  stepNumbers: false, subtitles: true,  chapters: true,  clips: null },
-  docs:     { duration: 'auto', music: false,                     sfx: false, highlight: true,  stepNumbers: true,  subtitles: false, chapters: false, clips: 'gif' },
+  pitch:    { duration: null,   music: { bpm: 120, volume: 1 },    sfx: true,  highlight: false, stepNumbers: false, subtitles: false, chapters: false, clips: null, frame: true },
+  tutorial: { duration: 'auto', music: { bpm: 96, volume: 0.35 },  sfx: true,  highlight: true,  stepNumbers: true,  subtitles: true,  chapters: true,  clips: null, frame: false },
+  course:   { duration: 'auto', music: false,                     sfx: true,  highlight: true,  stepNumbers: false, subtitles: true,  chapters: true,  clips: null, frame: false },
+  docs:     { duration: 'auto', music: false,                     sfx: false, highlight: true,  stepNumbers: true,  subtitles: false, chapters: false, clips: 'gif', frame: false },
 };
 
 // Where storyboards and their videos go, and how they're named: <site>-<kind>[-<topic>].yaml →
@@ -87,9 +87,15 @@ export function loadConfig(file, { draft = false } = {}) {
 
   let endCard = raw.end_card === false ? null : raw.end_card ?? null;
   if (endCard) endCard = { duration: endCard.say ? 'auto' : 1.0, ...endCard };
-  if (endCard?.logo && typeof endCard.logo === 'string' && /\.(png|jpe?g|svg|webp)$/i.test(endCard.logo)) {
-    endCard.logoFile = path.resolve(dir, endCard.logo);
+  // An intro title card (promos; optional for tutorials and lessons). Same fields as the end card.
+  let intro = raw.intro === false ? null : raw.intro ?? null;
+  if (intro) intro = { duration: intro.say ? 'auto' : 2.2, ...intro };
+  for (const card of [endCard, intro]) {
+    if (card?.logo && typeof card.logo === 'string' && /\.(png|jpe?g|svg|webp)$/i.test(card.logo)) card.logoFile = path.resolve(dir, card.logo);
   }
+  // Browser-window frame on a backdrop (promos by default): true, false, or { background: <css> }
+  const frame0 = pick('frame');
+  const frame = frame0 ? { background: null, ...(typeof frame0 === 'object' ? frame0 : {}) } : null;
 
   let voice = null;
   if (raw.voice) {
@@ -124,11 +130,14 @@ export function loadConfig(file, { draft = false } = {}) {
     ignoreHTTPSErrors: raw.ignoreHTTPSErrors === true,
     storageState: raw.storageState ? path.resolve(dir, raw.storageState) : undefined,
     scrollOffset: raw.scrollOffset ?? 40,
-    captionPosition: raw.captionPosition ?? 'bottom',
+    // burned-in subtitles sit at the bottom, so captions move to the top
+    captionPosition: raw.captionPosition ?? (pick('subtitles') === 'burn' ? 'top' : 'bottom'),
     theme: { accent: '#d9f75b', ink: '#0f172a', font: 'Inter', ...raw.theme },
     setup: raw.setup ?? [],
     steps,
     endCard,
+    intro,
+    frame,
     music,
     voice,
     sfx: pick('sfx') !== false,

@@ -54,3 +54,52 @@ export async function writeOutputs(cfg, { captions, segs, narration, total }, { 
   }
   return files;
 }
+
+// `subtitles: burn`: the narration burned into the video, a few words at a time, each word lighting
+// up as it is spoken (karaoke). Word timing is estimated from word length within each spoken line.
+export function burnSubtitles(cfg, narration, { log = console.log } = {}) {
+  if (!narration.length) return log('note: subtitles: burn needs narration (say: lines and a voice); nothing burned in');
+  const { width: W, height: H } = cfg.output;
+  const bgr = (hex, a = '00') => { const h = hex.replace('#', ''); return `&H${a}${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`.toUpperCase(); };
+  const t = (s) => { const cs = Math.round(s * 100); return `${Math.floor(cs / 360000)}:${String(Math.floor(cs / 6000) % 60).padStart(2, '0')}:${String(Math.floor(cs / 100) % 60).padStart(2, '0')}.${String(cs % 100).padStart(2, '0')}`; };
+  const size = Math.round(H * 0.048), edge = Math.max(2, Math.round(size * 0.09));
+  const events = [];
+  for (const line of narration) {
+    const words = plain(line.text).split(/\s+/).filter(Boolean);
+    const weight = (w) => w.replace(/[^\p{L}\p{N}]/gu, '').length + 2;
+    const total = words.reduce((a, w) => a + weight(w), 0), span = line.end - line.start;
+    let at = line.start;
+    const timed = words.map((w) => { const d = (span * weight(w)) / total; const r = { w, start: at, d }; at += d; return r; });
+    // chunks of up to 7 words, broken after sentence punctuation
+    let chunk = [];
+    const flush = () => {
+      if (!chunk.length) return;
+      const s0 = chunk[0].start, e0 = chunk.at(-1).start + chunk.at(-1).d;
+      events.push(`Dialogue: 0,${t(s0)},${t(e0 + 0.05)},Sub,,0,0,0,,${chunk.map((x) => `{\\kf${Math.round(x.d * 100)}}${x.w.replace(/[{}]/g, '')}`).join(' ')}`);
+      chunk = [];
+    };
+    for (const x of timed) { chunk.push(x); if (chunk.length >= 7 || /[.!?;:]$/.test(x.w)) flush(); }
+    flush();
+  }
+  const ass = `[Script Info]
+ScriptType: v4.00+
+PlayResX: ${W}
+PlayResY: ${H}
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Sub,${cfg.theme.font},${size},${bgr(cfg.theme.accent)},&H00FFFFFF,${bgr(cfg.theme.ink)},&H80000000,1,0,0,0,100,100,0,0,1,${edge},${Math.round(edge * 0.8)},2,${Math.round(W * 0.08)},${Math.round(W * 0.08)},${Math.round(H * 0.06)},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+${events.join('\n')}
+`;
+  const file = path.join(cfg.work, 'subtitles.ass'), tmp = cfg.out.replace(/(\.[^.]+)$/, '.burn$1');
+  fs.writeFileSync(file, ass);
+  // the filter argument is parsed by ffmpeg: escape the characters it treats specially in paths
+  const arg = file.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', cfg.out, '-vf', `ass='${arg}'`, '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'copy', '-movflags', '+faststart', tmp]);
+  fs.renameSync(tmp, cfg.out);
+  log(`subtitles: burned in ${events.length} lines with word-by-word highlight`);
+}

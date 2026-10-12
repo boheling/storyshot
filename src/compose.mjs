@@ -19,13 +19,15 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   const K = tl.scale; // css px -> output px
   const ec0 = cfg.endCard;
   const END = !ec0 ? 0 : ec0.duration === 'auto' ? Math.max(1.0, (voiceLens.endCard ?? 0) + 0.6) : ec0.duration;
+  const in0 = cfg.intro;
+  const INTRO = !in0 ? 0 : in0.duration === 'auto' ? Math.max(1.8, (voiceLens.intro ?? 0) + 0.8) : in0.duration;
 
   // --- 1. segments (one per visible step), split into motion / waiting pieces ------------
   // Waiting (page loads, processing) is squeezed hard; cursor motion keeps a natural pace.
   // `duration: auto` plays motion in real time and makes the step as long as its narration
   // needs: extra time first shows more of the waiting, then holds the last frame.
   const segs = [], pieces = [];
-  let acc = 0, afterHidden = false;
+  let acc = INTRO, afterHidden = false; // the intro card plays over the first frame
   for (const [i, s] of cfg.steps.entries()) {
     const r = tl.steps[i];
     if (s.hidden) { afterHidden = segs.length > 0; continue; }
@@ -89,7 +91,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     const t = n / FPS;
     while (pi + 1 < pieces.length && t >= pieces[pi].o1) pi++;
     const p = pieces[pi];
-    const r = p.raw[0] + Math.min(1, (t - p.o0) / Math.max(1e-6, p.o1 - p.o0)) * (p.raw[1] - p.raw[0]);
+    const r = p.raw[0] + Math.min(1, Math.max(0, (t - p.o0) / Math.max(1e-6, p.o1 - p.o0))) * (p.raw[1] - p.raw[0]);
     while (fi + 1 < tl.frames.length && tl.frames[fi + 1].t <= r) fi++;
     fs.linkSync(path.join(cfg.work, 'raw', tl.frames[fi].file), path.join(SEQ, `${String(n).padStart(5, '0')}.jpg`));
   }
@@ -169,9 +171,13 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     const z = z0 + (z1 - z0) * e, cx = c0[0] + (c1[0] - c0[0]) * e, cy = c0[1] + (c1[1] - c0[1]) * e;
     return { z, x0: Math.min(Math.max(cx - W / z / 2, 0), W - W / z), y0: Math.min(Math.max(cy - H / z / 2, 0), H - H / z) };
   };
+  // browser-window frame: the page is drawn at (FX, FY), FW x FH, inside a window on a backdrop
+  const even = (x) => 2 * Math.round(x / 2);
+  const FW = cfg.frame ? even(W * 0.86) : W, FH = cfg.frame ? even(H * 0.86) : H, BAR = cfg.frame ? Math.round(H * 0.034) : 0;
+  const FX = even((W - FW) / 2), FY = cfg.frame ? even((H - FH - BAR) / 2 + BAR) : 0, F = FW / W;
   const onScreen = (b, t) => {
     const v = view(t);
-    return { x: (b.x * K - v.x0) * v.z, y: (b.y * K - v.y0) * v.z, w: b.width * K * v.z, h: b.height * K * v.z };
+    return { x: FX + (b.x * K - v.x0) * v.z * F, y: FY + (b.y * K - v.y0) * v.z * F, w: b.width * K * v.z * F, h: b.height * K * v.z * F };
   };
 
   // --- 4. captions + end card rendered as PNGs ----------------------------------------------
@@ -227,7 +233,9 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     const other = want === 'top' ? 'bottom' : 'top';
     let pos = want;
     const hit = hits(want);
-    if (hit && !hits(other)) {
+    if (hit && cfg.subtitles === 'burn' && other === 'bottom') {
+      warn(`step ${g.i + 1}: the caption covers ${hit.what}, and the bottom is kept for the burned-in subtitles — shorten the caption, or change the zoom`);
+    } else if (hit && !hits(other)) {
       pos = other;
       warn(`step ${g.i + 1}: the ${want} caption would cover ${hit.what}, so it was moved to the ${other}` + (explicit ? ` (despite captionPosition: ${explicit})` : '') + ` — set captionPosition: ${other} to make this explicit`);
     } else if (hit) warn(`step ${g.i + 1}: the caption covers ${hit.what} at both top and bottom — shorten the caption, or change the zoom`);
@@ -235,20 +243,67 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     else captions.push({ text: g.step.caption, t: [g.o0, g.o1], pos, n });
   }
   for (const [i, c] of captions.entries()) await shot(bubble(c.text, c.n, c.pos), path.join(cfg.work, `cap${i}.png`), true);
-  const ec = cfg.endCard;
-  if (ec) {
-    const logoPath = ec.logoFile ?? path.join(cfg.work, 'logo.png');
+  // Intro and end cards are short animations (logo pops, title rises, the highlight sweeps, a command
+  // CTA types itself out), rendered frame by frame by seeking the page's CSS animations.
+  const u = H / 1080;
+  const card = (c, logoPath) => {
     const logo = fs.existsSync(logoPath)
-      ? `<img src="data:image/${path.extname(logoPath).slice(1).replace('jpg', 'jpeg').replace('svg', 'svg+xml')};base64,${fs.readFileSync(logoPath).toString('base64')}" style="height:${Math.round(H * 0.09)}px">` : '';
-    const u = H / 1080;
-    await shot(`<body style="margin:0;width:${W}px;height:${H}px;${fontCss}
+      ? `<img class="a pop" src="data:image/${path.extname(logoPath).slice(1).replace('jpg', 'jpeg').replace('svg', 'svg+xml')};base64,${fs.readFileSync(logoPath).toString('base64')}" style="height:${Math.round(H * 0.09)}px">` : '';
+    const cmd = c.cta && /^\$?\s*(npx|npm|pnpm|yarn|bun|pip|pipx|uv|brew|curl|git|docker|cargo|go)\b/.test(c.cta);
+    const ctaText = String(c.cta ?? '').replace(/^\$\s*/, '');
+    return `<body style="margin:0;width:${W}px;height:${H}px;${fontCss}
       background:radial-gradient(${W * 0.62}px ${H * 0.65}px at 50% 40%,#ffffff 0%,#eef2f7 60%,#e2e8f0 100%);
       display:flex;flex-direction:column;align-items:center;justify-content:center;gap:${28 * u}px;text-align:center">
+      <style>
+        .a{animation-fill-mode:both;animation-timing-function:cubic-bezier(.2,.8,.2,1)}
+        .pop{animation-name:pop;animation-duration:.55s;animation-delay:.05s}
+        .rise{animation-name:rise;animation-duration:.6s}
+        .hl{background:linear-gradient(transparent 62%,${accent} 62%) no-repeat 0 0/0% 100%;animation:sweep .6s cubic-bezier(.4,0,.2,1) .75s both}
+        .type{display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;width:0;animation:type ${(ctaText.length * 0.045).toFixed(2)}s steps(${ctaText.length || 1}) .8s both}
+        .caret{display:inline-block;width:.55em;height:1.1em;margin-left:.1em;vertical-align:-.15em;background:${accent};animation:blink 1s steps(1) .8s infinite}
+        @keyframes pop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:none}}
+        @keyframes rise{from{opacity:0;transform:translateY(${24 * u}px)}to{opacity:1;transform:none}}
+        @keyframes sweep{to{background-size:100% 100%}}
+        @keyframes type{to{width:${ctaText.length}ch}}
+        @keyframes blink{50%{opacity:0}}
+      </style>
       <div style="display:flex;align-items:center;gap:${22 * u}px">${logo}
-        ${ec.title ? `<span style="font-size:${92 * u}px;font-weight:600;letter-spacing:-.03em;color:${ink}">${esc(ec.title)}</span>` : ''}</div>
-      ${ec.subtitle ? `<div style="font-size:${44 * u}px;color:#334155;letter-spacing:-.01em">${esc(ec.subtitle).replace(/\*\*(.+?)\*\*/g, `<span style="background:linear-gradient(transparent 62%,${accent} 62%)">$1</span>`)}</div>` : ''}
-      ${ec.cta ? `<div style="margin-top:${18 * u}px;font-size:${38 * u}px;font-weight:600;color:#fff;background:${ink};padding:${20 * u}px ${46 * u}px;border-radius:${16 * u}px">${esc(ec.cta)}</div>` : ''}
-      </body>`, path.join(cfg.work, 'endcard.png'), false);
+        ${c.title ? `<span class="a rise" style="animation-delay:.12s;font-size:${92 * u}px;font-weight:600;letter-spacing:-.03em;color:${ink}">${esc(c.title)}</span>` : ''}</div>
+      ${c.subtitle ? `<div class="a rise" style="animation-delay:.3s;font-size:${44 * u}px;color:#334155;letter-spacing:-.01em">${esc(c.subtitle).replace(/\*\*(.+?)\*\*/g, '<span class="hl">$1</span>')}</div>` : ''}
+      ${!c.cta ? '' : cmd
+        ? `<div class="a rise" style="animation-delay:.45s;margin-top:${18 * u}px;font:500 ${36 * u}px ui-monospace,SFMono-Regular,Menlo,monospace;color:#e2e8f0;background:${ink};padding:${20 * u}px ${36 * u}px;border-radius:${16 * u}px;text-align:left;box-shadow:0 ${16 * u}px ${40 * u}px rgba(15,23,42,.25)"><span style="color:${accent}">$</span> <span class="type">${esc(ctaText)}</span><span class="caret"></span></div>`
+        : `<div class="a rise" style="animation-delay:.45s;margin-top:${18 * u}px;font-size:${38 * u}px;font-weight:600;color:#fff;background:${ink};padding:${20 * u}px ${46 * u}px;border-radius:${16 * u}px">${esc(c.cta)}</div>`}
+      </body>`;
+  };
+  const animate = async (html, seconds, dir) => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
+    await pg.setContent(`<html><head>${head}</head>${html}</html>`, { waitUntil: 'networkidle' }).catch(() => {});
+    await pg.evaluate(() => document.fonts.ready);
+    const n = Math.ceil(seconds * FPS) + 1;
+    for (let k = 0; k < n; k++) {
+      await pg.evaluate((ms) => document.getAnimations().forEach((a) => { a.pause(); a.currentTime = ms; }), (k * 1000) / FPS);
+      await pg.screenshot({ path: path.join(dir, `${String(k).padStart(4, '0')}.jpg`), type: 'jpeg', quality: 92 });
+    }
+  };
+  const ec = cfg.endCard;
+  if (ec) await animate(card(ec, ec.logoFile ?? path.join(cfg.work, 'logo.png')), END + 0.5, path.join(cfg.work, 'endcard'));
+  if (in0) await animate(card(in0, in0.logoFile ?? path.join(cfg.work, 'intro-logo.png')), INTRO, path.join(cfg.work, 'intro'));
+  if (cfg.frame) {
+    // backdrop + window (under the page) and the backdrop again with a rounded hole (over it, for the corners)
+    const bg = cfg.frame.background ?? `radial-gradient(${W * 0.7}px ${H * 0.8}px at 15% 0%, ${accent}66, transparent 70%), radial-gradient(${W * 0.7}px ${H * 0.8}px at 100% 100%, #6366f166, transparent 70%), linear-gradient(135deg, #1e293b, ${ink})`;
+    const R = Math.round(12 * u), host = new URL(cfg.url).host.replace(/^www\./, '') + new URL(cfg.url).pathname.replace(/\/$/, '');
+    const dot = (c) => `<span style="width:${13 * u}px;height:${13 * u}px;border-radius:50%;background:${c};display:inline-block"></span>`;
+    await shot(`<body style="margin:0;width:${W}px;height:${H}px;background:${bg};${fontCss}">
+      <div style="position:absolute;left:${FX}px;top:${FY - BAR}px;width:${FW}px;height:${FH + BAR}px;border-radius:${R}px;background:#fff;box-shadow:0 ${30 * u}px ${80 * u}px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.08)"></div>
+      <div style="position:absolute;left:${FX}px;top:${FY - BAR}px;width:${FW}px;height:${BAR}px;border-radius:${R}px ${R}px 0 0;background:#e8ebef;display:flex;align-items:center;border-bottom:1px solid #d5d9df">
+        <div style="display:flex;gap:${8 * u}px;margin-left:${16 * u}px">${dot('#ff5f57')}${dot('#febc2e')}${dot('#28c840')}</div>
+        <div style="position:absolute;left:50%;transform:translateX(-50%);font-size:${15 * u}px;color:#4b5563;background:#fff;border-radius:${8 * u}px;padding:${4 * u}px ${60 * u}px">${esc(host)}</div>
+      </div></body>`, path.join(cfg.work, 'frame-bg.png'), false);
+    const hole = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect x="${FX}" y="${FY - BAR}" width="${FW}" height="${FH + BAR}" rx="${R}"/></svg>`);
+    await shot(`<body style="margin:0;width:${W}px;height:${H}px;background:transparent">
+      <div style="position:absolute;inset:0;background:${bg};-webkit-mask:linear-gradient(#000 0 0),url('data:image/svg+xml,${hole}');-webkit-mask-composite:xor;mask-composite:exclude"></div></body>`,
+      path.join(cfg.work, 'frame-fg.png'), true);
   }
   await browser.close();
 
@@ -258,6 +313,12 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     `zoompan=z='${zExpr}':x='clip(${cxExpr}-iw/zoom/2,0,iw-iw/zoom)':y='clip(${cyExpr}-ih/zoom/2,0,ih-ih/zoom)'` +
     `:d=1:fps=${FPS}:s=${W}x${H},format=yuv420p${END ? `,tpad=stop_mode=clone:stop_duration=${END}` : ''}[v0];\n`;
   let last = 'v0', idx = 1;
+  if (cfg.frame) {
+    inputs.push('-loop', '1', '-t', `${TOTAL}`, '-framerate', `${FPS}`, '-i', path.join(cfg.work, 'frame-bg.png'),
+      '-loop', '1', '-t', `${TOTAL}`, '-framerate', `${FPS}`, '-i', path.join(cfg.work, 'frame-fg.png'));
+    graph += `[v0]scale=${FW}:${FH}:flags=lanczos[pg];[${idx}:v][pg]overlay=${FX}:${FY}[fb];[fb][${idx + 1}:v]overlay=0:0,format=yuv420p[vf];\n`;
+    last = 'vf'; idx += 2;
+  }
   for (const [i, c] of captions.entries()) {
     const a = c.t[0] + 0.1, b = c.t[1] - 0.1;
     inputs.push('-loop', '1', '-t', `${TOTAL}`, '-framerate', `${FPS}`, '-i', path.join(cfg.work, `cap${i}.png`));
@@ -267,8 +328,15 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   }
   if (ec) {
     const st = VIDEO - 0.25;
-    inputs.push('-loop', '1', '-t', `${TOTAL}`, '-framerate', `${FPS}`, '-i', path.join(cfg.work, 'endcard.png'));
-    graph += `[${idx}:v]format=rgba,fade=in:st=${st.toFixed(3)}:d=0.3:alpha=1[ec];\n[${last}][ec]overlay=0:0:enable='gte(t,${st.toFixed(3)})'[v${++idx}];\n`;
+    inputs.push('-framerate', `${FPS}`, '-i', path.join(cfg.work, 'endcard', '%04d.jpg'));
+    graph += `[${idx}:v]format=rgba,setpts=PTS-STARTPTS+${st.toFixed(3)}/TB,fade=in:st=${st.toFixed(3)}:d=0.3:alpha=1[ec];\n` +
+      `[${last}][ec]overlay=0:0:eof_action=repeat:enable='gte(t,${st.toFixed(3)})'[v${++idx}];\n`;
+    last = `v${idx}`;
+  }
+  if (in0) {
+    inputs.push('-framerate', `${FPS}`, '-i', path.join(cfg.work, 'intro', '%04d.jpg'));
+    graph += `[${idx}:v]format=rgba,fade=out:st=${Math.max(0, INTRO - 0.35).toFixed(3)}:d=0.35:alpha=1[in];\n` +
+      `[${last}][in]overlay=0:0:eof_action=pass[v${++idx}];\n`;
     last = `v${idx}`;
   }
   graph += `[${last}]trim=duration=${TOTAL},format=yuv420p[out]`;
@@ -285,6 +353,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   // --- 6. preview contact sheet: one frame per step (at its zoom peak) + end card ------------
   // zoomed steps: at the zoom peak; others: late in the step, where its actions' result is visible
   const shots = segs.map((g) => ({ t: Math.min(g.o1 - 0.05, g.zoomPeak ?? g.o0 + (g.o1 - g.o0) * 0.8), label: `step ${g.i + 1} · ${g.o0.toFixed(1)}–${g.o1.toFixed(1)}s${g.step.zoom ? ' · zoom' : ''}`, caption: g.step.caption ?? '' }));
+  if (in0) shots.unshift({ t: INTRO * 0.8, label: `intro · 0.0–${INTRO.toFixed(1)}s`, caption: '' });
   if (ec) shots.push({ t: VIDEO + END / 2, label: `end card · ${VIDEO.toFixed(1)}–${TOTAL.toFixed(1)}s`, caption: '' });
   const cells = shots.map((sh, k) => {
     const f = path.join(cfg.work, `pv${k}.jpg`);
@@ -311,12 +380,14 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     whooshes: dedupe([
       ...tl.navs.map(toOut).filter((t) => t != null && t > 0.2),
       ...segs.filter((g) => g.afterHidden).map((g) => g.o0),
+      ...(in0 ? [INTRO - 0.3] : []),
       ...(ec ? [VIDEO - 0.25] : []),
     ]),
     risers: segs.filter((g) => g.step.sfx === 'riser').map((g) => [g.o0, g.o1]),
     chimes: segs.filter((g) => g.step.sfx === 'riser' || g.step.sfx === 'chime').map((g) => g.o1),
     // narration: each line may run until the next one starts
     voice: [
+      ...(in0?.say ? [{ text: in0.say, start: 0.15, where: 'intro' }] : []),
       ...segs.filter((g) => g.step.say).map((g) => ({ text: g.step.say, start: g.o0 + (g.step.sayAt ?? 0.15), where: `step ${g.i + 1}` })),
       ...(ec?.say ? [{ text: ec.say, start: VIDEO + 0.05, where: 'end card' }] : []),
     ],

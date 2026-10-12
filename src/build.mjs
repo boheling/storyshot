@@ -3,7 +3,7 @@ import { record } from './record.mjs';
 import { compose } from './compose.mjs';
 import { soundtrack } from './audio.mjs';
 import { measureVoice } from './voice.mjs';
-import { writeOutputs } from './outputs.mjs';
+import { writeOutputs, burnSubtitles } from './outputs.mjs';
 
 export async function build(cfg, mode = 'render', { log = console.log } = {}) {
   const t0 = Date.now();
@@ -12,6 +12,7 @@ export async function build(cfg, mode = 'render', { log = console.log } = {}) {
   const voiceLens = await measureVoice(cfg, { log });
   const { silent, events, preview, warnings, captions, segs } = await compose(cfg, { log, voiceLens });
   const audio = await soundtrack(cfg, events, silent, { log });
+  if (cfg.subtitles === 'burn') burnSubtitles(cfg, audio.narration ?? [], { log });
   const extras = await writeOutputs(cfg, { captions, segs, narration: audio.narration, total: events.total }, { log });
   return { out: audio.out, extras, preview, warnings: [...warnings, ...audio.warnings], duration: events.total, seconds: Math.round((Date.now() - t0) / 1000) };
 }

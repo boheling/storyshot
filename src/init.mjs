@@ -40,7 +40,13 @@ purpose: ${purpose}
 out: ${name}.mp4
 ${storageState ? `storageState: ${path.relative(path.dirname(path.resolve(file)), path.resolve(storageState)).split(path.sep).join('/')}   # saved login (never commit it)\n` : ''}${ignoreHTTPSErrors ? 'ignoreHTTPSErrors: true   # internal site with a self-signed certificate\n' : ''}${narrated ? 'voice: { provider: kokoro }        # free, local, English. For the final: { provider: elevenlabs, voice: <voice id> } + ELEVENLABS_API_KEY' : '# voice: { provider: kokoro }      # optional voiceover; add `say:` lines to steps'}
 
-setup:                             # runs before recording; clean the frame here${dismiss ? `\n  - dismiss: ${tgt(dismiss.target)}` : '\n  # - dismiss: { role: button, name: Accept cookies }'}
+${purpose === 'pitch' ? `intro:                             # title card before the recording (promos; optional for tutorials/lessons)
+  title: ${q(page.title.split(/[|—–-]/)[0].trim() || host)}
+  subtitle: TODO the one-line promise, with the **key words** in bold
+${PURPOSES[purpose]?.frame ? '# frame: false                     # the recording sits in a browser window on a backdrop; false = full frame\n' : ''}
+` : purpose === 'tutorial' || purpose === 'course' ? `# intro: { title: TODO, subtitle: TODO }   # optional title card (e.g. "How to export a report")
+
+` : ''}setup:                             # runs before recording; clean the frame here${dismiss ? `\n  - dismiss: ${tgt(dismiss.target)}` : '\n  # - dismiss: { role: button, name: Accept cookies }'}
 
 steps:
   - caption: ${q(h1?.text?.slice(0, 50) || page.title || host)}${say('TODO one sentence on what this product does.')}${dur(2.5)}
