@@ -229,9 +229,11 @@ purpose: pitch                                  # pitch | tutorial | course | do
 highlight: false                                # spotlight targets before click/type (per step or per action too)
 stepNumbers: false                              # numbered caption badges
 subtitles: false                                # write <out>.srt (narration, else captions); `burn` also burns the narration into the video, each word lighting up as it is spoken (captions move to the top)
+pace: slow                                      # fast (pitch) | normal (docs) | slow (tutorial, course): cursor and typing speed, a beat after each click, hold after narration, voice speed, how much of a wait is shown
+follow: true                                    # tutorial/course default: the camera zooms in on what each step touches and pans between steps (a step's own zoom wins; follow: false on a step skips it); or { scale: 1.8 }
 frame: true                                     # pitch default: the recording sits in a browser window on a backdrop; false = full frame, or { background: <css> }
 chapters: false                                 # write <out>.chapters.txt for YouTube
-clips: null                                     # gif | webm | mp4: one file per step in <out>-steps/
+clips: null                                     # gif | webm | mp4 | png, or a list (docs default: [gif, png]): one file per step in <out>-steps/, cropped to what the step touches, plus README.md, a ready-to-paste article (step captions, `doc:` text, images)
 maxWait: 1.0                                    # with duration: auto, the longest a wait is shown
 
 intro:                                          # optional title card before the recording (same fields as end_card)
@@ -255,6 +257,11 @@ steps:
     sfx: riser                                        # rising sound + chime (or `chime`)
     actions:
       - waitFor: { text: Done, timeout: 120000 }      # waiting is compressed automatically
+  - card: { kicker: Part 2, title: Read the results }  # a section card before this step (tutorials); becomes a chapter
+    caption: The hits table
+    say: Each row is a protein similar to yours.
+    actions:
+      - mark: { css: "tbody tr:nth-child(1)" }
   - hidden: true                                      # cut, not shown in the video
     actions:
       - goto: /
@@ -296,7 +303,9 @@ You can add `exact: true`, `last: true` or `nth: 2` to any of them.
 | `scroll` | `scroll: 600` |
 | `dismiss` | `dismiss: { role: button, name: Close }` (clicks only if visible) |
 | `mark` | `mark: "automatic zoom, captions"` sweeps a highlighter over that phrase, even inside a paragraph (scrolling to it if needed). `mark: { css: "table tr:nth-child(3)" }` marks any target with a box. Options: `ms` (sweep time, default 700), `color` (default: theme accent), `box: true/false`. Marks stay until the step ends. |
-| `unmark` | `unmark: true` clears the marks earlier |
+| `unmark` | `unmark: true` clears the marks (and notes) earlier |
+| `note` | `note: { target: { label: Database }, text: Curated proteins only }` puts a short label with an arrow next to the element, on the side with the most room (or `side: left/right/top/bottom`). It stays until the step ends and gets reading time (about 3 words a second, or `ms`). |
+| `select` | `select: { target: { label: Database }, option: "UniProtKB/Swiss-Prot" }` picks an option in a dropdown (by its visible text, or part of it). `inspect` lists each dropdown's options. |
 
 `ms` sets how long the cursor takes to travel to the target (`dragMs` for each
 drag move). `highlight: true/false` on `click`, `type` or `move` overrides the
@@ -365,7 +374,9 @@ about 2.5 words per second, or roughly 35 words for a 15 s video.
 
 ### Intro and end card
 
-Every field is optional; leave out `intro` / `end_card` for none. Both are short
+Every field is optional; leave out `intro` / `end_card` for none. A step's
+`card` takes the same fields and plays before that step (section titles in
+tutorials). Both are short
 animations: the logo pops in, the title rises, the `**bold**` highlight sweeps,
 and a `cta` that is a command (`npx …`, `npm …`, `pip …`, `brew …`, `curl …`)
 types itself out in a terminal pill. `init` writes an `intro` for promos;
@@ -376,7 +387,11 @@ usually shouldn't.
 |---|---|
 | `logo` | A target on the page (captured as an image, e.g. `{ alt: Acme logo }`) or a path to an image file. If the logo image already contains the wordmark, leave out `title`. |
 | `title` | Large product name next to the logo. |
+| `kicker` | Small label above the title, e.g. `Part 2`. |
 | `subtitle` | One line; `**bold**` gets an accent highlight. |
+| `image` | A picture or diagram file (png, jpg, svg) under the title: concept cards in lessons. |
+| `think` | Seconds to pause after the card's `say` (a question card), with a "Pause and think" countdown. The next step shows the answer. |
+| `bullets` | A numbered list that appears one item at a time: "what you'll learn" on an intro, a recap on the end card. The card stays up long enough to read it. |
 | `cta` | Dark call-to-action pill, e.g. `Start free at acme.com`. |
 | `duration` | Seconds. Default: fits the `say` line, else 1.0 (end card) or 2.2 (intro). |
 | `say` | Voiceover line played over the end card. |

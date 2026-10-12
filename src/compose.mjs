@@ -18,9 +18,14 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   const { width: W, height: H, fps: FPS } = cfg.output;
   const K = tl.scale; // css px -> output px
   const ec0 = cfg.endCard;
-  const END = !ec0 ? 0 : ec0.duration === 'auto' ? Math.max(1.0, (voiceLens.endCard ?? 0) + 0.6) : ec0.duration;
+  // a card with bullets needs time to read them: they appear one by one, then hold
+  const readTime = (c) => (c?.bullets?.length ? 1.6 + 0.4 * c.bullets.length + 0.6 * c.bullets.length : 0);
+  // `think: N` (question cards): after the question is read out, N seconds with a countdown bar
+  const cardLen = (c, voice, min) => (c.duration === 'auto' || c.duration == null ? Math.max(min, (voice ?? 0) + 0.9, readTime(c)) + (c.think ?? 0) : c.duration);
+  const END = !ec0 ? 0 : ec0.duration === 'auto' ? Math.max(1.0, (voiceLens.endCard ?? 0) + 0.6, readTime(ec0)) : ec0.duration;
   const in0 = cfg.intro;
-  const INTRO = !in0 ? 0 : in0.duration === 'auto' ? Math.max(1.8, (voiceLens.intro ?? 0) + 0.8) : in0.duration;
+  const INTRO = !in0 ? 0 : in0.duration === 'auto' ? Math.max(1.8, (voiceLens.intro ?? 0) + 0.8, readTime(in0)) : in0.duration;
+  const cards = []; // section cards: { i, t0, t1, card }
 
   // --- 1. segments (one per visible step), split into motion / waiting pieces ------------
   // Waiting (page loads, processing) is squeezed hard; cursor motion keeps a natural pace.
@@ -47,10 +52,12 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     const Wt = parts.filter((p) => p[2]).reduce((x, p) => x + p[1] - p[0], 0);
     let D, waitBudget, motionBudget, hold = 0;
     if (s.duration === 'auto') {
-      const voiceNeed = voiceLens.steps[i] != null ? voiceLens.steps[i] + (s.sayAt ?? 0.15) + 0.4 : 0;
+      const voiceNeed = voiceLens.steps[i] != null ? voiceLens.steps[i] + (s.sayAt ?? 0.15) + cfg.pace.tail : 0;
       waitBudget = Math.min(Wt, cfg.maxWait);
       motionBudget = M;
-      D = Math.max(M + waitBudget, voiceNeed, 0.8);
+      // a silent step holds its result too (docs GIFs: long enough to see it before the loop restarts)
+      const quiet = s.say ? 0 : cfg.clips.length ? 1.5 : cfg.pace.tail;
+      D = Math.max(M + waitBudget + quiet, voiceNeed, 0.8);
       let extra = D - M - waitBudget;
       const stretch = Math.min(extra, Wt - waitBudget);
       waitBudget += stretch; extra -= stretch;
@@ -59,6 +66,13 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       D = s.duration;
       waitBudget = M + Wt <= D ? Wt * D / (M + Wt) : M === 0 ? D : Math.min(Wt, Math.max(D - M, 0.15 * D));
       motionBudget = D - waitBudget;
+    }
+    if (s.card) {
+      // a section card plays over the step's first frame, before the step
+      const C = cardLen(s.card, voiceLens.cards?.[i], 2.4);
+      pieces.push({ raw: [r.start, r.start], o0: acc, o1: acc + C });
+      cards.push({ i, t0: acc, t1: acc + C, card: s.card, thinkAt: C - (s.card.think ?? 0) - 0.3 });
+      acc += C;
     }
     const g = { i, step: s, o0: acc, o1: acc + D, zoomBox: r.zoomBox, afterHidden, hold,
       motionSpeed: M && motionBudget ? M / motionBudget : 1, waitSpeed: Wt && waitBudget ? Wt / waitBudget : 1 };
@@ -126,7 +140,33 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   // --- 3. zoom keyframes: [time, zoom, [cx, cy]] in output px -------------------------------
   const C0 = [W / 2, H / 2];
   const kf = [[0, 1, C0]];
+  // follow camera: steps without a zoom of their own zoom in on the boxes their actions touched
+  // (clicks, typing, marks), and consecutive followed steps pan from one subject to the next
+  const { width: VW0, height: VH0 } = cfg.viewport;
+  const followOf = (g) => {
+    if (!cfg.follow || g.step.zoom || g.step.follow === false) return null;
+    const bs = (tl.steps[g.i].marks ?? []).map((m) => m.box).filter((b) => b && b.width < VW0 * 0.9);
+    if (!bs.length) return null;
+    const u = bs.reduce((a, b) => ({ x0: Math.min(a.x0, b.x), y0: Math.min(a.y0, b.y), x1: Math.max(a.x1, b.x + b.width), y1: Math.max(a.y1, b.y + b.height) }), { x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9 });
+    const w = u.x1 - u.x0 + 160, h = u.y1 - u.y0 + 140; // some context around the subject
+    const scale = Math.max(1, Math.min(cfg.follow.scale, VW0 / w, VH0 / h));
+    if (scale < 1.15) return null;
+    return { box: { x: u.x0, y: u.y0, width: u.x1 - u.x0, height: u.y1 - u.y0 }, scale };
+  };
+  let followEnd = -1;
   for (const g of segs) {
+    const f = followOf(g);
+    if (f) {
+      g.zoomBox = f.box;
+      const c = [(f.box.x + f.box.width / 2) * K, (f.box.y + f.box.height / 2) * K];
+      const move = Math.min(0.7, (g.o1 - g.o0) / 3);
+      g.zoomPeak = g.o0 + move + 0.1;
+      if (Math.abs(followEnd - g.o0) < 1e-3 && kf.at(-1)[1] === 1) kf.pop(); // pan straight from the previous subject
+      else kf.push([g.o0, 1, C0]);
+      kf.push([g.o0 + move, f.scale, c], [g.o1 - 0.6, f.scale, c], [g.o1, 1, C0]);
+      followEnd = g.o1;
+      continue;
+    }
     const z = g.step.zoom;
     const t = z?.target;
     if (t && typeof t === 'object' && typeof t.x === 'number' && typeof t.y === 'number' && !t.role && !t.css && !t.text) {
@@ -246,7 +286,13 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   // Intro and end cards are short animations (logo pops, title rises, the highlight sweeps, a command
   // CTA types itself out), rendered frame by frame by seeking the page's CSS animations.
   const u = H / 1080;
-  const card = (c, logoPath) => {
+  const card = (c, logoPath, { thinkAt = 0 } = {}) => {
+    const image = c.imageFile && fs.existsSync(c.imageFile)
+      ? `<img class="a rise" src="data:image/${path.extname(c.imageFile).slice(1).replace('jpg', 'jpeg').replace('svg', 'svg+xml')};base64,${fs.readFileSync(c.imageFile).toString('base64')}" style="animation-delay:.4s;max-width:${W * 0.6}px;max-height:${H * 0.42}px;border-radius:${12 * H / 1080}px;box-shadow:0 ${12 * H / 1080}px ${36 * H / 1080}px rgba(15,23,42,.18)">` : '';
+    const think = c.think ? `<div class="a rise" style="animation-delay:${thinkAt.toFixed(2)}s;position:absolute;left:50%;bottom:${H * 0.1}px;transform:translateX(-50%);width:${W * 0.3}px;text-align:center;font-size:${26 * H / 1080}px;color:#64748b">
+        <div style="margin-bottom:${12 * H / 1080}px">Pause and think</div>
+        <div style="height:${8 * H / 1080}px;border-radius:99px;background:#e2e8f0;overflow:hidden"><div style="height:100%;background:${accent};transform-origin:left;animation:drain ${c.think}s linear ${thinkAt.toFixed(2)}s both"></div></div></div>
+        <style>@keyframes drain{from{transform:scaleX(1)}to{transform:scaleX(0)}}</style>` : '';
     const logo = fs.existsSync(logoPath)
       ? `<img class="a pop" src="data:image/${path.extname(logoPath).slice(1).replace('jpg', 'jpeg').replace('svg', 'svg+xml')};base64,${fs.readFileSync(logoPath).toString('base64')}" style="height:${Math.round(H * 0.09)}px">` : '';
     const cmd = c.cta && /^\$?\s*(npx|npm|pnpm|yarn|bun|pip|pipx|uv|brew|curl|git|docker|cargo|go)\b/.test(c.cta);
@@ -267,9 +313,15 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
         @keyframes type{to{width:${ctaText.length}ch}}
         @keyframes blink{50%{opacity:0}}
       </style>
+      ${c.kicker ? `<div class="a rise" style="font-size:${30 * u}px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#64748b">${esc(c.kicker)}</div>` : ''}
       <div style="display:flex;align-items:center;gap:${22 * u}px">${logo}
         ${c.title ? `<span class="a rise" style="animation-delay:.12s;font-size:${92 * u}px;font-weight:600;letter-spacing:-.03em;color:${ink}">${esc(c.title)}</span>` : ''}</div>
       ${c.subtitle ? `<div class="a rise" style="animation-delay:.3s;font-size:${44 * u}px;color:#334155;letter-spacing:-.01em">${esc(c.subtitle).replace(/\*\*(.+?)\*\*/g, '<span class="hl">$1</span>')}</div>` : ''}
+      ${image}${think}
+      ${c.bullets?.length ? `<ol style="margin:${10 * u}px 0 0;padding:0;list-style:none;text-align:left;display:flex;flex-direction:column;gap:${18 * u}px">${c.bullets.map((b, k) =>
+        `<li class="a rise" style="animation-delay:${(0.6 + 0.4 * k).toFixed(2)}s;display:flex;align-items:center;gap:${20 * u}px;font-size:${38 * u}px;color:#1e293b">
+          <span style="flex:none;display:inline-flex;align-items:center;justify-content:center;width:${52 * u}px;height:${52 * u}px;border-radius:50%;background:${accent};color:${ink};font-weight:700;font-size:${28 * u}px">${k + 1}</span>
+          <span>${md(b, ink)}</span></li>`).join('')}</ol>` : ''}
       ${!c.cta ? '' : cmd
         ? `<div class="a rise" style="animation-delay:.45s;margin-top:${18 * u}px;font:500 ${36 * u}px ui-monospace,SFMono-Regular,Menlo,monospace;color:#e2e8f0;background:${ink};padding:${20 * u}px ${36 * u}px;border-radius:${16 * u}px;text-align:left;box-shadow:0 ${16 * u}px ${40 * u}px rgba(15,23,42,.25)"><span style="color:${accent}">$</span> <span class="type">${esc(ctaText)}</span><span class="caret"></span></div>`
         : `<div class="a rise" style="animation-delay:.45s;margin-top:${18 * u}px;font-size:${38 * u}px;font-weight:600;color:#fff;background:${ink};padding:${20 * u}px ${46 * u}px;border-radius:${16 * u}px">${esc(c.cta)}</div>`}
@@ -288,6 +340,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   };
   const ec = cfg.endCard;
   if (ec) await animate(card(ec, ec.logoFile ?? path.join(cfg.work, 'logo.png')), END + 0.5, path.join(cfg.work, 'endcard'));
+  for (const [k, c] of cards.entries()) await animate(card(c.card, c.card.logoFile ?? '', { thinkAt: c.thinkAt }), c.t1 - c.t0, path.join(cfg.work, `card${k}`));
   if (in0) await animate(card(in0, in0.logoFile ?? path.join(cfg.work, 'intro-logo.png')), INTRO, path.join(cfg.work, 'intro'));
   if (cfg.frame) {
     // backdrop + window (under the page) and the backdrop again with a rounded hole (over it, for the corners)
@@ -326,6 +379,12 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       `[${last}][c${i}]overlay=0:0:enable='between(t,${a.toFixed(3)},${b.toFixed(3)})'[v${idx}];\n`;
     last = `v${idx++}`;
   }
+  for (const [k, c] of cards.entries()) {
+    inputs.push('-framerate', `${FPS}`, '-i', path.join(cfg.work, `card${k}`, '%04d.jpg'));
+    graph += `[${idx}:v]format=rgba,setpts=PTS-STARTPTS+${c.t0.toFixed(3)}/TB,fade=in:st=${c.t0.toFixed(3)}:d=0.25:alpha=1,fade=out:st=${Math.max(c.t0, c.t1 - 0.3).toFixed(3)}:d=0.3:alpha=1[sc${k}];\n` +
+      `[${last}][sc${k}]overlay=0:0:eof_action=pass:enable='between(t,${c.t0.toFixed(3)},${c.t1.toFixed(3)})'[v${++idx}];\n`;
+    last = `v${idx}`;
+  }
   if (ec) {
     const st = VIDEO - 0.25;
     inputs.push('-framerate', `${FPS}`, '-i', path.join(cfg.work, 'endcard', '%04d.jpg'));
@@ -353,6 +412,8 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   // --- 6. preview contact sheet: one frame per step (at its zoom peak) + end card ------------
   // zoomed steps: at the zoom peak; others: late in the step, where its actions' result is visible
   const shots = segs.map((g) => ({ t: Math.min(g.o1 - 0.05, g.zoomPeak ?? g.o0 + (g.o1 - g.o0) * 0.8), label: `step ${g.i + 1} · ${g.o0.toFixed(1)}–${g.o1.toFixed(1)}s${g.step.zoom ? ' · zoom' : ''}`, caption: g.step.caption ?? '' }));
+  for (const c of cards) shots.push({ t: c.t0 + (c.t1 - c.t0) * 0.85, label: `card · ${c.t0.toFixed(1)}–${c.t1.toFixed(1)}s`, caption: c.card.title ?? '' });
+  shots.sort((a, b) => a.t - b.t);
   if (in0) shots.unshift({ t: INTRO * 0.8, label: `intro · 0.0–${INTRO.toFixed(1)}s`, caption: '' });
   if (ec) shots.push({ t: VIDEO + END / 2, label: `end card · ${VIDEO.toFixed(1)}–${TOTAL.toFixed(1)}s`, caption: '' });
   const cells = shots.map((sh, k) => {
@@ -381,6 +442,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       ...tl.navs.map(toOut).filter((t) => t != null && t > 0.2),
       ...segs.filter((g) => g.afterHidden).map((g) => g.o0),
       ...(in0 ? [INTRO - 0.3] : []),
+      ...cards.flatMap((c) => [c.t0, c.t1 - 0.3]),
       ...(ec ? [VIDEO - 0.25] : []),
     ]),
     risers: segs.filter((g) => g.step.sfx === 'riser').map((g) => [g.o0, g.o1]),
@@ -388,12 +450,28 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     // narration: each line may run until the next one starts
     voice: [
       ...(in0?.say ? [{ text: in0.say, start: 0.15, where: 'intro' }] : []),
+      ...cards.filter((c) => c.card.say).map((c) => ({ text: c.card.say, start: c.t0 + 0.15, where: `step ${c.i + 1} card` })),
       ...segs.filter((g) => g.step.say).map((g) => ({ text: g.step.say, start: g.o0 + (g.step.sayAt ?? 0.15), where: `step ${g.i + 1}` })),
       ...(ec?.say ? [{ text: ec.say, start: VIDEO + 0.05, where: 'end card' }] : []),
     ],
   };
+  events.voice.sort((a, b) => a.start - b.start);
   events.voice.forEach((v, k) => { v.until = events.voice[k + 1]?.start ?? TOTAL - 0.1; });
   fs.writeFileSync(path.join(cfg.work, 'events.json'), JSON.stringify(events, null, 1));
   log(segs.map((g) => `  ${g.o0.toFixed(1)}–${g.o1.toFixed(1)}s  step ${g.i + 1}  motion x${g.motionSpeed.toFixed(1)}  waiting x${g.waitSpeed.toFixed(1)}`).join('\n'));
-  return { silent, events, preview, warnings, captions, segs: segs.map((g) => ({ i: g.i, o0: g.o0, o1: g.o1, caption: g.step.caption })) };
+  // docs clips: the part of the frame each step is about (what it clicked, typed into, marked or
+  // noted, with some context), in output px, same aspect ratio as the video
+  for (const g of segs) {
+    const bs = (tl.steps[g.i].marks ?? []).map((m) => onScreen(m.box, Math.max(g.o0, g.o1 - 0.1))).filter((b) => b.w > 0);
+    if (!bs.length) continue;
+    const x0 = Math.min(...bs.map((b) => b.x)), y0 = Math.min(...bs.map((b) => b.y));
+    const x1 = Math.max(...bs.map((b) => b.x + b.w)), y1 = Math.max(...bs.map((b) => b.y + b.h));
+    const pad = H * 0.12;
+    let w = Math.max(x1 - x0 + 2 * pad, W * 0.5), h = Math.max(y1 - y0 + 2 * pad, H * 0.5);
+    if (w / h > W / H) h = w * H / W; else w = h * W / H;
+    w = Math.min(W, w); h = Math.min(H, h);
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    g.crop = { x: even(Math.max(0, Math.min(W - w, cx - w / 2))), y: even(Math.max(0, Math.min(H - h, cy - h / 2))), w: even(w), h: even(h) };
+  }
+  return { silent, events, preview, warnings, captions, cards: cards.map((c) => ({ t: c.t0, title: [c.card.kicker, c.card.title].filter(Boolean).join(' · ') })), segs: segs.map((g) => ({ i: g.i, o0: g.o0, o1: g.o1, caption: g.step.caption, doc: g.step.doc ?? g.step.say, crop: g.crop })) };
 }

@@ -11,7 +11,7 @@ const srtTime = (t) => {
 const clock = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const slug = (s) => plain(s).toLowerCase().replace(/[^a-z0-9一-鿿]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
 
-export async function writeOutputs(cfg, { captions, segs, narration, total }, { log = console.log } = {}) {
+export async function writeOutputs(cfg, { captions, cards = [], segs, narration, total }, { log = console.log } = {}) {
   const base = cfg.out.replace(/\.[^.]+$/, '');
   const files = [];
 
@@ -24,33 +24,51 @@ export async function writeOutputs(cfg, { captions, segs, narration, total }, { 
   }
 
   // YouTube chapters (paste into the description): one per caption, first at 0:00.
-  if (cfg.chapters && captions.length) {
-    const lines = captions.map((c, k) => `${clock(k === 0 ? 0 : c.t[0])} ${cfg.stepNumbers ? `${c.n}. ` : ''}${plain(c.text)}`);
+  if (cfg.chapters && (captions.length || cards.length)) {
+    // section cards make the chapters when there are any; otherwise one chapter per caption
+    const lines = cards.length
+      ? [...(cards[0].t > 1 ? [`0:00 Introduction`] : []), ...cards.map((c, k) => `${clock(k === 0 && cards[0].t <= 1 ? 0 : c.t)} ${plain(c.title)}`)]
+      : captions.map((c, k) => `${clock(k === 0 ? 0 : c.t[0])} ${cfg.stepNumbers ? `${c.n}. ` : ''}${plain(c.text)}`);
     fs.writeFileSync(`${base}.chapters.txt`, `${lines.join('\n')}\n`);
     files.push(`${base}.chapters.txt`);
     if (total < 30 || captions.length < 3) log('note: YouTube only shows chapters for videos with ≥3 chapters of ≥10s each');
   }
 
-  // One clip per visible step, for docs / help-center embeds.
-  if (cfg.clips) {
+  // Per-step files for docs / help-center articles: clips cropped to what the step is about, an
+  // annotated still of each step's result, and a ready-to-paste Markdown article that uses them.
+  if (cfg.clips.length) {
     const dir = `${base}-steps`;
     fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(dir, { recursive: true });
-    const W = Math.min(cfg.output.width, cfg.clips === 'gif' ? 960 : 1280);
+    const article = [`# ${plain(cfg.intro?.title ?? cfg.name)}`, ''];
     for (const [k, g] of segs.entries()) {
-      const name = `${String(k + 1).padStart(2, '0')}${g.caption ? `-${slug(g.caption)}` : ''}.${cfg.clips}`;
-      const f = path.join(dir, name), span = ['-ss', g.o0.toFixed(3), '-t', (g.o1 - g.o0).toFixed(3), '-i', cfg.out];
-      if (cfg.clips === 'gif') {
-        execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...span, '-filter_complex',
-          `fps=12,scale=${W}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=160:stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a:diff_mode=rectangle`, f]);
-      } else if (cfg.clips === 'webm') {
-        execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...span, '-an', '-vf', `scale=${W}:-2`, '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '34', '-row-mt', '1', f]);
-      } else {
-        execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...span, '-c:v', 'libx264', '-crf', '20', '-preset', 'fast', '-c:a', 'aac', '-movflags', '+faststart', f]);
+      const stem = `${String(k + 1).padStart(2, '0')}${g.caption ? `-${slug(g.caption)}` : ''}`;
+      const crop = g.crop ? `crop=${g.crop.w}:${g.crop.h}:${g.crop.x}:${g.crop.y},` : '';
+      const cw = g.crop?.w ?? cfg.output.width;
+      const span = ['-ss', g.o0.toFixed(3), '-t', (g.o1 - g.o0).toFixed(3), '-i', cfg.out];
+      const made = [];
+      for (const kind of cfg.clips) {
+        const f = path.join(dir, `${stem}.${kind}`);
+        if (kind === 'gif') {
+          const w = Math.min(cw, 960);
+          execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...span, '-filter_complex',
+            `${crop}fps=12,scale=${w}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=160:stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a:diff_mode=rectangle`, f]);
+        } else if (kind === 'png') {
+          execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', Math.max(g.o0, g.o1 - 0.2).toFixed(3), '-i', cfg.out, '-frames:v', '1', ...(crop ? ['-vf', crop.slice(0, -1)] : []), f]);
+        } else if (kind === 'webm') {
+          execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...span, '-an', '-vf', `${crop}scale=${Math.min(cw, 1280)}:-2`, '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '34', '-row-mt', '1', f]);
+        } else {
+          execFileSync('ffmpeg', ['-y', '-loglevel', 'error', ...span, ...(crop ? ['-vf', crop.slice(0, -1)] : []), '-c:v', 'libx264', '-crf', '20', '-preset', 'fast', '-c:a', 'aac', '-movflags', '+faststart', f]);
+        }
+        files.push(f); made.push(path.basename(f));
       }
-      files.push(f);
+      article.push(`${k + 1}. **${plain(g.caption ?? `Step ${k + 1}`)}**${g.doc ? `\n\n   ${plain(g.doc)}` : ''}`, '');
+      const show = made.find((m) => m.endsWith('.gif') || m.endsWith('.png'));
+      if (show) article.push(`   ![${plain(g.caption ?? `Step ${k + 1}`)}](${encodeURI(show)})`, '');
     }
-    log(`clips: ${segs.length} × ${cfg.clips} in ${dir}`);
+    fs.writeFileSync(path.join(dir, 'README.md'), article.join('\n'));
+    files.push(path.join(dir, 'README.md'));
+    log(`clips: ${segs.length} steps × ${cfg.clips.join(' + ')} in ${dir}, plus README.md (the article)`);
   }
   return files;
 }

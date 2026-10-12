@@ -72,8 +72,8 @@ everything.
    | type | length | voice | music | on screen / files |
    |---|---|---|---|---|
    | `pitch` | 15 s (or 30 s), 5–7 shots | optional | upbeat | captions |
-   | `tutorial` | 45–90 s, 6–12 steps | yes | soft | step numbers, spotlight, .srt, chapters |
-   | `course` | 1–3 min | yes | none | spotlight, .srt, chapters |
+   | `tutorial` | 1–3 min, one action per step, 2 examples | yes | soft | step numbers, spotlight, camera follows, part cards, recap, .srt, chapters |
+   | `course` | 2–5 min | yes | none | spotlight, camera follows, part cards, recap, .srt, chapters |
    | `docs` | one GIF per step | none | none | step numbers, spotlight, GIFs |
 
    Captions match the site's language. `kokoro` (free, local) speaks English
@@ -121,7 +121,59 @@ everything.
 
 ## 3. Write the storyboard
 
-Rules of thumb from real renders:
+### Tutorials and lessons are not ads
+
+A promo shows as much as possible, fast. A tutorial does the opposite: the
+viewer has to be able to **do it themselves** afterwards, often in a technical
+or scientific tool they have never seen. Storyshot paces `tutorial` and
+`course` slowly by default (`pace: slow`: slower cursor and typing, a beat
+after every click, a hold after every narration line, slower voice, real
+progress shown for waits) and the camera follows the action (`follow`), so
+small controls are readable. Your job is the structure:
+
+- **Start with the goal**: an `intro` with `bullets` saying what the viewer
+  will be able to do ("Run a BLAST search", "Read the hits table", "Judge a
+  match by E-value"), and what they need beforehand.
+- **Split the workflow into parts**, each opened by a `card`
+  (`card: { kicker: Part 2, title: Read the results }` on its first step).
+  Cards become the YouTube chapters.
+- **One action per step.** Each click, field or choice is its own step with
+  its own `say:` explaining **what** it does and **why this value**. Never
+  "fill in the form and submit" in one line. `check` warns when a tutorial
+  step does more than two things.
+- **Show, then explain the result.** After an action that produces output
+  (a results table, a number, a plot, a status), add a step that only looks:
+  `mark` the value or row you're talking about (`mark: "E value"`,
+  `mark: { css: "tbody tr:nth-child(1)" }`), and say what it means and how to
+  judge it ("an E-value this small means the match is not by chance").
+- **Label the controls that matter.** `note: { target: …, text: "FASTA or accession" }`
+  puts a short callout with an arrow next to a field, button or column. Use it for
+  the one thing a newcomer would get wrong, not for everything.
+- **Dropdowns:** `select: { target: …, option: "…" }` (inspect lists the
+  options). Say why this option.
+- **Then a different example.** Run the workflow again with a second input
+  that behaves differently (another sequence, sample, parameter), and point
+  out what changed and why. Comparison is what makes the concept stick.
+  A short `card` ("Now a second example") separates it.
+- **Lessons (`course`) explain the why.** Use concept cards for ideas that
+  aren't on screen (`card: { kicker: Concept, title: …, bullets: […], image:
+  diagram.svg }`), and question cards before a reveal (`card: { kicker:
+  Question, title: "Which hit is the real homolog?", think: 3 }`, then the
+  next step marks the answer).
+- **Docs GIFs (`docs`)** become a help-center article: each step's clip is
+  cropped to what it touches and holds the result before looping; a PNG of
+  each result and `<out>-steps/README.md` are written too. Give every step a
+  short `caption` (the heading) and a `doc:` line (the article text), and
+  `note` the field the reader must not miss.
+- **End with a recap**: `end_card` with `bullets` listing the steps or rules
+  to remember, and a `say` that repeats them.
+- **Waiting is part of the lesson.** Long computations are still compressed,
+  but say what is happening ("BLAST is now comparing your sequence against
+  the database; this usually takes under a minute").
+- Length follows the content: 1–3 minutes is normal. Don't cut explanation
+  to hit a length.
+
+Rules of thumb from real renders (promos and tutorials):
 
 - **One idea per step.**
   - `pitch`: 1.5–3 s per step (`duration:`). A 15 s video is 5–7 visible

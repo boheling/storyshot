@@ -180,18 +180,78 @@ function pageScript({ scrollOffset }) {
     const u = first.reduce((a, q) => ({ x: Math.min(a.x, q.left), y: Math.min(a.y, q.top), r: Math.max(a.r, q.right), b: Math.max(a.b, q.bottom) }), { x: 1e9, y: 1e9, r: -1e9, b: -1e9 });
     return { x: u.x, y: u.y, width: u.r - u.x, height: u.b - u.y };
   };
+  // `note`: a short label with an arrow pointing at an element, placed on the side with the most room.
+  window.__demoNote = (text, { side, ink, accent }) => {
+    const el = window.__demoMarkEl;
+    const layer = document.getElementById('__demo_notes') ?? document.documentElement.appendChild(Object.assign(document.createElement('div'), { id: '__demo_notes' }));
+    Object.assign(layer.style, { position: 'fixed', inset: '0', zIndex: '2147483645', pointerEvents: 'none', transition: 'opacity .3s ease' });
+    const pill = document.createElement('div');
+    pill.textContent = text;
+    Object.assign(pill.style, {
+      position: 'fixed', maxWidth: '360px', padding: '10px 16px', borderRadius: '12px', background: ink, color: '#fff',
+      font: '600 19px/1.3 -apple-system, "Segoe UI", Inter, sans-serif', boxShadow: `0 10px 30px rgba(0,0,0,.28), 0 0 0 2px ${accent}`,
+    });
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    Object.assign(svg.style, { position: 'fixed', left: '0', top: '0', width: '100vw', height: '100vh', overflow: 'visible' });
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    line.setAttribute('fill', 'none'); line.setAttribute('stroke', ink); line.setAttribute('stroke-width', '3'); line.setAttribute('stroke-linecap', 'round');
+    const head = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    head.setAttribute('r', '6'); head.setAttribute('fill', accent); head.setAttribute('stroke', ink); head.setAttribute('stroke-width', '2.5');
+    svg.append(line, head);
+    layer.append(svg, pill);
+    const gap = 46;
+    const pick = (r, w, h) => {
+      const room = { right: innerWidth - r.right, left: r.left, bottom: innerHeight - r.bottom, top: r.top };
+      if (side && side !== 'auto') return side;
+      if (room.right > w + gap + 20) return 'right';
+      if (room.left > w + gap + 20) return 'left';
+      return room.bottom > h + gap + 20 ? 'bottom' : 'top';
+    };
+    let where = null;
+    const place = () => {
+      if (!pill.isConnected) return;
+      const r = el.getBoundingClientRect(), w = pill.offsetWidth, h = pill.offsetHeight;
+      where ??= pick(r, w, h);
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      let x, y, ax, ay; // pill position, and where the arrow touches the element
+      if (where === 'right') { x = r.right + gap; y = cy - h / 2; ax = r.right + 4; ay = cy; }
+      else if (where === 'left') { x = r.left - gap - w; y = cy - h / 2; ax = r.left - 4; ay = cy; }
+      else if (where === 'bottom') { x = cx - w / 2; y = r.bottom + gap; ax = cx; ay = r.bottom + 4; }
+      else { x = cx - w / 2; y = r.top - gap - h; ax = cx; ay = r.top - 4; }
+      x = Math.max(12, Math.min(innerWidth - w - 12, x)); y = Math.max(12, Math.min(innerHeight - h - 12, y));
+      const px = where === 'right' ? x : where === 'left' ? x + w : Math.max(x + 16, Math.min(x + w - 16, ax));
+      const py = where === 'bottom' ? y : where === 'top' ? y + h : y + h / 2;
+      Object.assign(pill.style, { left: `${x}px`, top: `${y}px` });
+      line.setAttribute('d', `M${px},${py} L${ax},${ay}`);
+      head.setAttribute('cx', ax); head.setAttribute('cy', ay);
+      requestAnimationFrame(place);
+    };
+    place();
+    pill.animate([{ opacity: 0, transform: 'scale(.85)' }, { opacity: 1, transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    svg.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320 });
+    const r = el.getBoundingClientRect(), p = pill.getBoundingClientRect();
+    const x0 = Math.min(r.left, p.left), y0 = Math.min(r.top, p.top);
+    return { x: x0, y: y0, width: Math.max(r.right, p.right) - x0, height: Math.max(r.bottom, p.bottom) - y0 };
+  };
+  window.__demoUnnote = () => {
+    const layer = document.getElementById('__demo_notes');
+    if (layer) { layer.style.opacity = '0'; setTimeout(() => layer.remove(), 300); }
+  };
   window.__demoUnmark = () => {
     const layer = document.getElementById('__demo_marks');
     if (layer) { layer.style.opacity = '0'; setTimeout(() => layer.remove(), 300); }
   };
-  // in-page anchor links scroll smoothly instead of jumping
+  // in-page anchor links scroll smoothly instead of jumping. Runs after the page's own handlers
+  // (bubble phase) and only when none of them handled the click, so app links like
+  // <a href="#hit1" onclick="openHit()"> keep working.
   document.addEventListener('click', (e) => {
+    if (e.defaultPrevented) return;
     const a = e.target.closest?.('a[href^="#"]');
     const el = a && document.getElementById(decodeURIComponent(a.getAttribute('href').slice(1)));
-    if (!el) return;
-    e.preventDefault(); e.stopPropagation();
+    if (!el || !el.getClientRects().length) return;
+    e.preventDefault();
     window.__demoScrollTo(el, 1300);
-  }, true);
+  });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install); else install();
   setInterval(install, 300);
 }
@@ -259,6 +319,8 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
     cur = { x, y };
   }
   const nudge = () => page.mouse.move(cur.x, cur.y);
+  // a pause after an action that changes the page (tutorial pace), counted like a `pause`
+  const beat = async () => { if (fast || !cfg.pace.beat) return; holds += cfg.pace.beat / 1000; await sleep(cfg.pace.beat); };
   const clicks = [];
   async function press() { clicks.push(now()); await page.mouse.down(); await sleep(70); await page.mouse.up(); }
   // Time spent waiting on the page (loads, AI processing…) is tracked separately so
@@ -329,17 +391,18 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
       case 'move': case 'hover': {
         const p = await pointOf(spec, opt);
         await spot(p.box, value?.highlight === true); // stays on until the step ends
-        await moveTo(p.x, p.y, opt.ms ?? 700);
+        await moveTo(p.x, p.y, opt.ms ?? cfg.pace.cursor);
         break;
       }
       case 'click': {
         const p = await pointOf(spec, opt);
         const lit = await spot(p.box, hl);
-        await moveTo(p.x, p.y, opt.ms ?? 700);
-        await sleep(lit ? 350 : 120);
+        await moveTo(p.x, p.y, opt.ms ?? cfg.pace.cursor);
+        await sleep(lit ? 350 + cfg.pace.beat / 3 : 120);
         await press();
         if (lit) { await sleep(150); await spotOff(); }
         await settle();
+        await beat(); // let the viewer see what the click did
         break;
       }
       case 'dismiss': {
@@ -364,17 +427,17 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
         if (v.target) {
           const p = await pointOf(v.target, v);
           lit = await spot(p.box, hl);
-          await moveTo(p.x, p.y, v.ms ?? 600);
+          await moveTo(p.x, p.y, v.ms ?? cfg.pace.cursor * 0.85);
           await press();
         }
-        await page.keyboard.type(String(v.text), { delay: fast ? 0 : v.delay ?? 55 });
+        await page.keyboard.type(String(v.text), { delay: fast ? 0 : v.delay ?? cfg.pace.type });
         if (lit) await spotOff();
         break;
       }
       case 'drag': {
         // drag: { from: <target>, to: <target or point> } or { from, by: { x, y } } or by: [ {x}, {x} ] (several moves while held)
         const from = await pointOf(value.from, value);
-        await moveTo(from.x, from.y, value.ms ?? 600);
+        await moveTo(from.x, from.y, value.ms ?? cfg.pace.cursor * 0.85);
         await sleep(150);
         clicks.push(now());
         await page.mouse.down();
@@ -384,6 +447,26 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
         }, []);
         for (const h of hops) { await moveTo(h.x, h.y, value.dragMs ?? 900); await sleep(150); }
         await page.mouse.up();
+        break;
+      }
+      case 'select': {
+        // select: { target: <dropdown>, option: "UniProtKB/Swiss-Prot" } — native dropdowns don't render
+        // their popup in a recording, so: cursor to it, click ripple, pick the option, show the new value
+        if (!value?.target || value?.option == null) throw new Error('select needs { target: <dropdown>, option: "visible text of the option" }');
+        const p = await pointOf(value.target, value);
+        const lit = await spot(p.box, hl);
+        await moveTo(p.x, p.y, value.ms ?? cfg.pace.cursor);
+        clicks.push(now());
+        await page.evaluate(([x, y]) => document.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true })), [p.x, p.y]);
+        await sleep(250);
+        const l = locate(page, value.target), want = String(value.option);
+        const options = await l.evaluate((s) => [...(s.options ?? [])].map((o) => ({ text: o.text.trim(), value: o.value })));
+        const hit = options.find((o) => o.text === want) ?? options.find((o) => o.value === want) ?? options.find((o) => o.text.toLowerCase().includes(want.toLowerCase()));
+        if (!hit) throw new Error(`no option "${want}" in that dropdown — options: ${options.map((o) => `"${o.text}"`).join(', ')}`);
+        await l.selectOption({ value: hit.value });
+        if (lit) { await sleep(300); await spotOff(); }
+        await settle();
+        await beat();
         break;
       }
       case 'mark': {
@@ -413,7 +496,22 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
         await sleep(ms + (fast ? 0 : 300)); // let the sweep finish on screen
         break;
       }
-      case 'unmark': await page.evaluate(() => window.__demoUnmark()).catch(() => {}); break;
+      case 'unmark': await page.evaluate(() => { window.__demoUnmark(); window.__demoUnnote(); }).catch(() => {}); break;
+      case 'note': {
+        // note: { target: <target>, text: "Use FASTA format", side: auto|right|left|top|bottom } → label + arrow, kept until the step ends
+        if (!value?.target || !value?.text) throw new Error('note needs { target: <target>, text: "..." }');
+        const l = locate(page, value.target);
+        await waiting(() => l.waitFor({ state: 'visible', timeout: value.timeout ?? 15000 }));
+        await l.scrollIntoViewIfNeeded();
+        await l.evaluate((el) => { window.__demoMarkEl = el; });
+        const box = await page.evaluate(([t, o]) => window.__demoNote(t, o), [String(value.text), { side: value.side, ink: cfg.theme.ink, accent: cfg.theme.accent }]);
+        marks.push({ t: now(), box });
+        // reading time: about 3 words per second, at least a second
+        const read = fast ? 0 : value.ms ?? Math.max(1000, String(value.text).split(/\s+/).length * 330);
+        holds += read / 1000;
+        await sleep(read);
+        break;
+      }
       case 'press': {
         const key = typeof value === 'object' ? value.key : String(value);
         // on-screen key badge: shortcuts and special keys only (not plain characters), when highlighting
@@ -421,7 +519,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
         if (show && !fast) await page.evaluate((l) => window.__demoKeys(l), keyLabel(key)).catch(() => {});
         await page.keyboard.press(key);
         await sleep(200);
-        if (key === 'Enter') await settle();
+        if (key === 'Enter') { await settle(); await beat(); }
         break;
       }
       default: throw new Error(`unknown action "${kind}"`);
@@ -530,7 +628,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
     await runAll(s.actions, `step ${i + 1}`);
     const end = now(); // before clearing: a step that is held for its narration keeps its marks
     await spotOff();
-    await page.evaluate(() => window.__demoUnmark()).catch(() => {});
+    await page.evaluate(() => { window.__demoUnmark(); window.__demoUnnote(); }).catch(() => {});
     let zoomBox = null;
     if (s.zoom?.target) {
       if (isPoint(s.zoom.target)) {

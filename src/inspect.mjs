@@ -20,7 +20,8 @@ function collect() {
   };
   const vis = (el) => {
     const r = el.getBoundingClientRect(), s = getComputedStyle(el);
-    return r.width > 2 && r.height > 2 && s.visibility !== 'hidden' && s.display !== 'none' && +s.opacity > 0.05;
+    // (parked far off-screen = hidden: a common way to hide form fields)
+    return r.width > 2 && r.height > 2 && r.right > 0 && r.left < Math.max(innerWidth, document.documentElement.scrollWidth) && s.visibility !== 'hidden' && s.display !== 'none' && +s.opacity > 0.05;
   };
   const docScrolls = document.documentElement.scrollHeight > innerHeight + 10;
   let scroller = null;
@@ -64,9 +65,12 @@ function collect() {
   // editors (contenteditable, CodeMirror…): name them by label/placeholder, never by their (long) content
   const editorName = (el) => clean(el.getAttribute('aria-label')) || clean(el.getAttribute('placeholder')) || clean(el.getAttribute('aria-placeholder')) ||
     clean(el.closest('label')?.innerText) || '';
+  // a label's own text, without the links/buttons inside it (e.g. a "Clear" link)
+  const labelText = (lab) => { if (!lab) return null; const c = lab.cloneNode(true); c.querySelectorAll('a,button,select,input,textarea').forEach((x) => x.remove()); return clean(c.innerText) || null; };
   const interactive = [...document.querySelectorAll(NATIVE)]
     .filter((el) => vis(el) && el.tagName !== 'LABEL' && !isAd(el) && !(el.isContentEditable && el.parentElement?.isContentEditable))
-    .map((el) => ({ kind: 'role', role: roleOf(el), name: (el.isContentEditable || el.tagName === 'TEXTAREA' ? editorName(el) : nameOf(el)).slice(0, 80), shows: clean(el.innerText).slice(0, 60), alt: clean(el.querySelector('img[alt]')?.alt) || null, href: el.getAttribute('href'), label: el.labels?.[0] ? clean(el.labels[0].innerText) : null, ...pos(el) }));
+    .map((el) => ({ kind: 'role', role: roleOf(el), name: (el.isContentEditable || el.tagName === 'TEXTAREA' ? editorName(el) : nameOf(el)).slice(0, 80), shows: clean(el.innerText).slice(0, 60), alt: clean(el.querySelector('img[alt]')?.alt) || null, href: el.getAttribute('href'), label: labelText(el.labels?.[0]),
+      options: el.tagName === 'SELECT' ? [...el.options].map((o) => ({ text: clean(o.text), on: o.selected })).filter((o) => o.text).slice(0, 12) : null, ...pos(el) }));
   // custom clickables: outermost cursor:pointer elements that aren't native controls
   const pointer = [];
   for (const el of document.querySelectorAll('body *')) {
@@ -119,7 +123,8 @@ export async function describePage(page, viewport, { maxElements = 80 } = {}) {
       if (!target && el.alt) target = await verify(page.getByAltText(el.alt, { exact: true }), { alt: el.alt, exact: true }, el);
       if (!target && el.name) target = await verify(page.getByRole(el.role, { name: el.name }), { role: el.role, name: el.name }, el);
       if (!target && el.name) target = await verify(page.getByText(el.name, { exact: true }), { text: el.name, exact: true }, el);
-      if (!target && el.label) target = { label: el.label };
+      if (!target && el.label) target = await verify(page.getByLabel(el.label, { exact: true }), { label: el.label, exact: true }, el);
+      if (!target && el.label) target = await verify(page.getByLabel(el.label), { label: el.label }, el);
       if (!target && el.role === 'link' && el.href) target = `a[href="${el.href}"]`;
     } else {
       if (el.alt) target = await verify(page.getByAltText(el.alt, { exact: true }), { alt: el.alt, exact: true }, el);
@@ -151,7 +156,7 @@ export async function describePage(page, viewport, { maxElements = 80 } = {}) {
     '',
     '## Clickable elements — verified targets (each matches exactly one visible element) for click/move/zoom',
     '   Copy targets exactly; `name` is the accessible name, which may differ from the on-screen label.',
-    ...elements.map((e) => `${fold(e.y)} y=${e.y}\tat (${e.cx}, ${e.cy})\t${yaml(e.target)}${e.role === 'textbox' ? `  (text input ${e.w}×${e.h} — click it, then \`type: …\`)` : shows(e)}${e.href ? `  → ${e.href}` : ''}${e.kind === 'pointer' ? '  (custom clickable)' : ''}`),
+    ...elements.map((e) => `${fold(e.y)} y=${e.y}\tat (${e.cx}, ${e.cy})\t${yaml(e.target)}${e.role === 'textbox' ? `  (text input ${e.w}×${e.h} — click it, then \`type: …\`)` : e.options ? `  (dropdown — \`select: { target: …, option: "…" }\`; options: ${e.options.map((o) => `"${o.text}"${o.on ? ' (selected)' : ''}`).join(', ')})` : shows(e)}${e.href ? `  → ${e.href}` : ''}${e.kind === 'pointer' ? '  (custom clickable)' : ''}`),
     '',
     '## Images with alt text (target: { alt: "..." })',
     ...(info.images.length ? info.images.map((i) => `${fold(i.y)} y=${i.y}\t"${i.alt}"`) : ['(none)']),
