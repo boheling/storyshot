@@ -76,6 +76,10 @@ export function check(file, { draft = false } = {}) {
       const doing = (s.actions ?? []).filter((a) => a && ['click', 'type', 'drag', 'press', 'goto', 'select'].includes(Object.keys(a)[0]) && !(Object.keys(a)[0] === 'press' && /^(Enter|Tab)$/.test(String(Object.values(a)[0]))));
       if (doing.length > 2) warnings.push(`${where}: does ${doing.length} things (${doing.map((a) => Object.keys(a)[0]).join(', ')}) in one step — in a ${purpose}, split it so each action gets its own explanation and the viewer can keep up`);
       if (doing.length && !s.say) warnings.push(`${where}: does something but has no say: line — in a ${purpose}, tell the viewer what and why`);
+      const kinds = (s.actions ?? []).map((a) => a && Object.keys(a)[0]);
+      if (s.say && kinds.some((k) => k === 'scroll' || k === 'scrollTo') && !kinds.some((k) => ['mark', 'note', 'click', 'type', 'select', 'move', 'hover'].includes(k)) && !s.zoom) {
+        warnings.push(`${where}: scrolls and talks but points at nothing — on a dense page the viewer can't tell what you mean; \`mark\` or \`note\` the row or value the narration is about (the camera then zooms to it)`);
+      }
     }
   }
   if (raw.end_card) unknown(raw.end_card, END, 'end_card');

@@ -530,7 +530,15 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
   // Run a list of actions; on failure, say exactly which one and save a screenshot.
   async function runAll(actions, where) {
     for (const [j, a] of actions.entries()) {
-      try { await runAction(a); } catch (e) {
+      try {
+        // watchdog: an action that hangs (a frozen page, a stalled browser) fails with a clear message
+        // instead of silently recording minutes of nothing
+        const [kind0, v0] = Object.entries(a)[0];
+        const limit = (['waitFor', 'waitForUrl'].includes(kind0) ? (v0?.timeout ?? 180000) : (v0?.timeout ?? 15000)) + 60000;
+        let timer;
+        await Promise.race([runAction(a), new Promise((_, no) => { timer = setTimeout(() => no(new Error(`${kind0} took over ${Math.round(limit / 1000)}s — the page or browser seems frozen; try again, or add a waitFor before it`)), limit); })])
+          .finally(() => clearTimeout(timer));
+      } catch (e) {
         const shot = path.join(cfg.work, 'error.jpg');
         await page.screenshot({ path: shot, quality: 80 }).catch(() => {});
         // How did the target match? (nothing / only hidden elements / fine but something else failed)
@@ -587,6 +595,8 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
     const n = Math.min(inspectAfter, cfg.steps.length);
     for (const [i, s] of cfg.steps.slice(0, n).entries()) {
       stepHighlight = false;
+      // like the recording: marks and notes end with their step (the last step's stay in the screenshot)
+      if (i > 0) await page.evaluate(() => { window.__demoUnmark(); window.__demoUnnote(); }).catch(() => {});
       await runAll(s.actions, `step ${i + 1}`);
     }
     await sleep(800);

@@ -315,7 +315,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       </style>
       ${c.kicker ? `<div class="a rise" style="font-size:${30 * u}px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#64748b">${esc(c.kicker)}</div>` : ''}
       <div style="display:flex;align-items:center;gap:${22 * u}px">${logo}
-        ${c.title ? `<span class="a rise" style="animation-delay:.12s;font-size:${92 * u}px;font-weight:600;letter-spacing:-.03em;color:${ink}">${esc(c.title)}</span>` : ''}</div>
+        ${c.title ? `<span class="a rise" style="animation-delay:.12s;font-size:${92 * u}px;font-weight:600;letter-spacing:-.03em;color:${ink}">${esc(c.title).replace(/\*\*(.+?)\*\*/g, '<span class="hl">$1</span>')}</span>` : ''}</div>
       ${c.subtitle ? `<div class="a rise" style="animation-delay:.3s;font-size:${44 * u}px;color:#334155;letter-spacing:-.01em">${esc(c.subtitle).replace(/\*\*(.+?)\*\*/g, '<span class="hl">$1</span>')}</div>` : ''}
       ${image}${think}
       ${c.bullets?.length ? `<ol style="margin:${10 * u}px 0 0;padding:0;list-style:none;text-align:left;display:flex;flex-direction:column;gap:${18 * u}px">${c.bullets.map((b, k) =>
@@ -374,9 +374,11 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   }
   for (const [i, c] of captions.entries()) {
     const a = c.t[0] + 0.1, b = c.t[1] - 0.1;
-    inputs.push('-loop', '1', '-t', `${TOTAL}`, '-framerate', `${FPS}`, '-i', path.join(cfg.work, `cap${i}.png`));
-    graph += `[${idx}:v]format=rgba,fade=in:st=${a.toFixed(3)}:d=0.15:alpha=1,fade=out:st=${(b - 0.15).toFixed(3)}:d=0.15:alpha=1[c${i}];\n` +
-      `[${last}][c${i}]overlay=0:0:enable='between(t,${a.toFixed(3)},${b.toFixed(3)})'[v${idx}];\n`;
+    // each caption is an input only as long as it is on screen (decoding a looped PNG for the whole
+    // video, once per caption, made long tutorials take minutes to compose)
+    inputs.push('-loop', '1', '-t', `${(b - a + 0.1).toFixed(3)}`, '-framerate', `${FPS}`, '-i', path.join(cfg.work, `cap${i}.png`));
+    graph += `[${idx}:v]format=rgba,setpts=PTS-STARTPTS+${a.toFixed(3)}/TB,fade=in:st=${a.toFixed(3)}:d=0.15:alpha=1,fade=out:st=${(b - 0.15).toFixed(3)}:d=0.15:alpha=1[c${i}];\n` +
+      `[${last}][c${i}]overlay=0:0:eof_action=pass:enable='between(t,${a.toFixed(3)},${b.toFixed(3)})'[v${idx}];\n`;
     last = `v${idx++}`;
   }
   for (const [k, c] of cards.entries()) {
