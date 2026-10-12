@@ -551,13 +551,18 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
           await press();
         }
         const text = String(v.text);
-        const before = await page.evaluate(() => (document.activeElement?.value ?? document.activeElement?.textContent ?? '').length).catch(() => 0);
-        const copied = await page.evaluate((t) => navigator.clipboard.writeText(t).then(() => true, () => false), text).catch(() => false);
+        // the paste worked if the page received a paste event carrying the text (code editors keep their
+        // text outside the focused element, so comparing its value would miss it and paste twice)
+        const copied = await page.evaluate((t) => navigator.clipboard.writeText(t).then(() => {
+          window.__demoPasted = false;
+          document.addEventListener('paste', (e) => { window.__demoPasted = !!e.clipboardData?.getData('text'); }, { capture: true, once: true });
+          return true;
+        }, () => false), text).catch(() => false);
         if (!fast) await page.evaluate((l) => window.__demoKeys(l), process.platform === 'darwin' ? '⌘ V' : 'Ctrl V').catch(() => {});
         if (copied) await page.keyboard.press('ControlOrMeta+V');
         await sleep(200);
-        const after = await page.evaluate(() => (document.activeElement?.value ?? document.activeElement?.textContent ?? '').length).catch(() => 0);
-        if (!copied || after === before) await page.keyboard.insertText(text); // no clipboard access: insert it in one go
+        const pasted = copied && await page.evaluate(() => window.__demoPasted === true).catch(() => false);
+        if (!pasted) await page.keyboard.insertText(text); // no clipboard access: insert it in one go
         if (lit) await spotOff();
         await settle();
         await beat();
