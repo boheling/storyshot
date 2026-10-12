@@ -366,7 +366,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     const image = c.imageFile && fs.existsSync(c.imageFile)
       ? `<img class="a rise" src="data:image/${path.extname(c.imageFile).slice(1).replace('jpg', 'jpeg').replace('svg', 'svg+xml')};base64,${fs.readFileSync(c.imageFile).toString('base64')}" style="animation-delay:.4s;max-width:${W * 0.6}px;max-height:${H * 0.42}px;border-radius:${12 * H / 1080}px;box-shadow:0 ${12 * H / 1080}px ${36 * H / 1080}px rgba(15,23,42,.18)">` : '';
     const think = c.think ? `<div class="a rise" style="animation-delay:${thinkAt.toFixed(2)}s;position:absolute;left:50%;bottom:${H * 0.1}px;transform:translateX(-50%);width:${W * 0.3}px;text-align:center;font-size:${26 * H / 1080}px;color:${CK.muted}">
-        <div style="margin-bottom:${12 * H / 1080}px">${cfg.lang === 'zh' ? '先想一想' : 'Pause and think'}</div>
+        <div style="margin-bottom:${12 * H / 1080}px">${cfg.labels.think}</div>
         <div style="height:${8 * H / 1080}px;border-radius:99px;background:${CK.track};overflow:hidden"><div style="height:100%;background:${accent};transform-origin:left;animation:drain ${c.think}s linear ${thinkAt.toFixed(2)}s both"></div></div></div>
         <style>@keyframes drain{from{transform:scaleX(1)}to{transform:scaleX(0)}}</style>` : '';
     const logo = fs.existsSync(logoPath)

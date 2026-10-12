@@ -4,6 +4,17 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { VOICE_DEFAULTS } from './voice.mjs';
 
+// Built-in labels drawn into the video, by `lang` (e.g. es, es-MX); other languages get English
+export const LABELS = {
+  en: { think: 'Pause and think', intro: 'Introduction', downloaded: 'Downloaded' },
+  zh: { think: '先想一想', intro: '开场', downloaded: '已下载' },
+  es: { think: 'Piénsalo un momento', intro: 'Introducción', downloaded: 'Descargado' },
+  pt: { think: 'Pense um pouco', intro: 'Introdução', downloaded: 'Baixado' },
+  fr: { think: 'Réfléchissez', intro: 'Introduction', downloaded: 'Téléchargé' },
+  de: { think: 'Kurz nachdenken', intro: 'Einführung', downloaded: 'Heruntergeladen' },
+  ja: { think: '考えてみよう', intro: 'はじめに', downloaded: 'ダウンロード済み' },
+};
+
 // Load API keys (ELEVENLABS_API_KEY, OPENAI_API_KEY) from .env next to the storyboard
 // and in the working directory; variables already set in the environment win.
 export function loadEnv(dir) {
@@ -169,6 +180,7 @@ export function loadConfig(file, { draft = false } = {}) {
     cards: raw.cards ?? 'auto',
     // language of the built-in labels ("Pause and think", "Introduction"): `lang`, else guessed from the captions
     lang: raw.lang ?? (/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(JSON.stringify(raw.steps ?? [])) ? 'zh' : 'en'),
+    labels: LABELS[String(raw.lang ?? '').toLowerCase().split(/[-_]/)[0]] ?? (/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(JSON.stringify(raw.steps ?? [])) ? LABELS.zh : LABELS.en),
     frame,
     follow,
     music,

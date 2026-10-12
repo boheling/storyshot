@@ -260,9 +260,9 @@ function pageScript({ scrollOffset }) {
   window.__demoMenuHover = (i) => { const m = document.getElementById('__demo_menu'); if (m) [...m.children].forEach((o, k) => { o.style.background = k === i ? '#e0ecff' : ''; }); };
   window.__demoMenuClose = () => document.getElementById('__demo_menu')?.remove();
   // downloads leave no trace in a recording: show a browser-style "downloaded" bubble instead
-  window.__demoDownload = (name) => {
+  window.__demoDownload = (name, label = 'Downloaded') => {
     const el = document.createElement('div');
-    el.innerHTML = `<span style="display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#22c55e;color:#fff;font-weight:700">✓</span><span><b style="display:block;font-weight:600">${name.replace(/[<&]/g, '')}</b><span style="color:#64748b;font-size:14px">Downloaded</span></span>`;
+    el.innerHTML = `<span style="display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#22c55e;color:#fff;font-weight:700">✓</span><span><b style="display:block;font-weight:600">${name.replace(/[<&]/g, '')}</b><span style="color:#64748b;font-size:14px">${label}</span></span>`;
     Object.assign(el.style, { position: 'fixed', right: '24px', top: '20px', zIndex: '2147483646', pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: '12px',
       background: '#fff', color: '#0f172a', font: '16px -apple-system, "Segoe UI", sans-serif', padding: '12px 18px 12px 14px', borderRadius: '12px', boxShadow: '0 12px 32px rgba(15,23,42,.25)', border: '1px solid #e2e8f0' });
     document.documentElement.appendChild(el);
@@ -343,7 +343,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
   await context.addInitScript(pageScript, { scrollOffset: cfg.scrollOffset });
   const page = await context.newPage();
   page.on('download', (d) => {
-    page.evaluate((n) => window.__demoDownload?.(n), d.suggestedFilename()).catch(() => {});
+    page.evaluate(([n, l]) => window.__demoDownload?.(n, l), [d.suggestedFilename(), cfg.labels.downloaded]).catch(() => {});
     marks.push({ t: Date.now() / 1000, box: { x: cfg.viewport.width - 360, y: 10, width: 340, height: 80 } }); // so docs crops include the bubble
   });
   const sleep = (ms) => page.waitForTimeout(ms);

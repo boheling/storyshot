@@ -27,7 +27,7 @@ export async function writeOutputs(cfg, { captions, cards = [], segs, clean, nar
   if (cfg.chapters && (captions.length || cards.length)) {
     // section cards make the chapters when there are any; otherwise one chapter per caption
     const lines = cards.length
-      ? [...(cards[0].t > 1 ? [`0:00 ${cfg.lang === 'zh' ? '开场' : 'Introduction'}`] : []), ...cards.map((c, k) => `${clock(k === 0 && cards[0].t <= 1 ? 0 : c.t)} ${plain(c.title)}`)]
+      ? [...(cards[0].t > 1 ? [`0:00 ${cfg.labels.intro}`] : []), ...cards.map((c, k) => `${clock(k === 0 && cards[0].t <= 1 ? 0 : c.t)} ${plain(c.title)}`)]
       : captions.map((c, k) => `${clock(k === 0 ? 0 : c.t[0])} ${cfg.stepNumbers ? `${c.n}. ` : ''}${plain(c.text)}`);
     fs.writeFileSync(`${base}.chapters.txt`, `${lines.join('\n')}\n`);
     files.push(`${base}.chapters.txt`);

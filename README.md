@@ -260,6 +260,7 @@ subtitles: false                                # write <out>.srt (narration, el
 pace: slow                                      # fast (pitch) | normal (docs) | slow (tutorial, course): cursor and typing speed, a beat after each click, hold after narration, voice speed, how much of a wait is shown
 follow: true                                    # tutorial/course default: the camera zooms in on what each step touches and pans between steps (a step's own zoom wins; follow: false on a step skips it); or { scale: 1.8 }
 article: { title: Export a drawing, intro: … }  # docs: heading and first paragraph of <out>-steps/README.md
+lang: es                                        # language of built-in labels ("Pause and think", chapter "Introduction", "Downloaded"): en, zh, es, pt, fr, de, ja; default: zh if the steps contain Chinese, else en
 cards: auto                                     # intro/section/end cards: auto follows the frame (dark frames get dark cards), or light | dark
 frame: aurora                                   # the recording sits in a browser window on a backdrop: aurora (dark, grain; pitch default), studio (light, grain; tutorial and course default), dark, pastel, blur (the page itself, blurred); false = full frame; or { style, background: <css> }
 chapters: false                                 # write <out>.chapters.txt for YouTube
