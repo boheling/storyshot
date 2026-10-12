@@ -577,8 +577,16 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
         const from = await locate(page, value.target).evaluate((el) => {
           const r = el.type === 'range' ? el : el.querySelector?.('input[type=range]');
           if (r) return (Number(r.value) - Number(r.min || 0)) / ((Number(r.max || 100) - Number(r.min || 0)) || 1);
-          const now = Number(el.getAttribute('aria-valuenow')), lo = Number(el.getAttribute('aria-valuemin') ?? 0), hi = Number(el.getAttribute('aria-valuemax') ?? 100);
-          return Number.isFinite(now) ? (now - lo) / ((hi - lo) || 1) : 0.5;
+          const aria = el.hasAttribute('aria-valuenow') ? el : el.querySelector?.('[aria-valuenow]');
+          if (aria) {
+            const now = Number(aria.getAttribute('aria-valuenow')), lo = Number(aria.getAttribute('aria-valuemin') ?? 0), hi = Number(aria.getAttribute('aria-valuemax') ?? 100);
+            if (Number.isFinite(now)) return (now - lo) / ((hi - lo) || 1);
+          }
+          // custom sliders (e.g. Desmos): start where the knob is drawn, so the value doesn't jump first
+          const t = el.getBoundingClientRect();
+          const knob = [...el.querySelectorAll('[role=slider], [class*=thumb], [class*=handle], [class*=knob]')]
+            .map((k) => k.getBoundingClientRect()).find((k) => k.width > 0 && k.width < t.width * 0.5);
+          return knob ? (knob.x + knob.width / 2 - t.x) / (t.width || 1) : 0.5;
         }).catch(() => 0.5);
         const x0 = b.x + b.width * from, x1 = b.x + b.width * Math.max(0, Math.min(1, value.to)), y = b.y + b.height / 2;
         await moveTo(x0, y, value.ms ?? cfg.pace.cursor);
