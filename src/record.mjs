@@ -266,7 +266,7 @@ function pageScript({ scrollOffset }) {
     Object.assign(el.style, { position: 'fixed', right: '24px', top: '20px', zIndex: '2147483646', pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: '12px',
       background: '#fff', color: '#0f172a', font: '16px -apple-system, "Segoe UI", sans-serif', padding: '12px 18px 12px 14px', borderRadius: '12px', boxShadow: '0 12px 32px rgba(15,23,42,.25)', border: '1px solid #e2e8f0' });
     document.documentElement.appendChild(el);
-    el.animate([{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'none', offset: 0.1 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }], { duration: 2800, easing: 'ease-out' }).onfinish = () => el.remove();
+    el.animate([{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'none', offset: 0.1 }, { opacity: 1, offset: 0.9 }, { opacity: 0 }], { duration: 4500, easing: 'ease-out' }).onfinish = () => el.remove();
   };
   window.__demoUnnote = (instant) => {
     // detach it first, so a note or mark added during the fade gets a fresh layer instead of vanishing with this one

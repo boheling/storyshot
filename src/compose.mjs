@@ -234,7 +234,9 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     const b = g.zoomBox, off = z.offset ?? {};
     const c = [(b.x + b.width / 2 + (off.x ?? 0)) * K, (b.y + b.height / 2 + (off.y ?? 0)) * K];
     const [rin, rout] = Array.isArray(z.ramp) ? z.ramp : [z.ramp ?? 0.5, z.ramp ?? 0.5];
-    const s = g.o0 + (z.start ?? 0), e = Math.min(TOTAL, g.o0 + (z.end ?? g.o1 - g.o0)), scale = z.scale ?? 1.3;
+    // a zoom belongs to its step: an `end` past the step (e.g. after the narration grew it) stops there
+    if (z.end != null && g.o0 + z.end > g.o1 + 0.05) warn(`step ${g.i + 1}: zoom end ${z.end}s is past the step's end (${(g.o1 - g.o0).toFixed(1)}s), so it stops there — leave out end to zoom to the step's end`);
+    const s = g.o0 + (z.start ?? 0), e = Math.min(TOTAL, g.o1, g.o0 + (z.end ?? g.o1 - g.o0)), scale = z.scale ?? 1.3;
     const last = kf.at(-1)[0];
     if (s < last) { warn(`zoom in step ${g.i + 1} overlaps the previous zoom, skipped`); continue; }
     kf.push([s, 1, C0], [Math.min(s + rin, e), scale, c], [Math.max(s + rin, e - rout), scale, c], [e, 1, C0]);
