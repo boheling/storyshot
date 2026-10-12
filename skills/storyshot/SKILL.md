@@ -167,6 +167,11 @@ small controls are readable. Your job is the structure:
   `note` the field the reader must not miss.
 - **End with a recap**: `end_card` with `bullets` listing the steps or rules
   to remember, and a `say` that repeats them.
+- **Narrating real results.** You can't know the numbers (scores, counts,
+  E-values) before the app produces them. Write the result steps with
+  general narration, render once, read the actual values from the preview
+  frames, then rewrite those `say:`/`note`/caption lines with the real
+  numbers and run `compose` only (no re-recording, no new jobs).
 - **Waiting is part of the lesson.** Long computations are still compressed,
   but say what is happening ("BLAST is now comparing your sequence against
   the database; this usually takes under a minute").
