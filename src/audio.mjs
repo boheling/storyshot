@@ -183,8 +183,10 @@ export async function soundtrack(cfg, events, silentVideo, { log = console.log }
   const wavFile = path.join(cfg.work, 'soundtrack.wav');
   fs.writeFileSync(wavFile, wav);
 
+  // loudnorm alone lets peaks through after AAC encoding; the limiter keeps true peaks near −2 dB,
+  // so re-encoding by video sites doesn't clip
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', silentVideo, '-i', wavFile,
-    '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', `${SR}`, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', cfg.out]);
+    '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-af', `loudnorm=I=-14:TP=-1.5:LRA=11,aresample=${SR},alimiter=limit=0.7:level=false:attack=1:release=50`, '-ar', `${SR}`, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', cfg.out]);
   log(`soundtrack: ${cfg.music ? (cfg.music.file ? 'music file' : `synth ${cfg.music.bpm} bpm`) : 'no music'}, ${events.clicks.length} clicks, ${events.whooshes.length} whooshes` +
     (cfg.voice ? `, ${events.voice.length} narration lines (${cfg.voice.provider}/${cfg.voice.voice})` : ''));
   return { out: cfg.out, warnings, narration };
