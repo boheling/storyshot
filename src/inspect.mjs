@@ -67,10 +67,12 @@ function collect() {
     clean(el.closest('label')?.innerText) || '';
   // a label's own text, without the links/buttons inside it (e.g. a "Clear" link)
   const labelText = (lab) => { if (!lab) return null; const c = lab.cloneNode(true); c.querySelectorAll('a,button,select,input,textarea').forEach((x) => x.remove()); return clean(c.innerText) || null; };
+  // styled checkboxes and radios hide the real input and draw their label instead: list them where the label is
+  const shownBy = (el) => (el.tagName === 'INPUT' && ['checkbox', 'radio'].includes(el.type) && !vis(el) ? [...(el.labels ?? [])].find(vis) : null);
   const interactive = [...document.querySelectorAll(NATIVE)]
-    .filter((el) => vis(el) && el.tagName !== 'LABEL' && !isAd(el) && !(el.isContentEditable && el.parentElement?.isContentEditable))
+    .filter((el) => (vis(el) || shownBy(el)) && el.tagName !== 'LABEL' && !isAd(el) && !(el.isContentEditable && el.parentElement?.isContentEditable))
     .map((el) => ({ kind: 'role', role: roleOf(el), name: (el.isContentEditable || el.tagName === 'TEXTAREA' ? editorName(el) : nameOf(el)).slice(0, 80), shows: clean(el.innerText).slice(0, 60), alt: clean(el.querySelector('img[alt]')?.alt) || null, href: el.getAttribute('href'), label: labelText(el.labels?.[0]),
-      options: el.tagName === 'SELECT' ? [...el.options].map((o) => ({ text: clean(o.text), on: o.selected })).filter((o) => o.text).slice(0, 12) : null, ...pos(el) }));
+      options: el.tagName === 'SELECT' ? [...el.options].map((o) => ({ text: clean(o.text), on: o.selected })).filter((o) => o.text).slice(0, 12) : null, ...pos(shownBy(el) ?? el) }));
   // custom clickables: outermost cursor:pointer elements that aren't native controls
   const pointer = [];
   for (const el of document.querySelectorAll('body *')) {
