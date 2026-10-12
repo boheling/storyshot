@@ -4,7 +4,9 @@ Three tools made a promo video of the same page
 ([github.com/boheling/storyshot](https://github.com/boheling/storyshot)) with
 the same storyline: intro → what it does → what you can make → logged-in apps →
 install command. None of them used a paid voice. Runs were on macOS with
-ffmpeg 8.0.1, on 2026-10-11.
+ffmpeg 8.0.1, on 2026-10-11. To fit GitHub's 10 MB upload limit, the Storyshot and
+promo-video-recorder videos on the main README were re-encoded with the same
+settings (H.264 capped at 2 Mbit/s).
 
 | | Storyshot 0.1.3 | [promo-video-recorder](https://github.com/palamut62/promo-video-recorder) (commit 11045d9) | [demo-dev](https://www.npmjs.com/package/demo-dev) 0.0.2-alpha.0 |
 |---|---|---|---|

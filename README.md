@@ -22,7 +22,6 @@ and [demo-dev](https://www.npmjs.com/package/demo-dev) each made a promo of this
 repo's page, with the same storyline and free local voices only. The grid
 below is muted; open the full videos to hear them.
 
-<!-- VIDEO: comparison.mp4 (2x2 grid) -->
 https://github.com/user-attachments/assets/3d8175ab-ba15-4b61-961d-481e57566e7a
 
 <details>
@@ -30,20 +29,15 @@ https://github.com/user-attachments/assets/3d8175ab-ba15-4b61-961d-481e57566e7a
 
 **Storyshot**
 
-<!-- VIDEO: storyshot.mp4 -->
 https://github.com/user-attachments/assets/22987356-2a74-4e28-9a14-a1b01d04f932
-
 
 **promo-video-recorder**
 
-<!-- VIDEO: promo-video-recorder.mp4 -->
 https://github.com/user-attachments/assets/e5eb86e5-e69c-403b-ad6c-c4499592307a
 
 **demo-dev**
 
-<!-- VIDEO: demo-dev.mp4 -->
 https://github.com/user-attachments/assets/8d3370ca-7a90-48af-b1c9-88189763e95d
-
 
 </details>
 
