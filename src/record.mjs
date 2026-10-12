@@ -734,8 +734,12 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
     frames.push({ file, t: metadata.timestamp });
     cdp.send('Page.screencastFrameAck', { sessionId }).catch(() => {});
   });
-  const navs = [];
-  page.on('framenavigated', (f) => { if (f === page.mainFrame()) navs.push(now()); });
+  const navs = [], urls = [{ t: now(), url: page.url() }]; // urls: what the frame's address bar shows
+  page.on('framenavigated', (f) => {
+    if (f !== page.mainFrame()) return;
+    navs.push(now());
+    if (f.url() !== urls.at(-1).url) urls.push({ t: now(), url: f.url() });
+  });
   await cdp.send('Page.startScreencast', {
     format: 'jpeg', quality: 92, maxWidth: cfg.output.width, maxHeight: cfg.output.height, everyNthFrame: 1,
   });
@@ -777,7 +781,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
   await cdp.send('Page.stopScreencast');
   await browser.close();
 
-  const timeline = { frames, steps, clicks, navs, gotos, scale: cfg.scale };
+  const timeline = { frames, steps, clicks, navs, gotos, urls, scale: cfg.scale };
   fs.writeFileSync(path.join(cfg.work, 'timeline.json'), JSON.stringify(timeline, null, 1));
   log(`recorded ${frames.length} frames`);
   return timeline;

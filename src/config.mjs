@@ -99,7 +99,8 @@ export function loadConfig(file, { draft = false } = {}) {
   });
 
   let endCard = raw.end_card === false ? null : raw.end_card ?? null;
-  if (endCard) endCard = { duration: endCard.say ? 'auto' : 1.0, ...endCard };
+  // auto: as long as its narration, bullets and call to action need, and never under 2.5s
+  if (endCard) endCard = { duration: 'auto', ...endCard };
   // An intro title card (promos; optional for tutorials and lessons). Same fields as the end card.
   let intro = raw.intro === false ? null : raw.intro ?? null;
   if (intro) intro = { duration: intro.say ? 'auto' : 2.2, ...intro };
@@ -162,6 +163,9 @@ export function loadConfig(file, { draft = false } = {}) {
     endCard,
     intro,
     article: raw.article ?? null,
+    // captions: false keeps the caption pills off the video (chapters and SRT still use them),
+    // e.g. when burned-in subtitles already carry the words
+    captions: raw.captions !== false,
     cards: raw.cards ?? 'auto',
     // language of the built-in labels ("Pause and think", "Introduction"): `lang`, else guessed from the captions
     lang: raw.lang ?? (/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(JSON.stringify(raw.steps ?? [])) ? 'zh' : 'en'),

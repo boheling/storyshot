@@ -193,7 +193,7 @@ Rules of thumb from real renders (promos and tutorials):
 
 - **One idea per step.**
   - `pitch`: 1.5–3 s per step (`duration:`), so the viewer gets one beat per
-    shot; the number of shots comes from the story, plus a 1–1.5 s `end_card`. Typical shape: `intro` → hero → 2–4
+    shot; the number of shots comes from the story, plus an `end_card` held long enough to read its call to action (at least 2.5 s; leave its `duration` out). Typical shape: `intro` → hero → 2–4
     steps of the core flow ending on a visible result → pricing or CTA → end
     card. Promos sit in a browser window on a backdrop (`frame: false` turns
     that off).
@@ -257,8 +257,13 @@ the page. Test new targets with `inspect_page` + `after_step`, which is much
 faster than a failed render.
 
 Notes:
-- The end card's duration fits its `say:` line automatically; leave out
-  `duration` there.
+- The end card's duration fits its `say:` line, bullets and `cta`
+  automatically (never under 2.5 s); leave out `duration` there.
+- Compose warns about **dead air**: 3 s or more where nothing moves and
+  nothing is said. Shorten the wait or pause, hide the load in a `hidden`
+  step, or narrate it. Keep `intro` cards to 6–8 s.
+- With `subtitles: burn`, the top caption pills can repeat the subtitles;
+  `captions: false` keeps them off the video (chapters and SRT still use them).
 - `.storyshot/` next to the YAML is a cache of recordings, screenshots and
   voice lines. Add it to `.gitignore`.
 

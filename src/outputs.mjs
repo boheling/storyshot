@@ -85,10 +85,17 @@ export function burnSubtitles(cfg, narration, { log = console.log } = {}) {
   const { width: W, height: H } = cfg.output;
   const bgr = (hex, a = '00') => { const h = hex.replace('#', ''); return `&H${a}${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`.toUpperCase(); };
   const t = (s) => { const cs = Math.round(s * 100); return `${Math.floor(cs / 360000)}:${String(Math.floor(cs / 6000) % 60).padStart(2, '0')}:${String(Math.floor(cs / 100) % 60).padStart(2, '0')}.${String(cs % 100).padStart(2, '0')}`; };
-  const size = Math.round(H * 0.048), edge = Math.max(2, Math.round(size * 0.09));
+  // Chinese, Japanese, Korean: no spaces between words, so lines are cut by characters (one line of
+  // at most ~18), in a lighter weight and a font that has the glyphs
+  const cjk = cfg.lang === 'zh' || narration.some((l) => /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(l.text));
+  const size = Math.round(H * (cjk ? 0.042 : 0.048)), edge = Math.max(2, Math.round(size * (cjk ? 0.07 : 0.09)));
+  const fontName = cjk && cfg.theme.font === 'Inter' ? (process.platform === 'darwin' ? 'PingFang SC' : 'Noto Sans CJK SC') : cfg.theme.font;
   const events = [];
   for (const line of narration) {
-    const words = plain(line.text).split(/\s+/).filter(Boolean);
+    // CJK: one token per character (Latin words inside stay whole), punctuation stays with the one before
+    const words = cjk
+      ? (plain(line.text).match(/[A-Za-z0-9.%+-]+[，。！？；：、,.!?;:）)」』]*|\S[，。！？；：、,.!?;:）)」』]*/g) ?? [])
+      : plain(line.text).split(/\s+/).filter(Boolean);
     const weight = (w) => w.replace(/[^\p{L}\p{N}]/gu, '').length + 2;
     const total = words.reduce((a, w) => a + weight(w), 0), span = line.end - line.start;
     let at = line.start;
@@ -98,10 +105,16 @@ export function burnSubtitles(cfg, narration, { log = console.log } = {}) {
     const flush = () => {
       if (!chunk.length) return;
       const s0 = chunk[0].start, e0 = chunk.at(-1).start + chunk.at(-1).d;
-      events.push(`Dialogue: 0,${t(s0)},${t(e0 + 0.05)},Sub,,0,0,0,,${chunk.map((x) => `{\\kf${Math.round(x.d * 100)}}${x.w.replace(/[{}]/g, '')}`).join(' ')}`);
+      events.push(`Dialogue: 0,${t(s0)},${t(e0 + 0.05)},Sub,,0,0,0,,${chunk.map((x) => `{\\kf${Math.round(x.d * 100)}}${x.w.replace(/[{}]/g, '')}`).join(cjk ? '' : ' ')}`);
       chunk = [];
     };
-    for (const x of timed) { chunk.push(x); if (chunk.length >= 7 || /[.!?;:]$/.test(x.w)) flush(); }
+    const len = () => chunk.reduce((a, x) => a + x.w.length, 0);
+    for (const x of timed) {
+      // a CJK line ends at a sentence break, or at a comma once it is half full, or at 18 characters
+      if (cjk && chunk.length && len() + x.w.length > 18) flush();
+      chunk.push(x);
+      if (cjk ? /[。！？；!?;]$/.test(x.w) || (/[，、：,:]$/.test(x.w) && len() >= 9) : chunk.length >= 7 || /[.!?;:]$/.test(x.w)) flush();
+    }
     flush();
   }
   const ass = `[Script Info]
@@ -112,7 +125,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Sub,${cfg.theme.font},${size},${bgr(cfg.theme.accent)},&H00FFFFFF,${bgr(cfg.theme.ink)},&H80000000,1,0,0,0,100,100,0,0,1,${edge},${Math.round(edge * 0.8)},2,${Math.round(W * 0.08)},${Math.round(W * 0.08)},${Math.round(H * 0.06)},1
+Style: Sub,${fontName},${size},${bgr(cfg.theme.accent)},&H00FFFFFF,${bgr(cfg.theme.ink)},&H80000000,${cjk ? 0 : 1},0,0,0,100,100,0,0,1,${edge},${Math.round(edge * 0.8)},2,${Math.round(W * 0.08)},${Math.round(W * 0.08)},${Math.round(H * 0.06)},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

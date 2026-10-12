@@ -22,9 +22,13 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   const readTime = (c) => (c?.bullets?.length ? 1.6 + 0.4 * c.bullets.length + 0.6 * c.bullets.length : 0);
   // `think: N` (question cards): after the question is read out, N seconds with a countdown bar
   const cardLen = (c, voice, min) => (c.duration === 'auto' || c.duration == null ? Math.max(min, (voice ?? 0) + 0.9, readTime(c)) + (c.think ?? 0) : c.duration);
-  const END = !ec0 ? 0 : ec0.duration === 'auto' ? Math.max(1.0, (voiceLens.endCard ?? 0) + 0.6, readTime(ec0)) : ec0.duration;
+  // the end card carries the call to action: long enough to read it (and for a command to type itself out)
+  const ctaTime = (c) => (c?.cta ? 0.8 + String(c.cta).length * 0.045 + 1.6 : 0);
+  const END = !ec0 ? 0 : ec0.duration === 'auto' ? Math.max(2.5, (voiceLens.endCard ?? 0) + 0.6, readTime(ec0), ctaTime(ec0)) : ec0.duration;
+  if (ec0 && END < 2.5) warn(`the end card shows for only ${END.toFixed(1)}s: too short to read its call to action — use duration: auto, or at least 2.5`);
   const in0 = cfg.intro;
   const INTRO = !in0 ? 0 : in0.duration === 'auto' ? Math.max(1.8, (voiceLens.intro ?? 0) + 0.8, readTime(in0)) : in0.duration;
+  if (INTRO > 8) warn(`the intro card plays ${INTRO.toFixed(1)}s before anything happens: viewers leave during long intros — shorten its say or bullets (aim for 6–8s)`);
   const cards = []; // section cards: { i, t0, t1, card }
 
   // --- 1. segments (one per visible step), split into motion / waiting pieces ------------
@@ -150,6 +154,39 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     }
   }
 
+  // --- 2c. dead air: stretches where nothing moves and nobody speaks --------------------------------
+  {
+    const tw = 160, th = 90, rate = 10;
+    const buf = execFileSync('ffmpeg', ['-loglevel', 'error', '-framerate', `${FPS}`, '-i', path.join(SEQ, '%05d.jpg'),
+      '-vf', `fps=${rate},scale=${tw}:${th},format=gray`, '-f', 'rawvideo', 'pipe:1'], { maxBuffer: 1 << 28 });
+    const n = Math.floor(buf.length / (tw * th)), still = [false];
+    for (let f = 1; f < n; f++) {
+      let changed = 0; // pixels that changed visibly: even the cursor moving changes a few
+      for (let k = 0, a = f * tw * th, b = a - tw * th; k < tw * th; k++) if (Math.abs(buf[a + k] - buf[b + k]) > 10) changed++;
+      still.push(changed < 4);
+    }
+    const spoken = [
+      ...(in0 ? [[0, INTRO]] : []), // cards are their own pictures (the frames under them don't show)
+      ...cards.map((c) => [c.t0, c.t1]),
+      ...segs.filter((g) => voiceLens.steps[g.i] != null).map((g) => [g.o0 + (g.step.sayAt ?? 0.15), g.o0 + (g.step.sayAt ?? 0.15) + voiceLens.steps[g.i]]),
+    ];
+    let from = null;
+    const report = (to) => {
+      if (from != null && to - from >= 3) {
+        const ns = segs.filter((x) => x.o1 > from + 1e-6 && x.o0 < to - 1e-6).map((x) => x.i + 1);
+        warn(`${ns.length > 1 ? `steps ${ns[0]}–${ns.at(-1)}` : `step ${ns[0] ?? segs.at(-1).i + 1}`}: ${(to - from).toFixed(1)}s of dead air at ${from.toFixed(1)}–${to.toFixed(1)}s (nothing moves and nothing is said) — shorten the wait or pause, hide the load, or narrate what is happening`);
+      }
+      from = null;
+    };
+    for (let f = 0; f < n; f++) {
+      const t = f / rate;
+      const dead = still[f] && !spoken.some(([a, b]) => t >= a && t <= b);
+      if (dead && from == null) from = t;
+      else if (!dead) report(t);
+    }
+    report(n / rate);
+  }
+
   // --- 3. zoom keyframes: [time, zoom, [cx, cy]] in output px -------------------------------
   const C0 = [W / 2, H / 2];
   const kf = [[0, 1, C0]];
@@ -235,6 +272,20 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     return { x: FX + (b.x * K - v.x0) * v.z * F, y: FY + (b.y * K - v.y0) * v.z * F, w: b.width * K * v.z * F, h: b.height * K * v.z * F };
   };
 
+  // what the address bar shows over time: the page's URL when each visible moment was recorded
+  const addressOf = (u) => { try { const x = new URL(u); return x.host.replace(/^www\./, '') + x.pathname.replace(/\/$/, ''); } catch { return String(u); } };
+  const urlAt = (r) => (tl.urls ?? []).filter((x) => x.t <= r).at(-1)?.url ?? cfg.url;
+  const addresses = [];
+  for (const g of cfg.frame ? segs : []) {
+    const r = tl.steps[g.i], changes = (tl.urls ?? []).filter((x) => x.t > r.start && x.t <= r.end);
+    for (const [t, u] of [[g.o0, urlAt(r.start)], ...changes.map((x) => [toOut(x.t) ?? g.o0, x.url])]) {
+      const text = addressOf(u), last = addresses.at(-1);
+      if (last?.text === text) continue;
+      if (last) last.t1 = t;
+      addresses.push({ text, t0: last ? t : 0, t1: TOTAL });
+    }
+  }
+
   // --- 4. captions + end card rendered as PNGs ----------------------------------------------
   const { accent, ink, font } = cfg.theme;
   const fontCss = `font-family:'${font}',-apple-system,'Segoe UI','Helvetica Neue',sans-serif;`;
@@ -247,8 +298,10 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     await pg.screenshot({ path: file, omitBackground: transparent });
   };
   const fs1 = Math.round(H * 0.043), MARGIN = Math.round(H * 0.06);
+  // in a browser-window frame a top caption sits just inside the page, below the address bar
+  const TOP = cfg.frame ? FY + Math.round(H * 0.022) : MARGIN;
   const bubble = (text, n, pos) => `<body style="margin:0;background:transparent">
-      <div style="position:absolute;left:0;right:0;${pos === 'top' ? 'top' : 'bottom'}:${MARGIN}px;display:flex;justify-content:center;padding:0 5%">
+      <div style="position:absolute;left:0;right:0;${pos === 'top' ? `top:${TOP}` : `bottom:${MARGIN}`}px;display:flex;justify-content:center;padding:0 5%">
         <div id="cap" style="${fontCss}font-size:${fs1}px;font-weight:500;letter-spacing:-.01em;color:#fff;background:${ink}e0;text-align:center;
           padding:${Math.round(fs1 * 0.43)}px ${Math.round(fs1 * 0.87)}px;border-radius:${fs1}px;box-shadow:0 12px 40px rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.12)">
           ${cfg.stepNumbers ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:1.45em;height:1.45em;margin:-.2em .55em -.2em -.35em;border-radius:50%;background:${accent};color:${ink};font-weight:700;font-size:.85em;vertical-align:middle">${n}</span>` : ''}${md(text, accent)}</div></div></body>`;
@@ -273,7 +326,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     const n = prev && prev.text === g.step.caption && Math.abs(prev.t[1] - g.o0) < 1e-6 ? prev.n : captions.length + 1;
     const explicit = g.step.captionPosition, want = explicit ?? cfg.captionPosition;
     const { w, h } = await sizeOf(g.step.caption, n);
-    const rectOf = (pos) => ({ x: (W - w) / 2, y: pos === 'top' ? MARGIN : H - MARGIN - h, w, h });
+    const rectOf = (pos) => ({ x: (W - w) / 2, y: pos === 'top' ? TOP : H - MARGIN - h, w, h });
     const subjects = [];
     for (const m of tl.steps[g.i].marks ?? []) {
       const t = toOut(m.t);
@@ -297,7 +350,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     if (prev && n === prev.n && prev.pos === pos) prev.t[1] = g.o1;
     else captions.push({ text: g.step.caption, t: [g.o0, g.o1], pos, n, h });
   }
-  for (const [i, c] of captions.entries()) await shot(bubble(c.text, c.n, c.pos), path.join(cfg.work, `cap${i}.png`), true);
+  for (const [i, c] of (cfg.captions ? captions : []).entries()) await shot(bubble(c.text, c.n, c.pos), path.join(cfg.work, `cap${i}.png`), true);
   // Intro and end cards are short animations (logo pops, title rises, the highlight sweeps, a command
   // CTA types itself out), rendered frame by frame by seeking the page's CSS animations.
   const u = H / 1080;
@@ -379,7 +432,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       blur: { dark: true, bg: null },
     };
     const st = STYLES[cfg.frame.style], bg = cfg.frame.background ?? st.bg;
-    const R = Math.round(14 * u), host = new URL(cfg.url).host.replace(/^www\./, '') + new URL(cfg.url).pathname.replace(/\/$/, '');
+    const R = Math.round(14 * u);
     const dot = (col) => `<span style="width:${13 * u}px;height:${13 * u}px;border-radius:50%;background:${col};display:inline-block"></span>`;
     const [barBg, barFg, pill, line] = st.dark ? ['#1f2430', '#9aa4b2', '#2b3140', '#11151d'] : ['#e8ebef', '#4b5563', '#fff', '#d5d9df'];
     if (bg) await shot(`<body style="margin:0;width:${W}px;height:${H}px;background:${bg}"></body>`, path.join(cfg.work, 'frame-bg.png'), false);
@@ -387,8 +440,14 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       <div style="position:absolute;left:${FX}px;top:${FY - BAR}px;width:${FW}px;height:${FH + BAR}px;border-radius:${R}px;background:#fff;box-shadow:0 ${30 * u}px ${80 * u}px rgba(0,0,0,${st.dark ? '.5' : '.25'}),0 0 0 1px rgba(255,255,255,.08)"></div>
       <div style="position:absolute;left:${FX}px;top:${FY - BAR}px;width:${FW}px;height:${BAR}px;border-radius:${R}px ${R}px 0 0;background:${barBg};display:flex;align-items:center;border-bottom:1px solid ${line}">
         <div style="display:flex;gap:${8 * u}px;margin-left:${16 * u}px">${dot('#ff5f57')}${dot('#febc2e')}${dot('#28c840')}</div>
-        <div style="position:absolute;left:50%;transform:translateX(-50%);font-size:${15 * u}px;color:${barFg};background:${pill};border-radius:${8 * u}px;padding:${4 * u}px ${60 * u}px">${esc(host)}</div>
       </div></body>`, path.join(cfg.work, 'frame-chrome.png'), true);
+    // the address bar follows the page: one pill per address it shows
+    for (const [k, a] of addresses.entries()) {
+      await shot(`<body style="margin:0;width:${W}px;height:${H}px;background:transparent;${fontCss}">
+        <div style="position:absolute;left:${FX}px;top:${FY - BAR}px;width:${FW}px;height:${BAR}px;display:flex;align-items:center;justify-content:center">
+        <div style="font-size:${15 * u}px;color:${barFg};background:${pill};border-radius:${8 * u}px;padding:${4 * u}px ${60 * u}px;max-width:${FW * 0.5}px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.text)}</div>
+      </div></body>`, path.join(cfg.work, `frame-url${k}.png`), true);
+    }
     // alpha mask for the page: rounded bottom corners (the title bar covers the top ones)
     await pg.setViewportSize({ width: FW, height: FH });
     await pg.setContent(`<body style="margin:0;width:${FW}px;height:${FH}px;background:#000"><div style="width:100%;height:100%;background:#fff;border-radius:0 0 ${R}px ${R}px"></div></body>`);
@@ -416,12 +475,17 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     graph += `[${blur ? 'v0a' : 'v0'}]scale=${FW}:${FH}:flags=lanczos,format=rgba[pg0];[${mask}:v]format=gray,scale=${FW}:${FH}[pm];[pg0][pm]alphamerge[pg];\n` +
       `[${base}][${chrome}:v]overlay=0:0[fc];[fc][pg]overlay=${FX}:${FY},format=yuv420p[vf];\n`;
     last = 'vf';
+    for (const [k, a] of addresses.entries()) {
+      inputs.push('-loop', '1', '-t', `${(a.t1 - a.t0 + 0.1).toFixed(3)}`, '-framerate', `${FPS}`, '-i', path.join(cfg.work, `frame-url${k}.png`));
+      graph += `[${idx}:v]format=rgba,setpts=PTS-STARTPTS+${a.t0.toFixed(3)}/TB[u${k}];[${last}][u${k}]overlay=0:0:eof_action=pass:enable='between(t,${a.t0.toFixed(3)},${a.t1.toFixed(3)})'[vu${k}];\n`;
+      last = `vu${k}`; idx++;
+    }
   }
   // docs: a second, caption-free copy for the per-step clips and stills (the article carries the
   // text), so crops never have to dodge a caption
   const clean = cfg.clips.length ? path.join(cfg.work, 'video-clean.mp4') : null;
   if (clean) { graph += `[${last}]split[vmain][vclean0];\n`; last = 'vmain'; }
-  for (const [i, c] of captions.entries()) {
+  for (const [i, c] of (cfg.captions ? captions : []).entries()) {
     const a = c.t[0] + 0.1, b = c.t[1] - 0.1;
     // each caption is an input only as long as it is on screen (decoding a looped PNG for the whole
     // video, once per caption, made long tutorials take minutes to compose)
@@ -432,7 +496,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   }
   for (const [k, c] of cards.entries()) {
     inputs.push('-framerate', `${FPS}`, '-i', path.join(cfg.work, `card${k}`, '%04d.jpg'));
-    graph += `[${idx}:v]format=rgba,setpts=PTS-STARTPTS+${c.t0.toFixed(3)}/TB,fade=in:st=${c.t0.toFixed(3)}:d=0.25:alpha=1,fade=out:st=${Math.max(c.t0, c.t1 - 0.3).toFixed(3)}:d=0.3:alpha=1[sc${k}];\n` +
+    graph += `[${idx}:v]format=rgba,setpts=PTS-STARTPTS+${c.t0.toFixed(3)}/TB,fade=in:st=${c.t0.toFixed(3)}:d=0.15:alpha=1,fade=out:st=${Math.max(c.t0, c.t1 - 0.15).toFixed(3)}:d=0.15:alpha=1[sc${k}];\n` +
       `[${last}][sc${k}]overlay=0:0:eof_action=pass:enable='between(t,${c.t0.toFixed(3)},${c.t1.toFixed(3)})'[v${++idx}];\n`;
     last = `v${idx}`;
   }
@@ -445,7 +509,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   }
   if (in0) {
     inputs.push('-framerate', `${FPS}`, '-i', path.join(cfg.work, 'intro', '%04d.jpg'));
-    graph += `[${idx}:v]format=rgba,fade=out:st=${Math.max(0, INTRO - 0.35).toFixed(3)}:d=0.35:alpha=1[in];\n` +
+    graph += `[${idx}:v]format=rgba,fade=out:st=${Math.max(0, INTRO - 0.2).toFixed(3)}:d=0.2:alpha=1[in];\n` +
       `[${last}][in]overlay=0:0:eof_action=pass[v${++idx}];\n`;
     last = `v${idx}`;
   }
@@ -497,8 +561,8 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       ...(tl.gotos ?? tl.navs.filter((n) => !tl.clicks.some((c) => n - c >= 0 && n - c < 2) && !tl.steps.some((s) => (s.waits ?? []).some(([a, b]) => n >= a - 0.5 && n <= b + 0.5))))
         .map(toOut).filter((t) => t != null && t > 0.2),
       ...segs.filter((g) => g.afterHidden).map((g) => g.o0),
-      ...(in0 ? [INTRO - 0.3] : []),
-      ...cards.flatMap((c) => [c.t0, c.t1 - 0.3]),
+      ...(in0 ? [INTRO - 0.2] : []),
+      ...cards.flatMap((c) => [c.t0, c.t1 - 0.15]),
       ...(ec ? [VIDEO - 0.25] : []),
     ]),
     risers: segs.filter((g) => g.step.sfx === 'riser').map((g) => [g.o0, g.o1]),

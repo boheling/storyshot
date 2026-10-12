@@ -252,6 +252,7 @@ voice: { provider: elevenlabs, voice: hpp4J3VqNfWAUOO0d1Us }   # optional voiceo
 storageState: auth.json                         # optional Playwright login state
 ignoreHTTPSErrors: true                         # internal site with a self-signed HTTPS certificate (plain http:// needs nothing)
 captionPosition: bottom                         # or top; can also be set per step. A caption that would cover a step's click target or zoom subject moves to the other side automatically
+captions: true                                  # false keeps caption pills off the video (chapters and SRT still use them), e.g. with subtitles: burn
 purpose: pitch                                  # pitch | tutorial | course | docs (sets the defaults below)
 highlight: false                                # spotlight targets before click/type (per step or per action too)
 stepNumbers: false                              # numbered caption badges
@@ -299,8 +300,7 @@ end_card:
   logo: { alt: Company logo }                         # captured from the page, or a path to an image
   title: Acme
   subtitle: Ship **faster**
-  cta: Start free at acme.com
-  duration: 1.0
+  cta: Start free at acme.com                         # duration: auto (default) fits the say line, bullets and cta, at least 2.5 s
 ```
 
 Steps that share a caption keep it on screen across both steps.
