@@ -85,7 +85,7 @@ export function check(file, { draft = false } = {}) {
   if (raw.end_card) unknown(raw.end_card, END, 'end_card');
   if (raw.intro) unknown(raw.intro, END, 'intro');
   if (raw.article) unknown(raw.article, ['title', 'intro'], 'article');
-  if (raw.frame && typeof raw.frame === 'object') unknown(raw.frame, ['background', 'style'], 'frame');
+  if (raw.frame && typeof raw.frame === 'object') unknown(raw.frame, ['background', 'style', 'window', 'title', 'icon'], 'frame');
   const todo = (fs.readFileSync(file, 'utf8').split('\n').map((l, i) => [l.replace(/#.*$/, ''), i + 1]).filter(([l]) => /\bTODO\b/.test(l)));
   for (const [, n] of todo) errors.push(`line ${n}: replace the TODO placeholder`);
 

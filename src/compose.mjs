@@ -278,7 +278,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   const addressOf = (u) => { try { const x = new URL(u); return x.host.replace(/^www\./, '') + x.pathname.replace(/\/$/, ''); } catch { return String(u); } };
   const urlAt = (r) => (tl.urls ?? []).filter((x) => x.t <= r).at(-1)?.url ?? cfg.url;
   const addresses = [];
-  for (const g of cfg.frame ? segs : []) {
+  for (const g of cfg.frame?.window === 'browser' ? segs : []) {
     const r = tl.steps[g.i], changes = (tl.urls ?? []).filter((x) => x.t > r.start && x.t <= r.end);
     for (const [t, u] of [[g.o0, urlAt(r.start)], ...changes.map((x) => [toOut(x.t) ?? g.o0, x.url])]) {
       const text = addressOf(u), last = addresses.at(-1);
@@ -434,6 +434,15 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       blur: { dark: true, bg: null },
     };
     const st = STYLES[cfg.frame.style], bg = cfg.frame.background ?? st.bg;
+    // an app window: the app's icon and name in the title bar instead of an address bar
+    let app = null;
+    if (cfg.frame.window === 'app') {
+      const MIME = { svg: 'image/svg+xml', ico: 'image/x-icon', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', png: 'image/png' };
+      const [file, type] = cfg.frame.iconFile ? [cfg.frame.iconFile, MIME[path.extname(cfg.frame.iconFile).slice(1).toLowerCase()] ?? 'image/png']
+        : tl.app?.icon ? [path.join(cfg.work, tl.app.icon.file), tl.app.icon.type] : [];
+      const icon = file && fs.existsSync(file) ? `data:${type};base64,${fs.readFileSync(file).toString('base64')}` : null;
+      app = { icon, title: cfg.frame.title ?? tl.app?.title ?? (() => { try { return new URL(cfg.url).host.replace(/^www\./, ''); } catch { return ''; } })() };
+    }
     const R = Math.round(14 * u);
     const dot = (col) => `<span style="width:${13 * u}px;height:${13 * u}px;border-radius:50%;background:${col};display:inline-block"></span>`;
     const [barBg, barFg, pill, line] = st.dark ? ['#1f2430', '#9aa4b2', '#2b3140', '#11151d'] : ['#e8ebef', '#4b5563', '#fff', '#d5d9df'];
@@ -442,6 +451,8 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       <div style="position:absolute;left:${FX}px;top:${FY - BAR}px;width:${FW}px;height:${FH + BAR}px;border-radius:${R}px;background:#fff;box-shadow:0 ${30 * u}px ${80 * u}px rgba(0,0,0,${st.dark ? '.5' : '.25'}),0 0 0 1px rgba(255,255,255,.08)"></div>
       <div style="position:absolute;left:${FX}px;top:${FY - BAR}px;width:${FW}px;height:${BAR}px;border-radius:${R}px ${R}px 0 0;background:${barBg};display:flex;align-items:center;border-bottom:1px solid ${line}">
         <div style="display:flex;gap:${8 * u}px;margin-left:${16 * u}px">${dot('#ff5f57')}${dot('#febc2e')}${dot('#28c840')}</div>
+        ${app ? `<div style="position:absolute;left:0;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:center;gap:${8 * u}px;font-size:${15 * u}px;font-weight:600;color:${barFg}">
+          ${app.icon ? `<img src="${app.icon}" style="width:${18 * u}px;height:${18 * u}px;object-fit:contain;border-radius:${4 * u}px">` : ''}<span style="max-width:${FW * 0.5}px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(app.title)}</span></div>` : ''}
       </div></body>`, path.join(cfg.work, 'frame-chrome.png'), true);
     // the address bar follows the page: one pill per address it shows
     for (const [k, a] of addresses.entries()) {

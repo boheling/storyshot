@@ -124,11 +124,15 @@ export function loadConfig(file, { draft = false } = {}) {
   // follow: the camera zooms in on what each step touches and pans from step to step (tutorials)
   const follow0 = pick('follow');
   const follow = follow0 ? { scale: 1.8, ...(typeof follow0 === 'object' ? follow0 : {}) } : null;
-  // frame: false | true | a style name | { style, background: <css> }. Styles: aurora (dark, grain),
-  // studio (light, grain), dark, pastel, blur (the page itself, blurred, behind the window)
+  // frame: false | true | a style name | { style, background: <css>, window, title, icon }. Styles: aurora
+  // (dark, grain), studio (light, grain), dark, pastel, blur (the page itself, blurred, behind the window).
+  // window: browser (an address bar) or app (an installed web app / desktop app: its icon and name in the
+  // title bar, no address bar; both are read from the page's web app manifest unless given)
   const styleOf = (f) => (typeof f === 'string' ? f : f?.style) ?? (typeof P.frame === 'string' ? P.frame : 'aurora');
-  const frame = frame0 ? { background: null, ...(typeof frame0 === 'object' ? frame0 : {}), style: styleOf(frame0) } : null;
+  const frame = frame0 ? { background: null, window: 'browser', ...(typeof frame0 === 'object' ? frame0 : {}), style: styleOf(frame0) } : null;
   if (frame && !FRAME_STYLES.includes(frame.style)) throw new Error(`frame style must be one of ${FRAME_STYLES.join(', ')}`);
+  if (frame && !['browser', 'app'].includes(frame.window)) throw new Error('frame.window must be browser or app');
+  if (frame?.icon) frame.iconFile = path.resolve(dir, frame.icon);
 
   let voice = null;
   if (raw.voice) {

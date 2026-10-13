@@ -262,7 +262,8 @@ follow: true                                    # tutorial/course default: the c
 article: { title: Export a drawing, intro: … }  # docs: heading and first paragraph of <out>-steps/README.md
 lang: es                                        # language of built-in labels ("Pause and think", chapter "Introduction", "Downloaded"): en, zh, es, pt, fr, de, ja; default: zh if the steps contain Chinese, else en
 cards: auto                                     # intro/section/end cards: auto follows the frame (dark frames get dark cards), or light | dark
-frame: aurora                                   # the recording sits in a browser window on a backdrop: aurora (dark, grain; pitch default), studio (light, grain; tutorial and course default), dark, pastel, blur (the page itself, blurred); false = full frame; or { style, background: <css> }
+frame: aurora                                   # the recording sits in a browser window on a backdrop: aurora (dark, grain; pitch default), studio (light, grain; tutorial and course default), dark, pastel, blur (the page itself, blurred); false = full frame; or { style, background: <css>, window, title, icon }
+                                                # window: app draws an installed app's window (its icon and name in the title bar, no address bar) for a PWA or desktop web app; title and icon come from the page's web app manifest unless given
 chapters: false                                 # write <out>.chapters.txt for YouTube
 clips: null                                     # gif | webm | mp4 | png, or a list (docs default: [gif, png]): one file per step in <out>-steps/, cropped to what the step touches, plus README.md, a ready-to-paste article (step captions, `doc:` text, images)
 maxWait: 1.0                                    # with duration: auto, the longest a wait is shown

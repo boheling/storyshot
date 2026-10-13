@@ -719,6 +719,36 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
     await locate(page, card.logo).screenshot({ path: path.join(cfg.work, file), omitBackground: true, timeout: 5000 })
       .catch((e) => log(`warning: could not capture logo (${e.message.split('\n')[0]})`));
   }
+  // an app window shows the app's icon and name: from the web app manifest, else the page's own
+  let app = null;
+  if (cfg.frame?.window === 'app' && !fast) {
+    const found = await page.evaluate(async () => {
+      const abs = (u, base) => { try { return new URL(u, base).href; } catch { return null; } };
+      const size = (s) => Math.max(0, ...String(s ?? '').split(/\s+/).map((x) => (x === 'any' ? 1e4 : parseInt(x, 10) || 0)));
+      let name = null, icon = null;
+      const link = document.querySelector('link[rel="manifest"]');
+      if (link) {
+        try {
+          const m = await (await fetch(link.href)).json();
+          name = m.short_name ?? m.name ?? null;
+          const best = (m.icons ?? []).filter((i) => !/monochrome/.test(i.purpose ?? '')).sort((a, b) => size(b.sizes) - size(a.sizes))[0];
+          if (best) icon = abs(best.src, link.href);
+        } catch {}
+      }
+      const links = [...document.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"]')].sort((a, b) => size(b.sizes) - size(a.sizes));
+      icon ??= links[0]?.href ?? abs('/favicon.ico', location.href);
+      return { name: name ?? (document.querySelector('meta[name="application-name"]')?.content || document.title || null), icon };
+    }).catch(() => ({}));
+    app = { title: found.name ?? null, icon: null };
+    if (!cfg.frame.iconFile && found.icon) {
+      const r = await page.request.get(found.icon).catch(() => null);
+      if (r?.ok()) {
+        const type = (r.headers()['content-type'] ?? 'image/png').split(';')[0];
+        fs.writeFileSync(path.join(cfg.work, 'app-icon'), await r.body());
+        app.icon = { file: 'app-icon', type };
+      } else log(`warning: could not fetch the app icon (${found.icon})`);
+    }
+  }
   await nudge();
   await sleep(600);
 
@@ -794,7 +824,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
   await cdp.send('Page.stopScreencast');
   await browser.close();
 
-  const timeline = { frames, steps, clicks, navs, gotos, urls, scale: cfg.scale };
+  const timeline = { frames, steps, clicks, navs, gotos, urls, app, scale: cfg.scale };
   fs.writeFileSync(path.join(cfg.work, 'timeline.json'), JSON.stringify(timeline, null, 1));
   log(`recorded ${frames.length} frames`);
   return timeline;

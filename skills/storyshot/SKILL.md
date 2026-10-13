@@ -196,7 +196,9 @@ Rules of thumb from real renders (promos and tutorials):
     shot; the number of shots comes from the story, plus an `end_card` held long enough to read its call to action (at least 2.5 s; leave its `duration` out). Typical shape: `intro` → hero → 2–4
     steps of the core flow ending on a visible result → pricing or CTA → end
     card. Promos sit in a browser window on a backdrop (`frame: false` turns
-    that off).
+    that off). For an app people install (a PWA, or a desktop app built on
+    web tech), use `frame: { window: app }`: the title bar shows the app's
+    icon and name, not an address bar.
   - Other purposes: leave out `duration`. `auto` times each step to its
     narration and plays motion in real time.
 - **Captions ≤ 7 words.** `**bold**` the payoff ("Every text box is
