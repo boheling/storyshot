@@ -1,6 +1,6 @@
 {
   "name": "storyshot",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Turn a short YAML storyboard into a polished product demo video of your web app — smooth cursor, auto zoom, captions, music.",
   "author": "boheling <boheling@gmail.com>",
   "repository": {
