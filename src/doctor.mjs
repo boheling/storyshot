@@ -5,6 +5,7 @@ import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { hasFilter, hasEncoder, NEEDED, OPTIONAL } from './ffmpeg.mjs';
 
 const has = (cmd, args = ['--version']) => { try { execFileSync(cmd, args, { stdio: 'ignore' }); return true; } catch { return false; } };
 
@@ -47,7 +48,15 @@ export async function doctor({ log = console.log } = {}) {
 
   try {
     const v = execFileSync('ffmpeg', ['-version']).toString().match(/ffmpeg version (\S+)/)?.[1];
-    lines.push(`✔ ffmpeg ${v ?? ''}`.trim());
+    // a build can lack pieces Storyshot uses: say which, and what that affects
+    const missing = [...NEEDED.filters.filter((f) => !hasFilter(f)), ...NEEDED.encoders.filter((e) => !hasEncoder(e))];
+    if (missing.length) {
+      lines.push(`✖ ffmpeg ${v ?? ''} is missing ${missing.join(', ')}`);
+      todo.push(`install an ffmpeg build with ${missing.join(', ')} (${process.platform === 'darwin' ? 'e.g. brew install ffmpeg-full, then put "$(brew --prefix ffmpeg-full)/bin" first on your PATH, as it is keg-only; or a static build from https://ffmpeg.org/download.html' : 'e.g. a static build from https://ffmpeg.org/download.html'})`);
+    } else lines.push(`✔ ffmpeg ${v ?? ''}`.trim());
+    for (const o of OPTIONAL) {
+      if (o.filter ? !hasFilter(o.filter) : !hasEncoder(o.encoder)) lines.push(`· ffmpeg has no ${o.filter ? `${o.filter} filter` : `${o.encoder} encoder`} — ${o.for}`);
+    }
   } catch {
     lines.push('✖ ffmpeg not found');
     todo.push(ffmpegInstallCommand());

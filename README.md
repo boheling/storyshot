@@ -217,7 +217,7 @@ Everything the agent does is also a command:
 | `storyshot record videos/acme-promo.yaml` | Only record. |
 | `storyshot guide` | Print the playbook and the reference. |
 | `storyshot setup <agent>` (`cursor`, `claude`, `codex`, `gemini`, `vscode`, `windsurf`, `cline`) | Set up the MCP server and the skill in this project, and install or check what Storyshot needs. |
-| `storyshot doctor` | Check Node, ffmpeg, Chromium and voices; install Chromium if it's missing. |
+| `storyshot doctor` | Check Node, ffmpeg (and the filters and encoders Storyshot uses), Chromium and voices; install Chromium if it's missing. |
 | `storyshot mcp` | Run the MCP server. |
 
 Recordings, previews and voice lines are cached in `.storyshot/` next to the
@@ -256,7 +256,7 @@ captions: true                                  # false keeps caption pills off 
 purpose: pitch                                  # pitch | tutorial | course | docs (sets the defaults below)
 highlight: false                                # spotlight targets before click/type (per step or per action too)
 stepNumbers: false                              # numbered caption badges
-subtitles: false                                # write <out>.srt (narration, else captions); `burn` also burns the narration into the video, each word lighting up as it is spoken (captions move to the top)
+subtitles: false                                # write <out>.srt (narration, else captions); `burn` also burns the narration into the video, each word lighting up as it is spoken (captions move to the top); uses ffmpeg's libass when it has it, else draws the words itself
 pace: slow                                      # fast (pitch) | normal (docs) | slow (tutorial, course): cursor and typing speed, a beat after each click, hold after narration, voice speed, how much of a wait is shown
 follow: true                                    # tutorial/course default: the camera zooms in on what each step touches and pans between steps (a step's own zoom wins; follow: false on a step skips it); or { scale: 1.8 }
 article: { title: Export a drawing, intro: … }  # docs: heading and first paragraph of <out>-steps/README.md
