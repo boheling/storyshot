@@ -138,6 +138,22 @@ export function check(file, { draft = false } = {}) {
     const says = visible.filter((s) => s.say).length + (cfg.endCard?.say ? 1 : 0) + (cfg.intro?.say ? 1 : 0);
     if (cfg.voice && !says) warnings.push('voice is set but no step has a `say:` line');
     if (!cfg.voice && says) warnings.push('steps have `say:` lines but there is no `voice:` block, so they will not be spoken');
+    // fixed-length steps: a line that clearly can't be spoken before the next one starts (a rough
+    // estimate from its length; the render measures the real voice)
+    if (cfg.voice) {
+      const words = (t) => { const x = String(t).replace(/\*\*/g, ''); const c = (x.match(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g) ?? []).length; return { c, w: x.replace(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g, ' ').split(/\s+/).filter(Boolean).length }; };
+      const secs = (t) => { const { c, w } = words(t); return (c / 4.5 + w / 2.8) / (cfg.voice.speed ?? 1); };
+      const vis = visible.map((s) => ({ s, i: cfg.steps.indexOf(s) }));
+      for (const [k, { s, i }] of vis.entries()) {
+        if (!s.say) continue;
+        const nextK = vis.findIndex((v, j) => j > k && v.s.say);
+        const span = vis.slice(k, nextK < 0 ? undefined : nextK).map((v) => v.s.duration);
+        if (!span.every((d) => typeof d === 'number')) continue;
+        const room = span.reduce((a, d) => a + d, 0) - (s.sayAt ?? 0.15) + (nextK < 0 && cfg.endCard ? 2.5 : 0);
+        const need = secs(s.say);
+        if (need > room * 1.4 && need - room > 1) warnings.push(`step ${i + 1}: the say: line takes about ${need.toFixed(1)}s to speak but has ${room.toFixed(1)}s before ${nextK < 0 ? 'the video ends' : 'the next line'} — shorten it or raise duration (the lines after it would play late)`);
+      }
+    }
     if (!draft && cfg.voice && ['elevenlabs', 'openai'].includes(cfg.voice.provider)) {
       const env = cfg.voice.provider === 'elevenlabs' ? 'ELEVENLABS_API_KEY' : 'OPENAI_API_KEY';
       if (!process.env[env]) errors.push(`voice provider ${cfg.voice.provider} needs ${env} (environment or a .env file next to the storyboard) — or render with draft mode to use the free local voice`);

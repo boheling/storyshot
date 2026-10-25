@@ -94,6 +94,7 @@ export async function speak(cfg, line, { log = console.log } = {}) {
 
 // Speed a clip up (factor > 1) with ffmpeg's pitch-preserving atempo.
 export function tempo(pcm, factor) {
+  if (!(factor >= 0.5 && factor <= 100)) throw new Error(`internal: speed factor ${factor} is outside what ffmpeg's atempo accepts (0.5–100)`);
   const out = execFileSync('ffmpeg', ['-loglevel', 'error', '-f', 'f32le', '-ac', '2', '-ar', `${SR}`, '-i', 'pipe:0',
     '-af', `atempo=${factor.toFixed(4)}`, '-f', 'f32le', '-ac', '2', '-ar', `${SR}`, 'pipe:1'], { input: Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength), maxBuffer: 1 << 28 });
   return new Float32Array(out.buffer, out.byteOffset, out.length / 4);

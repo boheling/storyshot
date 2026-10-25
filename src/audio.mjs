@@ -137,8 +137,14 @@ export async function soundtrack(cfg, events, silentVideo, { log = console.log }
       let dur = pcm.length / 2 / SR;
       const start = Math.max(line.start, prevEnd + 0.12), room = line.until - start - 0.1;
       let sped = 1;
-      if (dur > room && dur / room <= 1.2) { sped = dur / room; pcm = tempo(pcm, sped); dur = pcm.length / 2 / SR; }
-      else if (dur > room) warn(`${line.where}: narration is ${dur.toFixed(1)}s but only ${Math.max(0, room).toFixed(1)}s until ${line === events.voice.at(-1) ? 'the video ends' : 'the next line'} — shorten "${line.text}" or give the step more duration`);
+      // a line pushed past its window by the one before has no room left (room <= 0): it plays late, at normal speed
+      if (dur > room && room > 0 && dur / room <= 1.2) { sped = dur / room; pcm = tempo(pcm, sped); dur = pcm.length / 2 / SR; }
+      else if (dur > room) warn(room > 0
+        ? `${line.where}: narration is ${dur.toFixed(1)}s but only ${room.toFixed(1)}s until ${line === events.voice.at(-1) ? 'the video ends' : 'the next line'} — shorten "${line.text}" or give the step more duration`
+        : `${line.where}: the narration before it runs ${(start - line.start).toFixed(1)}s past where this line should start, so "${line.text}" plays late — shorten the earlier lines or give their steps more duration`);
+      if (start + dur > events.total) warn(start >= events.total
+        ? `${line.where}: "${line.text}" is cut off: the narration before it pushes it past the end of the video (${events.total.toFixed(1)}s) — shorten the lines or give the steps more duration`
+        : `${line.where}: the last ${(start + dur - events.total).toFixed(1)}s of "${line.text}" is cut off at the end of the video — shorten it or give the steps more duration`);
       log(`  voice ${start.toFixed(2)}–${(start + dur).toFixed(2)}s  ${line.where}${sped > 1 ? `  (sped up x${sped.toFixed(2)})` : ''}  "${line.text}"`);
       let pk = 0;
       for (const v of pcm) pk = Math.max(pk, Math.abs(v));
