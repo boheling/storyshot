@@ -32,6 +32,20 @@ test('other 2s are left alone (the space before a measure word still goes)', () 
   ]) assert.equal(zhSpeakText(from), to);
 });
 
+test('行 after a number is read háng (as 航)', () => {
+  for (const [from, to] of [
+    ['输入到 Desmos 的第一行。', '输入到 Desmos 的第一航。'],
+    ['第 3 行', '第 3航'],
+    ['这 2 行', '这 两航'],
+    ['每一行都', '每一航都'],
+    ['三行代码', '三航代码'],
+    ['一行人', '一行人'],
+    ['统一行动', '统一行动'],
+    ['银行', '银行'],
+    ['不行', '不行'],
+  ]) assert.equal(zhSpeakText(from), to);
+});
+
 test('math symbols are spoken', () => {
   assert.equal(zhSpeakText('y = mx + b'), 'y等于mx加b');
   assert.equal(zhSpeakText('y=−2x+4'), 'y等于负2x加4');

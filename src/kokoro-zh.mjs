@@ -18,8 +18,9 @@ const HELPER = path.join(path.dirname(fileURLToPath(import.meta.url)), 'zh_g2p.p
 const PY_RANGE = [10, 12];
 const REQUIREMENTS = ['misaki[zh]==0.9.4', 'cn2an==0.5.24', 'proces==0.1.7', 'jieba==0.42.1', 'pypinyin==0.55.0',
   'pypinyin-dict==0.9.0', 'ordered-set==4.1.0', 'phonemizer-fork==3.3.2', 'espeakng-loader==0.2.4', 'regex==2026.9.29', 'addict==2.4.0'];
-// Part of every cached line's hash: change it when the model, the G2P or the text rewrites change.
-export const ZH_TTS_ID = `${REPO}:q8|${REQUIREMENTS[0]}|text-2`;
+// Part of every cached line's hash (with the rewritten text): change it when the model or the G2P
+// (zh_g2p.py, REQUIREMENTS) changes.
+export const ZH_TTS_ID = `${REPO}:q8|${REQUIREMENTS[0]}|g2p-1`;
 // Pieces longer than this many phonemes are split at sentence ends (the model's hard limit is 510).
 const TARGET = 300, MAX_PS = 510;
 
@@ -30,6 +31,9 @@ const MEASURE = `(?:${['个', '条', '只', '次(?!方|幂|函数|项|根)', '�
   '克', '斤', '升', '毫升', '度', '万', '千', '百', '亿'].join('|')})`;
 const NUM_SPACE = new RegExp(`(\\d)\\s+(?=${MEASURE})`, 'g');
 const LIANG = new RegExp(`(?<![\\d.,/A-Za-z_\\-−+]|第\\s*|负\\s*)2(?=${MEASURE})`, 'g');
+// 行 after a number is the measure word háng (第一行, 两行, 每一行, 三行代码), which the G2P reads xíng;
+// 航 is a háng with no other reading. Not in 一行人 (a party), 统一行动, 行为, 行李 …
+const HANG = /(?<=[\d一二三四五六七八九十百千两几])行(?![人动为走驶进程政使李星销善事])/g;
 
 export function zhSpeakText(text) {
   return String(text)
@@ -37,6 +41,7 @@ export function zhSpeakText(text) {
     .replace(NUM_SPACE, '$1')
     // and a lone 2 there is 两: "2 个单位" → "两个单位" (not 12个, 0.2个, 2.5个, 第2个, 负2个, 2次方, 2年级)
     .replace(LIANG, '两')
+    .replace(HANG, '航')
     // math symbols the G2P would drop
     .replace(/\s*[=＝]\s*/g, '等于').replace(/\s*[+＋]\s*/g, '加').replace(/\s*×\s*/g, '乘').replace(/\s*÷\s*/g, '除以')
     .replace(/(?<=[\w)²³]\s*)−\s*/g, '减').replace(/−\s*/g, '负').replace(/²/g, '的平方').replace(/³/g, '的立方');
