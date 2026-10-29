@@ -31,8 +31,8 @@ export function loadEnv(dir) {
 // What the video is for sets sensible defaults; anything in the YAML overrides them.
 export const PURPOSES = {
   pitch:    { duration: null,   music: { bpm: 120, volume: 1 },    sfx: true,  highlight: false, stepNumbers: false, subtitles: false, chapters: false, clips: null, frame: 'aurora', pace: 'fast', follow: false },
-  tutorial: { duration: 'auto', music: { bpm: 96, volume: 0.35 },  sfx: true,  highlight: true,  stepNumbers: true,  subtitles: true,  chapters: true,  clips: null, frame: 'studio', pace: 'slow', follow: true },
-  course:   { duration: 'auto', music: false,                     sfx: true,  highlight: true,  stepNumbers: false, subtitles: true,  chapters: true,  clips: null, frame: 'studio', pace: 'slow', follow: true },
+  tutorial: { duration: 'auto', music: { bpm: 96, volume: 0.35 },  sfx: 'clicks', highlight: true,  stepNumbers: true,  subtitles: true,  chapters: true,  clips: null, frame: 'studio', pace: 'slow', follow: true },
+  course:   { duration: 'auto', music: false,                     sfx: 'clicks', highlight: true,  stepNumbers: false, subtitles: true,  chapters: true,  clips: null, frame: 'studio', pace: 'slow', follow: true },
   docs:     { duration: 'auto', music: false,                     sfx: false, highlight: true,  stepNumbers: true,  subtitles: false, chapters: false, clips: ['gif', 'png'], frame: false, pace: 'normal', follow: false },
 };
 
@@ -189,7 +189,9 @@ export function loadConfig(file, { draft = false } = {}) {
     follow,
     music,
     voice,
-    sfx: pick('sfx') !== false,
+    // sfx: true (clicks and transition whooshes), 'clicks' (no whooshes: tutorials and lessons, where a
+    // sound at every card soon grates), or false
+    sfx: pick('sfx') === false ? false : { clicks: true, transitions: pick('sfx') !== 'clicks' },
     draft,
     out: path.resolve(dir, raw.out ?? `${name}.mp4`).replace(/(\.[^./]+)?$/, (ext) => (draft ? `.draft${ext || '.mp4'}` : ext)),
     work: path.resolve(dir, '.storyshot', name),

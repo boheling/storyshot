@@ -101,7 +101,7 @@ export async function soundtrack(cfg, events, silentVideo, { log = console.log }
         return press + release;
       }, 0.55);
     }
-    for (const c of events.whooshes) {
+    for (const c of cfg.sfx.transitions ? events.whooshes : []) {
       const filt = svf(), len = 0.45;
       add(sfx, c - len * 0.55, len, (t) => {
         const p = t / len;
@@ -193,7 +193,7 @@ export async function soundtrack(cfg, events, silentVideo, { log = console.log }
   // so re-encoding by video sites doesn't clip
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', silentVideo, '-i', wavFile,
     '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-af', `loudnorm=I=-14:TP=-1.5:LRA=11,aresample=${SR},alimiter=limit=0.7:level=false:attack=1:release=50`, '-ar', `${SR}`, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', cfg.out]);
-  log(`soundtrack: ${cfg.music ? (cfg.music.file ? 'music file' : `synth ${cfg.music.bpm} bpm`) : 'no music'}, ${events.clicks.length} clicks, ${events.whooshes.length} whooshes` +
+  log(`soundtrack: ${cfg.music ? (cfg.music.file ? 'music file' : `synth ${cfg.music.bpm} bpm`) : 'no music'}, ${events.clicks.length} clicks, ${cfg.sfx?.transitions ? events.whooshes.length : 0} whooshes` +
     (cfg.voice ? `, ${events.voice.length} narration lines (${cfg.voice.provider}/${cfg.voice.voice})` : ''));
   return { out: cfg.out, warnings, narration };
 }

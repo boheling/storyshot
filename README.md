@@ -247,7 +247,7 @@ viewport: { width: 1600, height: 900 }          # CSS px the site is laid out at
 output: { width: 1920, height: 1080, fps: 30 }  # same aspect ratio; use 1080x1920 with a 900x1600 viewport for vertical
 theme: { accent: "#d9f75b", ink: "#0f172a", font: Inter }
 music: { bpm: 120, volume: 1 }                  # or { file: track.mp3 }, or false
-sfx: true                                       # click / whoosh / riser sounds
+sfx: true                                       # click / whoosh / riser sounds; clicks = no whooshes on cards and page changes (tutorial and course default); false = none
 voice: { provider: elevenlabs, voice: hpp4J3VqNfWAUOO0d1Us }   # optional voiceover, see below
 storageState: auth.json                         # optional Playwright login state
 ignoreHTTPSErrors: true                         # internal site with a self-signed HTTPS certificate (plain http:// needs nothing)
