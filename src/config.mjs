@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
-import { VOICE_DEFAULTS } from './voice.mjs';
+import { VOICE_DEFAULTS, kokoroVoiceFor } from './voice.mjs';
 
 // Built-in labels drawn into the video, by `lang` (e.g. es, es-MX); other languages get English
 export const LABELS = {
@@ -148,9 +148,11 @@ export function loadConfig(file, { draft = false } = {}) {
     const provider = raw.voice.provider ?? 'kokoro';
     if (!VOICE_DEFAULTS[provider]) throw new Error(`voice.provider must be one of ${Object.keys(VOICE_DEFAULTS).join(', ')}`);
     const pace0 = PACES[pick('pace')] ?? PACES.normal;
-    voice = { speed: pace0.voiceSpeed, volume: 1, ...VOICE_DEFAULTS[provider], ...raw.voice, provider };
+    // kokoro's default voice follows the narration's language (zf_001 for Chinese, af_heart otherwise)
+    const kokoroVoice = kokoroVoiceFor(raw);
+    voice = { speed: pace0.voiceSpeed, volume: 1, ...VOICE_DEFAULTS[provider], ...(provider === 'kokoro' ? { voice: kokoroVoice } : {}), ...raw.voice, provider };
     if (draft && provider !== 'kokoro') {
-      voice = { ...voice, provider: 'kokoro', voice: raw.voice.draftVoice ?? VOICE_DEFAULTS.kokoro.voice, model: undefined };
+      voice = { ...voice, provider: 'kokoro', voice: raw.voice.draftVoice ?? kokoroVoice, model: undefined };
     }
   }
 

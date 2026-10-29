@@ -1,10 +1,11 @@
 // Voiceover: text-to-speech for each step's `say:` line, cached on disk.
-// Providers: kokoro (local, free, English), elevenlabs, openai, say (macOS).
+// Providers: kokoro (local, free: English, and Mandarin with the v1.1-zh voices), elevenlabs, openai, say (macOS).
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { isZhVoice, synthZh, zhSpeakText, ZH_DEFAULT_VOICE, ZH_TTS_ID } from './kokoro-zh.mjs';
 
 const SR = 48000;
 export const VOICE_DEFAULTS = {
@@ -14,10 +15,21 @@ export const VOICE_DEFAULTS = {
   say: { voice: 'Samantha' },
 };
 
+// kokoro without a named voice: the Mandarin one when the narration is mostly Chinese (more Han
+// characters than Latin words; no kana or hangul), or, with no narration to go by, `lang: zh`.
+// English (af_heart) otherwise.
+export function kokoroVoiceFor(raw) {
+  const says = [...(raw.steps ?? []).flatMap((s) => [s?.say, s?.card?.say]), raw.intro?.say, raw.end_card?.say].filter(Boolean).join(' ');
+  const han = (says.match(/[\u3400-\u9fff]/g) ?? []).length, latin = (says.match(/[A-Za-z]+/g) ?? []).length;
+  const zh = says.trim() ? han > latin && !/[\u3040-\u30ff\uac00-\ud7af]/.test(says) : /^zh/i.test(String(raw.lang ?? ''));
+  return zh ? ZH_DEFAULT_VOICE : VOICE_DEFAULTS.kokoro.voice;
+}
+
 let kokoro = null;
 async function synth(v, text, file) {
   switch (v.provider) {
     case 'kokoro': {
+      if (/^z[fm]_/.test(v.voice)) throw new Error(`Kokoro voice "${v.voice}" is from v1.0, which storyshot does not run; for Mandarin use a v1.1-zh voice such as ${ZH_DEFAULT_VOICE}`);
       if (!kokoro) {
         let KokoroTTS;
         try { ({ KokoroTTS } = await import('kokoro-js')); } catch {
@@ -74,18 +86,30 @@ function pronounce(v, text) {
   return t;
 }
 
+// The cache file for a line, and the text the engine is given. The Mandarin voice reads a rewritten
+// text (2个 → 两个, …) and has its model and G2P version in the hash.
+function cached(cfg, line) {
+  const v = cfg.voice;
+  const dir = path.join(path.dirname(cfg.work), 'tts-cache');
+  fs.mkdirSync(dir, { recursive: true });
+  const zh = v.provider === 'kokoro' && isZhVoice(v.voice);
+  const text = zh ? zhSpeakText(pronounce(v, line)) : pronounce(v, line);
+  const ext = { kokoro: 'wav', say: 'aiff' }[v.provider] ?? 'mp3';
+  const key = zh ? [v.provider, v.voice, ZH_TTS_ID, v.speed, text] : [v.provider, v.voice, v.model, v.speed, v.instructions, text];
+  const hash = crypto.createHash('sha1').update(JSON.stringify(key)).digest('hex').slice(0, 16);
+  return { text, file: path.join(dir, `${hash}.${ext}`), zh };
+}
+
 // Returns stereo Float32 PCM at 48 kHz with leading/trailing silence trimmed.
 export async function speak(cfg, line, { log = console.log } = {}) {
   const v = cfg.voice;
-  const text = pronounce(v, line);
-  const dir = path.join(path.dirname(cfg.work), 'tts-cache');
-  fs.mkdirSync(dir, { recursive: true });
-  const ext = { kokoro: 'wav', say: 'aiff' }[v.provider] ?? 'mp3';
-  const hash = crypto.createHash('sha1').update(JSON.stringify([v.provider, v.voice, v.model, v.speed, v.instructions, text])).digest('hex').slice(0, 16);
-  const file = path.join(dir, `${hash}.${ext}`);
+  const { text, file, zh } = cached(cfg, line);
   if (!fs.existsSync(file)) {
-    log(`  tts (${v.provider}): "${text}"`);
-    await synth(v, text, file);
+    if (zh) await synthZh(v, [{ text, file }], { log });
+    else {
+      log(`  tts (${v.provider}): "${text}"`);
+      await synth(v, text, file);
+    }
   }
   const trim = 'silenceremove=start_periods=1:start_threshold=-50dB,areverse,silenceremove=start_periods=1:start_threshold=-50dB,areverse';
   const pcm = execFileSync('ffmpeg', ['-loglevel', 'error', '-i', file, '-af', trim, '-f', 'f32le', '-ac', '2', '-ar', `${SR}`, 'pipe:1'], { maxBuffer: 1 << 28 });
@@ -105,6 +129,12 @@ export function tempo(pcm, factor) {
 export async function measureVoice(cfg, { log = console.log } = {}) {
   const lens = { steps: {}, endCard: null, intro: null, cards: {} };
   if (!cfg.voice) return lens;
+  if (cfg.voice.provider === 'kokoro' && isZhVoice(cfg.voice.voice)) {
+    // synthesize every uncached Mandarin line in one batch, so the Python G2P starts once
+    const lines = [...cfg.steps.filter((s) => !s.hidden).flatMap((s) => [s.say, s.card?.say]), cfg.intro?.say, cfg.endCard?.say].filter(Boolean);
+    const todo = new Map(lines.map((l) => cached(cfg, l)).filter((c) => !fs.existsSync(c.file)).map((c) => [c.file, c]));
+    await synthZh(cfg.voice, [...todo.values()], { log });
+  }
   for (const [i, s] of cfg.steps.entries()) {
     if (s.say && !s.hidden) lens.steps[i] = (await speak(cfg, s.say, { log })).length / 2 / SR;
     if (s.card?.say && !s.hidden) lens.cards[i] = (await speak(cfg, s.card.say, { log })).length / 2 / SR;

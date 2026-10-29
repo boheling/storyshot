@@ -12,6 +12,9 @@
   "bin": {
     "storyshot": "bin/storyshot.mjs"
   },
+  "scripts": {
+    "test": "node --test"
+  },
   "files": [
     "bin",
     "src",

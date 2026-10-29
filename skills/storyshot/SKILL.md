@@ -65,8 +65,8 @@ frames or stock footage presented as a recording of their app.
       narrated how-to; course = narrated lesson; docs = silent step-by-step GIFs)
    2. Length: about 20 s, 6 shots (it follows from the flow below)
    3. Flow: hero → Examples → Try It → AI result → pricing → end card
-   4. Voice: none (other options: free local English voice; ElevenLabs, best
-      quality and Chinese support, key found in .env)
+   4. Voice: none (other options: free local voice, English or Chinese;
+      ElevenLabs, best quality, key found in .env)
    5. Music: upbeat · Captions: English · Subtitle file (.srt): no
    6. Format: 16:9, 1080p (other option: 9:16 vertical)
    7. Login: not needed (or: Examples needs a login, so I'll open a browser
@@ -85,7 +85,11 @@ frames or stock footage presented as a recording of their app.
    | `docs` | one clip per step, each just long enough to see its result | none | none | step numbers, spotlight, cropped GIFs + PNGs, README.md article |
 
    Captions match the site's language. `kokoro` (free, local) speaks English
-   only; for other languages, use ElevenLabs.
+   and Mandarin Chinese: for Chinese lines use `voice: { provider: kokoro,
+   voice: zf_001 }` (the default for Chinese `say:` lines), not macOS `say -v
+   Tingting`, which sounds robotic. It needs Python 3.10–3.12 and sets up its
+   own venv on first use (`doctor` reports it). For other languages, use
+   ElevenLabs.
 3. **Login.** If the flow needs a logged-in page:
    - Tell the user a browser window will open and that they should log in
      there, preferably with a demo account (the video shows whatever is on

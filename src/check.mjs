@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import YAML from 'yaml';
 import { loadConfig } from './config.mjs';
 import { gitIgnored } from './auth.mjs';
+import { isZhVoice, zhVoiceStatus } from './kokoro-zh.mjs';
 
 const TOP = ['name', 'url', 'out', 'purpose', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'intro', 'frame', 'pace', 'follow', 'article', 'cards', 'lang', 'colorScheme',
   'scrollOffset', 'captionPosition', 'captions', 'highlight', 'stepNumbers', 'subtitles', 'chapters', 'clips', 'maxWait', 'setup', 'steps', 'end_card', 'hyperframes'];
@@ -155,6 +156,12 @@ export function check(file, { draft = false } = {}) {
         const need = secs(s.say);
         if (need > room * 1.4 && need - room > 1) warnings.push(`step ${i + 1}: the say: line takes about ${need.toFixed(1)}s to speak but has ${room.toFixed(1)}s before ${nextK < 0 ? 'the video ends' : 'the next line'} — shorten it or raise duration (the lines after it would play late)`);
       }
+    }
+    // the Chinese Kokoro voice needs a Python for its G2P: say so now, not after the recording
+    const v = draft && cfg.voice ? loadConfig(file, { draft }).voice : cfg.voice;
+    if (v?.provider === 'kokoro' && isZhVoice(v.voice)) {
+      const zh = zhVoiceStatus();
+      if (zh.problem) errors.push(zh.problem);
     }
     if (!draft && cfg.voice && ['elevenlabs', 'openai'].includes(cfg.voice.provider)) {
       const env = cfg.voice.provider === 'elevenlabs' ? 'ELEVENLABS_API_KEY' : 'OPENAI_API_KEY';

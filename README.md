@@ -152,7 +152,7 @@ Rendering is free and runs locally. Only the voiceover can cost money:
 | voice | cost | notes |
 |---|---|---|
 | none | free | captions only |
-| `kokoro` | free | local, English only; downloads a ~90 MB model on first use |
+| `kokoro` | free | local, English and Mandarin Chinese (`zf_001`); downloads a ~90 MB model on first use (Chinese: ~130 MB, and needs Python 3.10–3.12) |
 | ElevenLabs | your credits | the most natural voice; many languages including Chinese. Put `ELEVENLABS_API_KEY` in `.env`. |
 | OpenAI | your credits | `OPENAI_API_KEY` |
 
@@ -393,10 +393,21 @@ mix is normalized to -14 LUFS.
 
 | provider | key (env or `.env`) | notes |
 |---|---|---|
-| `kokoro` (default) | none | Local and free; English voices only (`af_heart`, `am_michael`, `bf_emma`, …). Needs `npm i kokoro-js`; the first run downloads an ~90 MB model. |
+| `kokoro` (default) | none | Local and free. English voices (`af_heart`, `am_michael`, `bf_emma`, …) and Mandarin Chinese ones (`zf_001`, see below). Needs `npm i kokoro-js`; the first run downloads an ~90 MB model. |
 | `elevenlabs` | `ELEVENLABS_API_KEY` | Most natural, many languages including Chinese. `voice` is a voice ID; `model` defaults to `eleven_multilingual_v2`. The key needs Text to Speech access, plus Voices → Read to list voices. |
 | `openai` | `OPENAI_API_KEY` | `voice: alloy`, `model: gpt-4o-mini-tts`; optional `instructions` for tone. |
-| `say` | none | macOS built-in voices, robotic; fine for drafts. |
+| `say` | none | macOS built-in voices, robotic; fine for drafts. For Chinese, use `kokoro` with `zf_001` rather than `Tingting`. |
+
+**Chinese narration.** `voice: { provider: kokoro, voice: zf_001 }` speaks Mandarin with Kokoro
+v1.1-zh, free and local, and is what `kokoro` uses when the `say:` lines are Chinese and no voice is
+named. It sounds far more natural than macOS `say -v Tingting`. Other voices: `zf_002` (female),
+`zm_010`, `zm_011` (male), and others between `zf_001`…`zf_099` and `zm_009`…`zm_100` (not every
+number exists). Its text-to-phoneme step (misaki) needs Python 3.10–3.12: on first use Storyshot
+creates its own venv in `~/.cache/storyshot/zh-venv` (about 250 MB, under a minute; nothing is installed globally;
+`STORYSHOT_PYTHON` picks the interpreter) and downloads a ~130 MB model. `storyshot doctor` says
+whether it's ready. English words and letters in a line (`GeoGebra`, `y 等于 m x 加 b`) are spoken in
+English, a 2 before a measure word is read 两 (`2 个单位`), and `=`, `+`, `×`, `÷`, `²` are spoken;
+subtitles keep the line as written. Known issue: with every Kokoro voice, 逗号 can sound like 度号.
 
 Other fields: `speed` (default 1), `volume` (default 1), and `pronounce`, a
 map of word → spoken form used only for TTS, e.g.

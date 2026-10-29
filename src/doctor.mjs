@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { hasFilter, hasEncoder, NEEDED, OPTIONAL } from './ffmpeg.mjs';
+import { zhVoiceStatus } from './kokoro-zh.mjs';
 import { hyperframesCli, HF_VERSION } from './hyperframes.mjs';
 
 const has = (cmd, args = ['--version']) => { try { execFileSync(cmd, args, { stdio: 'ignore' }); return true; } catch { return false; } };
@@ -72,6 +73,11 @@ export async function doctor({ log = console.log } = {}) {
   }
 
   try { await import('kokoro-js'); lines.push('✔ free local voice (kokoro)'); } catch { lines.push('· free local voice (kokoro) not installed — optional: npm i kokoro-js'); }
+  // Mandarin (kokoro zf_001…): its G2P runs in a Python 3.10–3.12 venv that storyshot creates on first use
+  const zh = zhVoiceStatus();
+  lines.push(zh.ready ? `✔ Chinese voice (kokoro zf_001): Python ${zh.python?.version ?? '?'} venv in ${zh.venv}`
+    : zh.python ? `· Chinese voice (kokoro zf_001): Python ${zh.python.version} found; storyshot sets up its venv in ${zh.venv} on first use`
+      : '· Chinese voice (kokoro zf_001) needs Python 3.10–3.12 — optional: brew install python@3.12, or uv python install 3.12 (or set STORYSHOT_PYTHON)');
   const hf = hyperframesCli();
   lines.push(hf.error ? `· HyperFrames cards (hyperframes: true) unavailable — optional: ${hf.error}`
     : hf.missing ? `· HyperFrames cards (hyperframes: true): ${HF_VERSION} installs itself on first use`
