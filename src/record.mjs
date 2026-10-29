@@ -719,6 +719,9 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
     await locate(page, card.logo).screenshot({ path: path.join(cfg.work, file), omitBackground: true, timeout: 5000 })
       .catch((e) => log(`warning: could not capture logo (${e.message.split('\n')[0]})`));
   }
+  // where the intro's logo sits on the first page: a HyperFrames launch intro lands its logo there
+  const introLogo = cfg.intro?.logo && !cfg.intro.logoFile
+    ? await locate(page, cfg.intro.logo).boundingBox({ timeout: 2000 }).catch(() => null) : null;
   // an app window shows the app's icon and name: from the web app manifest, else the page's own
   let app = null;
   if (cfg.frame?.window === 'app' && !fast) {
@@ -824,7 +827,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
   await cdp.send('Page.stopScreencast');
   await browser.close();
 
-  const timeline = { frames, steps, clicks, navs, gotos, urls, app, scale: cfg.scale };
+  const timeline = { frames, steps, clicks, navs, gotos, urls, app, introLogo, scale: cfg.scale };
   fs.writeFileSync(path.join(cfg.work, 'timeline.json'), JSON.stringify(timeline, null, 1));
   log(`recorded ${frames.length} frames`);
   return timeline;

@@ -175,6 +175,14 @@ small controls are readable. Your job is the structure:
   `note` the field the reader must not miss. Set the article's heading and
   first paragraph with `article: { title: …, intro: … }`. Downloads show a
   "Downloaded" bubble; `paste` and copy-to-clipboard work.
+- **More motion on the cards** (when the user asks for livelier titles, or for
+  a launch video): `hyperframes: true` renders the intro, section and end
+  cards with HyperFrames (needs Node 22+; installs itself on first use). For a
+  subject with its own material, give the titles a backdrop from it:
+  `hyperframes: { band: <a sequence or formula>, emblem: [<1–3 short lines>] }`.
+  Promos get hand-drawn accents; `hand: true` uses hand lettering. Write the
+  intro's `bullets` and the end card's recap with the same words the `say`
+  line uses: each point lights up when the narration names it.
 - **End with a recap**: `end_card` with `bullets` listing the steps or rules
   to remember, and a `say` that repeats them.
 - **Narrating real results.** You can't know the numbers (scores, counts,

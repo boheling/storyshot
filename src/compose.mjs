@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { renderHyperframesCards } from './hyperframes.mjs';
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const md = (s, accent) => esc(s).replace(/\*\*(.+?)\*\*/g, `<b style="color:${accent};font-weight:700">$1</b>`);
@@ -27,7 +28,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   const END = !ec0 ? 0 : ec0.duration === 'auto' ? Math.max(2.5, (voiceLens.endCard ?? 0) + 0.6, readTime(ec0), ctaTime(ec0)) : ec0.duration;
   if (ec0 && END < 2.5) warn(`the end card shows for only ${END.toFixed(1)}s: too short to read its call to action — use duration: auto, or at least 2.5`);
   const in0 = cfg.intro;
-  const INTRO = !in0 ? 0 : in0.duration === 'auto' ? Math.max(1.8, (voiceLens.intro ?? 0) + 0.8, readTime(in0)) : in0.duration;
+  const INTRO = !in0 ? 0 : in0.duration === 'auto' ? Math.max(cfg.hyperframes?.template === 'launch' ? 2.8 : 1.8, (voiceLens.intro ?? 0) + 0.8, readTime(in0)) : in0.duration;
   if (INTRO > 8) warn(`the intro card plays ${INTRO.toFixed(1)}s before anything happens: viewers leave during long intros — shorten its say or bullets (aim for 6–8s)`);
   const cards = []; // section cards: { i, t0, t1, card }
 
@@ -423,9 +424,6 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     }
   };
   const ec = cfg.endCard;
-  if (ec) await animate(card(ec, ec.logoFile ?? path.join(cfg.work, 'logo.png')), END + 0.5, path.join(cfg.work, 'endcard'));
-  for (const [k, c] of cards.entries()) await animate(card(c.card, c.card.logoFile ?? '', { thinkAt: c.thinkAt }), c.t1 - c.t0, path.join(cfg.work, `card${k}`));
-  if (in0) await animate(card(in0, in0.logoFile ?? path.join(cfg.work, 'intro-logo.png')), INTRO, path.join(cfg.work, 'intro'));
   if (cfg.frame) {
     // three layers: the backdrop (a picture, or the page itself blurred), the window chrome (shadow and
     // title bar), and the page with rounded bottom corners
@@ -470,6 +468,74 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     await pg.setContent(`<body style="margin:0;width:${FW}px;height:${FH}px;background:#000"><div style="width:100%;height:100%;background:#fff;border-radius:0 0 ${R}px ${R}px"></div></body>`);
     await pg.screenshot({ path: path.join(cfg.work, 'frame-mask.png') });
     await pg.setViewportSize({ width: W, height: H });
+  }
+
+  // what each HyperFrames card is about: its text, when its narration plays (card seconds), and
+  // pictures from the recording (the page it leads into, blurred, as a backdrop; for a launch intro, the
+  // first page sharp, and where the app shows the intro's logo, so the logo can land there)
+  function hfJobs() {
+    const launch = cfg.hyperframes.template === 'launch';
+    const seqAt = (t) => path.join(SEQ, `${String(Math.min(nFrames - 1, Math.max(0, Math.round(t * FPS)))).padStart(5, '0')}.jpg`);
+    const blurred = (t, name) => {
+      if (cfg.hyperframes.backdrop === false || !nFrames) return null;
+      const f = path.join(cfg.work, `${name}-backdrop.jpg`);
+      execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', seqAt(t), '-vf', `scale=${even(W / 4)}:-2,gblur=sigma=6`, '-q:v', '4', f]);
+      return f;
+    };
+    const sizeOf = (f) => {
+      try {
+        const [w, h] = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', f]).toString().trim().split(',').map(Number);
+        return w && h ? { w, h } : null;
+      } catch { return null; }
+    };
+    const voice = (text, start, len) => (text && len ? { text, start, len } : null);
+    const jobs = [];
+    if (in0) {
+      const logo = [in0.logoFile, path.join(cfg.work, 'intro-logo.png')].find((f) => f && fs.existsSync(f)) ?? null;
+      const target = launch && logo && tl.introLogo ? onScreen(tl.introLogo, INTRO) : null;
+      jobs.push({ name: 'intro', kind: 'intro', seconds: INTRO, card: in0, voice: voice(in0.say, 0.15, voiceLens.intro), image: in0.imageFile,
+        logo, logoSize: target ? { w: target.w, h: target.h } : logo && sizeOf(logo), logoTarget: target,
+        page: launch && nFrames ? seqAt(INTRO + 0.05) : null, backdrop: launch ? null : blurred(INTRO + 0.05, 'intro') });
+    }
+    for (const [k, c] of cards.entries()) {
+      jobs.push({ name: `card${k}`, kind: 'section', seconds: c.t1 - c.t0, card: c.card, voice: voice(c.card.say, 0.15, voiceLens.cards?.[c.i]),
+        index: k, of: cards.length, thinkAt: c.thinkAt, image: c.card.imageFile, backdrop: blurred(c.t1 + 0.05, `card${k}`) });
+    }
+    if (ec) {
+      const logo = [ec.logoFile, path.join(cfg.work, 'logo.png')].find((f) => f && fs.existsSync(f)) ?? null;
+      // the end card starts as the video ends (launch: over it, at VIDEO; lesson: a beat before)
+      jobs.push({ name: 'endcard', kind: 'end', seconds: launch ? END + 0.05 : END + 0.5, card: ec, voice: voice(ec.say, launch ? 0.05 : 0.3, voiceLens.endCard),
+        image: ec.imageFile, logo, logoSize: logo && sizeOf(logo), backdrop: launch ? null : blurred(VIDEO - 0.3, 'endcard') });
+    }
+    return jobs;
+  }
+
+  // the cards: HyperFrames compositions when asked for (`hyperframes:`), else (or for any card that
+  // doesn't render) the built-in ones. A launch outro is drawn with transparency over the last frame,
+  // which the ffmpeg pass below zooms into the page.
+  const hf = cfg.hyperframes ? await renderHyperframesCards(hfJobs(), {
+    W, H, FPS, dark: darkCards, accent, ink, font, lang: cfg.lang, labels: cfg.labels, opts: cfg.hyperframes, work: cfg.work,
+    frame: { FX, FY, FW, FH, ...Object.fromEntries([['frameBg', 'frame-bg.png'], ['chrome', 'frame-chrome.png'], ['url', 'frame-url0.png']]
+      .map(([k, f]) => [k, cfg.frame && fs.existsSync(path.join(cfg.work, f)) ? path.join(cfg.work, f) : null])) },
+  }, { log, warn }) : {};
+  const place = (name, seconds) => {
+    const dir = path.join(cfg.work, name), src = fs.readdirSync(hf[name].dir).filter((f) => f.endsWith(`.${hf[name].ext}`)).sort();
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
+    for (let k = 0, n = Math.ceil(seconds * FPS) + 1; k < n; k++) fs.copyFileSync(path.join(hf[name].dir, src[Math.min(k, src.length - 1)]), path.join(dir, `${String(k).padStart(4, '0')}.${hf[name].ext}`));
+  };
+  const ecAlpha = !!hf.endcard?.alpha;
+  if (ec) {
+    if (hf.endcard) place('endcard', ecAlpha ? END + 0.05 : END + 0.5);
+    else await animate(card(ec, ec.logoFile ?? path.join(cfg.work, 'logo.png')), END + 0.5, path.join(cfg.work, 'endcard'));
+  }
+  for (const [k, c] of cards.entries()) {
+    if (hf[`card${k}`]) place(`card${k}`, c.t1 - c.t0);
+    else await animate(card(c.card, c.card.logoFile ?? '', { thinkAt: c.thinkAt }), c.t1 - c.t0, path.join(cfg.work, `card${k}`));
+  }
+  if (in0) {
+    if (hf.intro) place('intro', INTRO);
+    else await animate(card(in0, in0.logoFile ?? path.join(cfg.work, 'intro-logo.png')), INTRO, path.join(cfg.work, 'intro'));
   }
   await browser.close();
 
@@ -517,7 +583,19 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       `[${last}][sc${k}]overlay=0:0:eof_action=pass:enable='between(t,${c.t0.toFixed(3)},${c.t1.toFixed(3)})'[v${++idx}];\n`;
     last = `v${idx}`;
   }
-  if (ec) {
+  if (ec && ecAlpha) {
+    // launch outro: the last frame zooms into the page (an upscaled copy, so the slow zoom doesn't
+    // jitter), then the card draws itself over it
+    const q = `clip((on/${FPS}-0.05)/0.6,0,1)`, E = `(${q})*(${q})*(3-2*(${q}))`, Z = 2;
+    const zoom = cfg.frame
+      ? `z='${W}/(${W}-${E}*${W - FW})':x='${E}*${FX * Z}':y='${E}*${FY * Z}'`
+      : `z='1+0.06*${E}':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2'`;
+    inputs.push('-framerate', `${FPS}`, '-i', path.join(cfg.work, 'endcard', '%04d.png'));
+    graph += `[${last}]split[pre][post];[pre]trim=end=${VIDEO.toFixed(3)},setpts=PTS-STARTPTS,format=yuv420p,setsar=1[pre1];\n` +
+      `[post]trim=start=${VIDEO.toFixed(3)},setpts=PTS-STARTPTS,scale=${W * Z}:${H * Z}:flags=lanczos,zoompan=${zoom}:d=1:fps=${FPS}:s=${W}x${H}[post1];\n` +
+      `[${idx}:v]format=rgba,setpts=PTS-STARTPTS[ec];[post1][ec]overlay=0:0:eof_action=repeat,format=yuv420p,setsar=1[post2];[pre1][post2]concat=n=2:v=1:a=0[v${++idx}];\n`;
+    last = `v${idx}`;
+  } else if (ec) {
     const st = VIDEO - 0.25;
     inputs.push('-framerate', `${FPS}`, '-i', path.join(cfg.work, 'endcard', '%04d.jpg'));
     graph += `[${idx}:v]format=rgba,setpts=PTS-STARTPTS+${st.toFixed(3)}/TB,fade=in:st=${st.toFixed(3)}:d=0.3:alpha=1[ec];\n` +

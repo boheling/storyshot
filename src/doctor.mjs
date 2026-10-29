@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { hasFilter, hasEncoder, NEEDED, OPTIONAL } from './ffmpeg.mjs';
+import { hyperframesCli, HF_VERSION } from './hyperframes.mjs';
 
 const has = (cmd, args = ['--version']) => { try { execFileSync(cmd, args, { stdio: 'ignore' }); return true; } catch { return false; } };
 
@@ -71,6 +72,10 @@ export async function doctor({ log = console.log } = {}) {
   }
 
   try { await import('kokoro-js'); lines.push('✔ free local voice (kokoro)'); } catch { lines.push('· free local voice (kokoro) not installed — optional: npm i kokoro-js'); }
+  const hf = hyperframesCli();
+  lines.push(hf.error ? `· HyperFrames cards (hyperframes: true) unavailable — optional: ${hf.error}`
+    : hf.missing ? `· HyperFrames cards (hyperframes: true): ${HF_VERSION} installs itself on first use`
+      : `✔ HyperFrames cards (${hf.how})`);
   lines.push(process.env.ELEVENLABS_API_KEY ? '✔ ELEVENLABS_API_KEY set' : '· ELEVENLABS_API_KEY not set — optional, for the best voice (put it in .env)');
   return { ok: !todo.length, report: lines.join('\n'), todo };
 }

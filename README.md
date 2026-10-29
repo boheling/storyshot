@@ -430,6 +430,41 @@ usually shouldn't.
 | `cta` | Dark call-to-action pill, e.g. `Start free at acme.com`. |
 | `duration` | Seconds. Default: fits the `say` line, else 1.0 (end card) or 2.2 (intro). |
 | `say` | Voiceover line played over the end card. |
+| `emblem` | With `hyperframes`: one to three short monospace lines over the title (an alignment, a formula, a line of code); `false` for none. |
+
+### HyperFrames cards (optional)
+
+`hyperframes: true` renders the intro, section and end cards with
+[HyperFrames](https://hyperframes.heygen.com) (HeyGen's open-source HTML-to-video
+renderer, Apache-2.0) for more motion. Two templates, picked by `purpose`:
+
+- **lesson** (tutorials, courses, docs): the title lands word by word over a
+  slowly drifting, blurred view of the page the section leads into; section
+  cards show a progress bar of the parts; the intro's steps and the end card's
+  recap points light up as the narration names them.
+- **launch** (promos): hand-drawn accents (a box round the logo, an underlined
+  highlight, an arrow to the call to action). The intro's paper turns into the
+  browser window and its logo lands on the app's own logo in the first frame;
+  the outro zooms from the last frame into the page and draws the call to
+  action over it.
+
+```yaml
+hyperframes:
+  template: lesson        # or launch (default: launch for pitch, lesson otherwise)
+  band: MVHLTPEEKSAVTALWGKV…  # optional: text drifting behind the titles (a sequence, a formula)
+  bandColors: aminoacid   # aminoacid | nucleotide | accent (default)
+  emblem: [LHCDKLHVDPENFRLL, "||||||||||||+|||", LHCDKLHVDPENFKLL]  # optional, over the titles
+  hand: true              # launch: hand lettering (Virgil) for the subtitle and call to action
+  backdrop: false         # lesson: plain background instead of the blurred page
+```
+
+It needs Node 22 or newer. On first use storyshot installs the pinned
+HyperFrames version into `~/.cache/storyshot/hyperframes/` (a local install
+of the `hyperframes` package wins); its telemetry is switched off. Cards are
+cached, so `compose` only re-renders the ones that changed (about 10–25 s
+each). Any card that can't be rendered falls back to the built-in one with a
+warning. The Virgil font is © Ellinor Rapp, SIL Open Font License 1.1
+(`src/fonts/Virgil-LICENSE.md`).
 
 ## License
 

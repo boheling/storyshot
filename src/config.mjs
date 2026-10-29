@@ -6,13 +6,13 @@ import { VOICE_DEFAULTS } from './voice.mjs';
 
 // Built-in labels drawn into the video, by `lang` (e.g. es, es-MX); other languages get English
 export const LABELS = {
-  en: { think: 'Pause and think', intro: 'Introduction', downloaded: 'Downloaded' },
-  zh: { think: '先想一想', intro: '开场', downloaded: '已下载' },
-  es: { think: 'Piénsalo un momento', intro: 'Introducción', downloaded: 'Descargado' },
-  pt: { think: 'Pense um pouco', intro: 'Introdução', downloaded: 'Baixado' },
-  fr: { think: 'Réfléchissez', intro: 'Introduction', downloaded: 'Téléchargé' },
-  de: { think: 'Kurz nachdenken', intro: 'Einführung', downloaded: 'Heruntergeladen' },
-  ja: { think: '考えてみよう', intro: 'はじめに', downloaded: 'ダウンロード済み' },
+  en: { think: 'Pause and think', intro: 'Introduction', downloaded: 'Downloaded', tryIt: 'try it' },
+  zh: { think: '先想一想', intro: '开场', downloaded: '已下载', tryIt: '试试看' },
+  es: { think: 'Piénsalo un momento', intro: 'Introducción', downloaded: 'Descargado', tryIt: 'pruébalo' },
+  pt: { think: 'Pense um pouco', intro: 'Introdução', downloaded: 'Baixado', tryIt: 'experimente' },
+  fr: { think: 'Réfléchissez', intro: 'Introduction', downloaded: 'Téléchargé', tryIt: 'essayez' },
+  de: { think: 'Kurz nachdenken', intro: 'Einführung', downloaded: 'Heruntergeladen', tryIt: 'ausprobieren' },
+  ja: { think: '考えてみよう', intro: 'はじめに', downloaded: 'ダウンロード済み', tryIt: '試してみて' },
 };
 
 // Load API keys (ELEVENLABS_API_KEY, OPENAI_API_KEY) from .env next to the storyboard
@@ -114,7 +114,9 @@ export function loadConfig(file, { draft = false } = {}) {
   if (endCard) endCard = { duration: 'auto', ...endCard };
   // An intro title card (promos; optional for tutorials and lessons). Same fields as the end card.
   let intro = raw.intro === false ? null : raw.intro ?? null;
-  if (intro) intro = { duration: intro.say ? 'auto' : 2.2, ...intro };
+  // (a HyperFrames launch intro also turns into the app window at the end: it needs a little longer)
+  const launchCards = raw.hyperframes && (raw.hyperframes.template ?? (purpose === 'pitch' ? 'launch' : 'lesson')) === 'launch';
+  if (intro) intro = { duration: intro.say ? 'auto' : launchCards ? 3.0 : 2.2, ...intro };
   for (const card of [endCard, intro]) {
     if (card?.image) card.imageFile = path.resolve(dir, card.image);
     if (card?.logo && typeof card.logo === 'string' && /\.(png|jpe?g|svg|webp)$/i.test(card.logo)) card.logoFile = path.resolve(dir, card.logo);
@@ -133,6 +135,13 @@ export function loadConfig(file, { draft = false } = {}) {
   if (frame && !FRAME_STYLES.includes(frame.style)) throw new Error(`frame style must be one of ${FRAME_STYLES.join(', ')}`);
   if (frame && !['browser', 'app'].includes(frame.window)) throw new Error('frame.window must be browser or app');
   if (frame?.icon) frame.iconFile = path.resolve(dir, frame.icon);
+
+  // hyperframes: true | { template: lesson | launch, band, bandColors, emblem, hand, backdrop } — cards
+  // rendered by HyperFrames (see hyperframes.mjs); promos get the launch template, the rest the lesson one
+  const hf0 = raw.hyperframes;
+  const hyperframes = hf0 ? { template: purpose === 'pitch' ? 'launch' : 'lesson', backdrop: true, ...(typeof hf0 === 'object' ? hf0 : {}) } : null;
+  if (hyperframes && !['lesson', 'launch'].includes(hyperframes.template)) throw new Error('hyperframes.template must be lesson or launch');
+  if (hyperframes?.bandColors && !['aminoacid', 'nucleotide', 'accent'].includes(hyperframes.bandColors)) throw new Error('hyperframes.bandColors must be aminoacid, nucleotide or accent');
 
   let voice = null;
   if (raw.voice) {
@@ -186,6 +195,7 @@ export function loadConfig(file, { draft = false } = {}) {
     lang: raw.lang ?? (/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(JSON.stringify(raw.steps ?? [])) ? 'zh' : 'en'),
     labels: LABELS[String(raw.lang ?? '').toLowerCase().split(/[-_]/)[0]] ?? (/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(JSON.stringify(raw.steps ?? [])) ? LABELS.zh : LABELS.en),
     frame,
+    hyperframes,
     follow,
     music,
     voice,

@@ -5,10 +5,11 @@ import { loadConfig } from './config.mjs';
 import { gitIgnored } from './auth.mjs';
 
 const TOP = ['name', 'url', 'out', 'purpose', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'intro', 'frame', 'pace', 'follow', 'article', 'cards', 'lang', 'colorScheme',
-  'scrollOffset', 'captionPosition', 'captions', 'highlight', 'stepNumbers', 'subtitles', 'chapters', 'clips', 'maxWait', 'setup', 'steps', 'end_card'];
+  'scrollOffset', 'captionPosition', 'captions', 'highlight', 'stepNumbers', 'subtitles', 'chapters', 'clips', 'maxWait', 'setup', 'steps', 'end_card', 'hyperframes'];
 const STEP = ['caption', 'say', 'sayAt', 'duration', 'zoom', 'actions', 'hidden', 'sfx', 'highlight', 'captionPosition', 'card', 'follow', 'doc'];
 const ZOOM = ['target', 'scale', 'start', 'end', 'ramp', 'offset'];
-const END = ['logo', 'title', 'subtitle', 'cta', 'duration', 'say', 'kicker', 'bullets', 'image', 'think'];
+const END = ['logo', 'title', 'subtitle', 'cta', 'duration', 'say', 'kicker', 'bullets', 'image', 'think', 'emblem'];
+const HYPERFRAMES = ['template', 'band', 'bandColors', 'emblem', 'hand', 'backdrop'];
 const TARGET = ['role', 'name', 'text', 'label', 'placeholder', 'alt', 'testId', 'css', 'exact', 'last', 'nth'];
 const OPTS = ['ms', 'offset', 'timeout', 'highlight', 'color', 'box'];
 const ACTIONS = {
@@ -84,6 +85,7 @@ export function check(file, { draft = false } = {}) {
   }
   if (raw.end_card) unknown(raw.end_card, END, 'end_card');
   if (raw.intro) unknown(raw.intro, END, 'intro');
+  if (raw.hyperframes && typeof raw.hyperframes === 'object') unknown(raw.hyperframes, HYPERFRAMES, 'hyperframes');
   if (raw.article) unknown(raw.article, ['title', 'intro'], 'article');
   if (raw.frame && typeof raw.frame === 'object') unknown(raw.frame, ['background', 'style', 'window', 'title', 'icon'], 'frame');
   const todo = (fs.readFileSync(file, 'utf8').split('\n').map((l, i) => [l.replace(/#.*$/, ''), i + 1]).filter(([l]) => /\bTODO\b/.test(l)));
