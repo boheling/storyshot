@@ -74,7 +74,11 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     if (s.card) {
       // a section card plays over the step's first frame, before the step
       const C = cardLen(s.card, voiceLens.cards?.[i], 2.4);
-      pieces.push({ raw: [r.start, r.start], o0: acc, o1: acc + C });
+      // while the card fades in, the page under it is still the last one shown (else the new step's
+      // page flashes through the fade); it changes once the card covers the screen
+      const prev = pieces.at(-1)?.raw[1];
+      if (prev != null) pieces.push({ raw: [prev, prev], o0: acc, o1: acc + 0.25 });
+      pieces.push({ raw: [r.start, r.start], o0: acc + (prev != null ? 0.25 : 0), o1: acc + C });
       cards.push({ i, t0: acc, t1: acc + C, card: s.card, thinkAt: C - (s.card.think ?? 0) - 0.3 });
       acc += C;
     }
