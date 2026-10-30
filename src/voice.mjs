@@ -1,15 +1,18 @@
 // Voiceover: text-to-speech for each step's `say:` line, cached on disk.
-// Providers: kokoro (local, free: English, and Mandarin with the v1.1-zh voices), elevenlabs, openai, say (macOS).
+// Providers: kokoro (local, free: English, and Mandarin with the v1.1-zh voices), qwen (local, free, Apple
+// Silicon: Qwen3-TTS, best for Chinese), elevenlabs, openai, say (macOS).
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { isZhVoice, synthZh, zhSpeakText, ZH_DEFAULT_VOICE, ZH_TTS_ID } from './kokoro-zh.mjs';
+import { qwenSpeakText, QWEN_TTS_ID, synthQwen } from './qwen-tts.mjs';
 
 const SR = 48000;
 export const VOICE_DEFAULTS = {
   kokoro: { voice: 'af_heart' },
+  qwen: { voice: 'serena' },
   elevenlabs: { voice: 'JBFqnCBsd6RMkjVDRZzb', model: 'eleven_multilingual_v2' },
   openai: { voice: 'alloy', model: 'gpt-4o-mini-tts' },
   say: { voice: 'Samantha' },
@@ -19,10 +22,22 @@ export const VOICE_DEFAULTS = {
 // characters than Latin words; no kana or hangul), or, with no narration to go by, `lang: zh`.
 // English (af_heart) otherwise.
 export function kokoroVoiceFor(raw) {
-  const says = [...(raw.steps ?? []).flatMap((s) => [s?.say, s?.card?.say]), raw.intro?.say, raw.end_card?.say].filter(Boolean).join(' ');
+  return narrationIsChinese(raw) ? ZH_DEFAULT_VOICE : VOICE_DEFAULTS.kokoro.voice;
+}
+
+// qwen without a named voice: serena for Chinese, ono_anna for Japanese, sohee for Korean, aiden otherwise
+export function qwenVoiceFor(raw) {
+  const says = narration(raw);
+  if (/[\u3040-\u30ff]/.test(says) || /^ja/i.test(String(raw.lang ?? ''))) return 'ono_anna';
+  if (/[\uac00-\ud7af]/.test(says) || /^ko/i.test(String(raw.lang ?? ''))) return 'sohee';
+  return narrationIsChinese(raw) ? VOICE_DEFAULTS.qwen.voice : 'aiden';
+}
+
+const narration = (raw) => [...(raw.steps ?? []).flatMap((s) => [s?.say, s?.card?.say]), raw.intro?.say, raw.end_card?.say].filter(Boolean).join(' ');
+function narrationIsChinese(raw) {
+  const says = narration(raw);
   const han = (says.match(/[\u3400-\u9fff]/g) ?? []).length, latin = (says.match(/[A-Za-z]+/g) ?? []).length;
-  const zh = says.trim() ? han > latin && !/[\u3040-\u30ff\uac00-\ud7af]/.test(says) : /^zh/i.test(String(raw.lang ?? ''));
-  return zh ? ZH_DEFAULT_VOICE : VOICE_DEFAULTS.kokoro.voice;
+  return says.trim() ? han > latin && !/[\u3040-\u30ff\uac00-\ud7af]/.test(says) : /^zh/i.test(String(raw.lang ?? ''));
 }
 
 let kokoro = null;
@@ -72,7 +87,7 @@ async function synth(v, text, file) {
       execFileSync('say', ['-v', v.voice, '-r', String(Math.round(185 * v.speed)), '-o', file, text]);
       return;
     default:
-      throw new Error(`unknown voice provider "${v.provider}" (use kokoro, elevenlabs, openai or say)`);
+      throw new Error(`unknown voice provider "${v.provider}" (use kokoro, qwen, elevenlabs, openai or say)`);
   }
 }
 
@@ -86,26 +101,28 @@ function pronounce(v, text) {
   return t;
 }
 
-// The cache file for a line, and the text the engine is given. The Mandarin voice reads a rewritten
-// text (2个 → 两个, …) and has its model and G2P version in the hash.
+// The cache file for a line, and the text the engine is given. The Mandarin Kokoro voice reads a
+// rewritten text (2个 → 两个, …) and has its model and G2P version in the hash; so does qwen.
 function cached(cfg, line) {
   const v = cfg.voice;
   const dir = path.join(path.dirname(cfg.work), 'tts-cache');
   fs.mkdirSync(dir, { recursive: true });
-  const zh = v.provider === 'kokoro' && isZhVoice(v.voice);
-  const text = zh ? zhSpeakText(pronounce(v, line)) : pronounce(v, line);
-  const ext = { kokoro: 'wav', say: 'aiff' }[v.provider] ?? 'mp3';
-  const key = zh ? [v.provider, v.voice, ZH_TTS_ID, v.speed, text] : [v.provider, v.voice, v.model, v.speed, v.instructions, text];
+  const zh = v.provider === 'kokoro' && isZhVoice(v.voice), qwen = v.provider === 'qwen';
+  const text = zh ? zhSpeakText(pronounce(v, line)) : qwen ? qwenSpeakText(pronounce(v, line)) : pronounce(v, line);
+  const ext = { kokoro: 'wav', qwen: 'wav', say: 'aiff' }[v.provider] ?? 'mp3';
+  const key = zh ? [v.provider, v.voice, ZH_TTS_ID, v.speed, text] : qwen ? [v.provider, v.voice, QWEN_TTS_ID, v.speed, text]
+    : [v.provider, v.voice, v.model, v.speed, v.instructions, text];
   const hash = crypto.createHash('sha1').update(JSON.stringify(key)).digest('hex').slice(0, 16);
-  return { text, file: path.join(dir, `${hash}.${ext}`), zh };
+  return { text, file: path.join(dir, `${hash}.${ext}`), zh, qwen };
 }
 
 // Returns stereo Float32 PCM at 48 kHz with leading/trailing silence trimmed.
 export async function speak(cfg, line, { log = console.log } = {}) {
   const v = cfg.voice;
-  const { text, file, zh } = cached(cfg, line);
+  const { text, file, zh, qwen } = cached(cfg, line);
   if (!fs.existsSync(file)) {
     if (zh) await synthZh(v, [{ text, file }], { log });
+    else if (qwen) await synthQwen(v, [{ text, file }], { log });
     else {
       log(`  tts (${v.provider}): "${text}"`);
       await synth(v, text, file);
@@ -129,11 +146,13 @@ export function tempo(pcm, factor) {
 export async function measureVoice(cfg, { log = console.log } = {}) {
   const lens = { steps: {}, endCard: null, intro: null, cards: {} };
   if (!cfg.voice) return lens;
-  if (cfg.voice.provider === 'kokoro' && isZhVoice(cfg.voice.voice)) {
-    // synthesize every uncached Mandarin line in one batch, so the Python G2P starts once
+  if (cfg.voice.fallback) log(`note: ${cfg.voice.fallback}`);
+  const zh = cfg.voice.provider === 'kokoro' && isZhVoice(cfg.voice.voice);
+  if (zh || cfg.voice.provider === 'qwen') {
+    // synthesize every uncached line in one batch, so Python (the G2P, or the Qwen model) starts once
     const lines = [...cfg.steps.filter((s) => !s.hidden).flatMap((s) => [s.say, s.card?.say]), cfg.intro?.say, cfg.endCard?.say].filter(Boolean);
     const todo = new Map(lines.map((l) => cached(cfg, l)).filter((c) => !fs.existsSync(c.file)).map((c) => [c.file, c]));
-    await synthZh(cfg.voice, [...todo.values()], { log });
+    await (zh ? synthZh : synthQwen)(cfg.voice, [...todo.values()], { log });
   }
   for (const [i, s] of cfg.steps.entries()) {
     if (s.say && !s.hidden) lens.steps[i] = (await speak(cfg, s.say, { log })).length / 2 / SR;

@@ -88,8 +88,12 @@ frames or stock footage presented as a recording of their app.
    and Mandarin Chinese: for Chinese lines use `voice: { provider: kokoro,
    voice: zf_001 }` (the default for Chinese `say:` lines), not macOS `say -v
    Tingting`, which sounds robotic. It needs Python 3.10–3.12 and sets up its
-   own venv on first use (`doctor` reports it). For other languages, use
-   ElevenLabs.
+   own venv on first use (`doctor` reports it). On an Apple Silicon Mac, the
+   best free Chinese voice is `voice: { provider: qwen, voice: serena }`
+   (Qwen3-TTS; `dylan` for a male voice with a Beijing accent): clearer than
+   zf_001 with English words and letters, about 2x real time, a ~2.3 GB model
+   on first use. Elsewhere a `qwen` storyboard renders with kokoro. For other
+   languages, use ElevenLabs.
 3. **Login.** If the flow needs a logged-in page:
    - Tell the user a browser window will open and that they should log in
      there, preferably with a demo account (the video shows whatever is on

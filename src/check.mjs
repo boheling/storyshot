@@ -4,6 +4,7 @@ import YAML from 'yaml';
 import { loadConfig } from './config.mjs';
 import { gitIgnored } from './auth.mjs';
 import { isZhVoice, zhVoiceStatus } from './kokoro-zh.mjs';
+import { qwenStatus } from './qwen-tts.mjs';
 
 const TOP = ['name', 'url', 'out', 'purpose', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'intro', 'frame', 'pace', 'follow', 'article', 'cards', 'lang', 'colorScheme',
   'scrollOffset', 'captionPosition', 'captions', 'highlight', 'stepNumbers', 'subtitles', 'chapters', 'clips', 'maxWait', 'setup', 'steps', 'end_card', 'hyperframes'];
@@ -163,6 +164,11 @@ export function check(file, { draft = false } = {}) {
       const zh = zhVoiceStatus();
       if (zh.problem) errors.push(zh.problem);
     }
+    if (v?.provider === 'qwen') {
+      const q = qwenStatus();
+      if (q.problem) errors.push(q.problem);
+    }
+    if (v?.fallback) warnings.push(v.fallback);
     if (!draft && cfg.voice && ['elevenlabs', 'openai'].includes(cfg.voice.provider)) {
       const env = cfg.voice.provider === 'elevenlabs' ? 'ELEVENLABS_API_KEY' : 'OPENAI_API_KEY';
       if (!process.env[env]) errors.push(`voice provider ${cfg.voice.provider} needs ${env} (environment or a .env file next to the storyboard) — or render with draft mode to use the free local voice`);

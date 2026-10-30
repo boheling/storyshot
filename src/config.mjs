@@ -2,7 +2,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
-import { VOICE_DEFAULTS, kokoroVoiceFor } from './voice.mjs';
+import { VOICE_DEFAULTS, kokoroVoiceFor, qwenVoiceFor } from './voice.mjs';
+import { QWEN_VOICES, qwenSupported, qwenVoice } from './qwen-tts.mjs';
 
 // Built-in labels drawn into the video, by `lang` (e.g. es, es-MX); other languages get English
 export const LABELS = {
@@ -148,10 +149,22 @@ export function loadConfig(file, { draft = false } = {}) {
     const provider = raw.voice.provider ?? 'kokoro';
     if (!VOICE_DEFAULTS[provider]) throw new Error(`voice.provider must be one of ${Object.keys(VOICE_DEFAULTS).join(', ')}`);
     const pace0 = PACES[pick('pace')] ?? PACES.normal;
-    // kokoro's default voice follows the narration's language (zf_001 for Chinese, af_heart otherwise)
+    // kokoro's and qwen's default voices follow the narration's language (zf_001 / serena for Chinese)
     const kokoroVoice = kokoroVoiceFor(raw);
-    voice = { speed: pace0.voiceSpeed, volume: 1, ...VOICE_DEFAULTS[provider], ...(provider === 'kokoro' ? { voice: kokoroVoice } : {}), ...raw.voice, provider };
-    if (draft && provider !== 'kokoro') {
+    const byLang = { kokoro: kokoroVoice, qwen: qwenVoiceFor(raw) }[provider];
+    voice = { speed: pace0.voiceSpeed, volume: 1, ...VOICE_DEFAULTS[provider], ...(byLang ? { voice: byLang } : {}), ...raw.voice, provider };
+    if (provider === 'qwen') {
+      const v = qwenVoice(voice.voice);
+      if (!v) throw new Error(`voice: qwen has no voice "${voice.voice}" (one of ${QWEN_VOICES.join(', ')})`);
+      voice.voice = v;
+      // MLX needs Apple Silicon: anywhere else the same storyboard renders with kokoro
+      if (!qwenSupported()) {
+        const k = raw.voice.draftVoice ?? kokoroVoice;
+        voice = { ...voice, provider: 'kokoro', voice: k, fallback: `the qwen voice needs an Apple Silicon Mac; using kokoro ${k} instead` };
+      }
+    }
+    // free local voices stay; a paid one is swapped for kokoro
+    if (draft && !['kokoro', 'qwen'].includes(voice.provider)) {
       voice = { ...voice, provider: 'kokoro', voice: raw.voice.draftVoice ?? kokoroVoice, model: undefined };
     }
   }

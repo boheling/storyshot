@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { hasFilter, hasEncoder, NEEDED, OPTIONAL } from './ffmpeg.mjs';
 import { zhVoiceStatus } from './kokoro-zh.mjs';
+import { qwenStatus } from './qwen-tts.mjs';
 import { hyperframesCli, HF_VERSION } from './hyperframes.mjs';
 
 const has = (cmd, args = ['--version']) => { try { execFileSync(cmd, args, { stdio: 'ignore' }); return true; } catch { return false; } };
@@ -78,6 +79,11 @@ export async function doctor({ log = console.log } = {}) {
   lines.push(zh.ready ? `✔ Chinese voice (kokoro zf_001): Python ${zh.python?.version ?? '?'} venv in ${zh.venv}`
     : zh.python ? `· Chinese voice (kokoro zf_001): Python ${zh.python.version} found; storyshot sets up its venv in ${zh.venv} on first use`
       : '· Chinese voice (kokoro zf_001) needs Python 3.10–3.12 — optional: brew install python@3.12, or uv python install 3.12 (or set STORYSHOT_PYTHON)');
+  const q = qwenStatus();
+  lines.push(!q.supported ? '· Qwen3-TTS voice (provider: qwen) needs an Apple Silicon Mac; storyboards that use it fall back to kokoro here'
+    : q.ready ? `✔ Qwen3-TTS voice (provider: qwen): venv in ${q.venv}${q.model ? ', model downloaded' : '; the model (~2.3 GB) downloads on first use'}`
+      : q.python ? `· Qwen3-TTS voice (provider: qwen): Python ${q.python.version} found; storyshot sets up its venv in ${q.venv} and downloads the model (~2.3 GB) on first use`
+        : '· Qwen3-TTS voice (provider: qwen) needs Python 3.10–3.12 — optional: brew install python@3.12, or uv python install 3.12 (or set STORYSHOT_PYTHON)');
   const hf = hyperframesCli();
   lines.push(hf.error ? `· HyperFrames cards (hyperframes: true) unavailable — optional: ${hf.error}`
     : hf.missing ? `· HyperFrames cards (hyperframes: true): ${HF_VERSION} installs itself on first use`
