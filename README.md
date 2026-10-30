@@ -153,6 +153,7 @@ Rendering is free and runs locally. Only the voiceover can cost money:
 |---|---|---|
 | none | free | captions only |
 | `kokoro` | free | local, English and Mandarin Chinese (`zf_001`); downloads a ~90 MB model on first use (Chinese: ~130 MB, and needs Python 3.10–3.12) |
+| `qwen` | free | local, Apple Silicon Macs only; the most natural free Chinese voice (`dylan`, `serena`); downloads a ~2.3 GB model and needs Python 3.10–3.12 |
 | ElevenLabs | your credits | the most natural voice; many languages including Chinese. Put `ELEVENLABS_API_KEY` in `.env`. |
 | OpenAI | your credits | `OPENAI_API_KEY` |
 
@@ -397,7 +398,7 @@ mix is normalized to -14 LUFS.
 | `qwen` | none | Local and free, Apple Silicon Macs only: Qwen3-TTS, the most natural free Chinese voice here (`dylan`, `serena`, see below). |
 | `elevenlabs` | `ELEVENLABS_API_KEY` | Most natural, many languages including Chinese. `voice` is a voice ID; `model` defaults to `eleven_multilingual_v2`. The key needs Text to Speech access, plus Voices → Read to list voices. |
 | `openai` | `OPENAI_API_KEY` | `voice: alloy`, `model: gpt-4o-mini-tts`; optional `instructions` for tone. |
-| `say` | none | macOS built-in voices, robotic; fine for drafts. For Chinese, use `kokoro` with `zf_001` rather than `Tingting`. |
+| `say` | none | macOS built-in voices, robotic; fine for drafts. For Chinese, use `qwen` (Apple Silicon) or `kokoro` with `zf_001` rather than `Tingting`. |
 
 **Chinese narration.** `voice: { provider: kokoro, voice: zf_001 }` speaks Mandarin with Kokoro
 v1.1-zh, free and local, and is what `kokoro` uses when the `say:` lines are Chinese and no voice is
