@@ -89,8 +89,9 @@ frames or stock footage presented as a recording of their app.
    voice: zf_001 }` (the default for Chinese `say:` lines), not macOS `say -v
    Tingting`, which sounds robotic. It needs Python 3.10–3.12 and sets up its
    own venv on first use (`doctor` reports it). On an Apple Silicon Mac, the
-   best free Chinese voice is `voice: { provider: qwen, voice: serena }`
-   (Qwen3-TTS; `dylan` for a male voice with a Beijing accent): clearer than
+   best free Chinese voice is `voice: { provider: qwen }` (Qwen3-TTS: `dylan`,
+   a male teacher's voice, for tutorials and lessons; `serena`, female, for
+   promos; those are the defaults): clearer than
    zf_001 with English words and letters, about 2x real time, a ~2.3 GB model
    on first use. Elsewhere a `qwen` storyboard renders with kokoro. For other
    languages, use ElevenLabs.

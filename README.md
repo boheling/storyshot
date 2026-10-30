@@ -394,7 +394,7 @@ mix is normalized to -14 LUFS.
 | provider | key (env or `.env`) | notes |
 |---|---|---|
 | `kokoro` (default) | none | Local and free. English voices (`af_heart`, `am_michael`, `bf_emma`, …) and Mandarin Chinese ones (`zf_001`, see below). Needs `npm i kokoro-js`; the first run downloads an ~90 MB model. |
-| `qwen` | none | Local and free, Apple Silicon Macs only: Qwen3-TTS, the most natural free Chinese voice here (`serena`, see below). |
+| `qwen` | none | Local and free, Apple Silicon Macs only: Qwen3-TTS, the most natural free Chinese voice here (`dylan`, `serena`, see below). |
 | `elevenlabs` | `ELEVENLABS_API_KEY` | Most natural, many languages including Chinese. `voice` is a voice ID; `model` defaults to `eleven_multilingual_v2`. The key needs Text to Speech access, plus Voices → Read to list voices. |
 | `openai` | `OPENAI_API_KEY` | `voice: alloy`, `model: gpt-4o-mini-tts`; optional `instructions` for tone. |
 | `say` | none | macOS built-in voices, robotic; fine for drafts. For Chinese, use `kokoro` with `zf_001` rather than `Tingting`. |
@@ -410,12 +410,12 @@ whether it's ready. English words and letters in a line (`GeoGebra`, `y 等于 m
 English, a 2 before a measure word is read 两 (`2 个单位`), and `=`, `+`, `×`, `÷`, `²` are spoken;
 subtitles keep the line as written. Known issue: with every Kokoro voice, 逗号 can sound like 度号.
 
-**Chinese on an Apple Silicon Mac: Qwen3-TTS.** `voice: { provider: qwen, voice: serena }` speaks with
+**Chinese on an Apple Silicon Mac: Qwen3-TTS.** `voice: { provider: qwen }` speaks with
 [Qwen3-TTS 0.6B CustomVoice](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice) (Apache-2.0)
 through [mlx-audio](https://github.com/Blaizzy/mlx-audio). It reads English words, letters and numbers
-in a Chinese line more reliably than `zf_001`. Voices: `serena` (female, warm; the default for Chinese
-lines), `vivian` (female, bright), `uncle_fu` (male, mellow), `dylan` (male, Beijing accent), `eric`
-(male, Sichuan accent), and `ryan`, `aiden` (English), `ono_anna` (Japanese), `sohee` (Korean). On
+in a Chinese line more reliably than `zf_001`. Voices: `dylan` (male, Beijing accent; the default
+for Chinese tutorials, lessons and docs), `serena` (female, warm; the default for Chinese promos),
+`vivian` (female, bright), `uncle_fu` (male, mellow), `eric` (male, Sichuan accent), and `ryan`, `aiden` (English), `ono_anna` (Japanese), `sohee` (Korean). On
 first use Storyshot creates a venv in `~/.cache/storyshot/qwen-venv` (Python 3.10–3.12, about 400 MB)
 and downloads the ~2.3 GB model into the Hugging Face cache. It speaks at about 2x real time on an M4 Pro
 and peaks at about 8 GB of memory. The model samples its speech, so a line now and then runs on into

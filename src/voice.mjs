@@ -12,7 +12,7 @@ import { qwenSpeakText, QWEN_TTS_ID, synthQwen } from './qwen-tts.mjs';
 const SR = 48000;
 export const VOICE_DEFAULTS = {
   kokoro: { voice: 'af_heart' },
-  qwen: { voice: 'serena' },
+  qwen: { voice: 'dylan' },
   elevenlabs: { voice: 'JBFqnCBsd6RMkjVDRZzb', model: 'eleven_multilingual_v2' },
   openai: { voice: 'alloy', model: 'gpt-4o-mini-tts' },
   say: { voice: 'Samantha' },
@@ -25,12 +25,14 @@ export function kokoroVoiceFor(raw) {
   return narrationIsChinese(raw) ? ZH_DEFAULT_VOICE : VOICE_DEFAULTS.kokoro.voice;
 }
 
-// qwen without a named voice: serena for Chinese, ono_anna for Japanese, sohee for Korean, aiden otherwise
+// qwen without a named voice, for Chinese: dylan (a steady teacher's voice) in tutorials, lessons and
+// docs, serena (warmer) in promos; ono_anna for Japanese, sohee for Korean, aiden otherwise
 export function qwenVoiceFor(raw) {
   const says = narration(raw);
   if (/[\u3040-\u30ff]/.test(says) || /^ja/i.test(String(raw.lang ?? ''))) return 'ono_anna';
   if (/[\uac00-\ud7af]/.test(says) || /^ko/i.test(String(raw.lang ?? ''))) return 'sohee';
-  return narrationIsChinese(raw) ? VOICE_DEFAULTS.qwen.voice : 'aiden';
+  if (!narrationIsChinese(raw)) return 'aiden';
+  return (raw.purpose ?? 'pitch') === 'pitch' ? 'serena' : VOICE_DEFAULTS.qwen.voice;
 }
 
 const narration = (raw) => [...(raw.steps ?? []).flatMap((s) => [s?.say, s?.card?.say]), raw.intro?.say, raw.end_card?.say].filter(Boolean).join(' ');

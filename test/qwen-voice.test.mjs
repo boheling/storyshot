@@ -34,7 +34,9 @@ test('other lines are left to the model', () => {
 });
 
 test('the default voice follows the narration', () => {
-  assert.equal(qwenVoiceFor({ steps: [{ say: '现在把 b 的滑块向右拖到 3。' }] }), 'serena');
+  assert.equal(qwenVoiceFor({ purpose: 'course', steps: [{ say: '现在把 b 的滑块向右拖到 3。' }] }), 'dylan');
+  assert.equal(qwenVoiceFor({ purpose: 'tutorial', steps: [{ say: '点击“导出”。' }] }), 'dylan');
+  assert.equal(qwenVoiceFor({ steps: [{ say: '粘贴任何 JSON，马上看到图。' }] }), 'serena');
   assert.equal(qwenVoiceFor({ steps: [{ say: 'Drag the slider to three.' }] }), 'aiden');
   assert.equal(qwenVoiceFor({ steps: [{ say: 'スライダーを動かします。' }] }), 'ono_anna');
   assert.equal(qwenVoiceFor({ lang: 'zh', steps: [{}] }), 'serena');
