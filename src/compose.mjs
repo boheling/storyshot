@@ -578,9 +578,13 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     last = `v${idx++}`;
   }
   for (const [k, c] of cards.entries()) {
+    // a card right after the intro is already in place (its first frame held) while the intro fades
+    // out, so the intro dissolves into it instead of showing the page for a moment in between
+    const lead = in0 && Math.abs(c.t0 - INTRO) < 0.02 ? Math.min(0.2, INTRO) : 0, s0 = c.t0 - lead;
     inputs.push('-framerate', `${FPS}`, '-i', path.join(cfg.work, `card${k}`, '%04d.jpg'));
-    graph += `[${idx}:v]format=rgba,setpts=PTS-STARTPTS+${c.t0.toFixed(3)}/TB,fade=in:st=${c.t0.toFixed(3)}:d=0.15:alpha=1,fade=out:st=${Math.max(c.t0, c.t1 - 0.15).toFixed(3)}:d=0.15:alpha=1[sc${k}];\n` +
-      `[${last}][sc${k}]overlay=0:0:eof_action=pass:enable='between(t,${c.t0.toFixed(3)},${c.t1.toFixed(3)})'[v${++idx}];\n`;
+    graph += `[${idx}:v]format=rgba,${lead ? `tpad=start_duration=${lead.toFixed(3)}:start_mode=clone,` : ''}setpts=PTS-STARTPTS+${s0.toFixed(3)}/TB,` +
+      `${lead ? '' : `fade=in:st=${c.t0.toFixed(3)}:d=0.15:alpha=1,`}fade=out:st=${Math.max(c.t0, c.t1 - 0.15).toFixed(3)}:d=0.15:alpha=1[sc${k}];\n` +
+      `[${last}][sc${k}]overlay=0:0:eof_action=pass:enable='between(t,${s0.toFixed(3)},${c.t1.toFixed(3)})'[v${++idx}];\n`;
     last = `v${idx}`;
   }
   if (ec && ecAlpha) {
