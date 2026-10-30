@@ -495,7 +495,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       const target = launch && logo && tl.introLogo ? onScreen(tl.introLogo, INTRO) : null;
       jobs.push({ name: 'intro', kind: 'intro', seconds: INTRO, card: in0, voice: voice(in0.say, 0.15, voiceLens.intro), image: in0.imageFile,
         logo, logoSize: target ? { w: target.w, h: target.h } : logo && sizeOf(logo), logoTarget: target,
-        page: launch && nFrames ? seqAt(INTRO + 0.05) : null, backdrop: launch ? null : blurred(INTRO + 0.05, 'intro') });
+        page: launch && nFrames ? seqAt(INTRO) : null, backdrop: launch ? null : blurred(INTRO + 0.05, 'intro') });
     }
     for (const [k, c] of cards.entries()) {
       jobs.push({ name: `card${k}`, kind: 'section', seconds: c.t1 - c.t0, card: c.card, voice: voice(c.card.say, 0.15, voiceLens.cards?.[c.i]),
