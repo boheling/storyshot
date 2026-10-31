@@ -332,11 +332,11 @@ You can add `exact: true`, `last: true` or `nth: 2` to any of them.
 | `waitForUrl` | `waitForUrl: "**/dashboard"` |
 | `networkIdle` | `networkIdle: true` |
 | `goto` | `goto: /pricing` |
-| `scrollTo` | `scrollTo: { css: "#pricing", ms: 1200 }` |
+| `scrollTo` | `scrollTo: { css: "#pricing", ms: 1200 }` scrolls the target to the top of the window, below a sticky header |
 | `scroll` | `scroll: 600` |
 | `dismiss` | `dismiss: { role: button, name: Close }` (clicks only if visible) |
 | `hide` | `hide: '[id*="QSI"], .chat-widget'` hides pop-ups, survey prompts, feedback tabs and chat widgets for the whole video, including ones that appear late (use it in `setup`) |
-| `mark` | `mark: "automatic zoom, captions"` sweeps a highlighter over that phrase, even inside a paragraph (scrolling to it if needed). `mark: { css: "table tr:nth-child(3)" }` marks any target with a box. Options: `ms` (sweep time, default 700), `color` (default: theme accent), `box: true/false`. Marks stay until the step ends. |
+| `mark` | `mark: "automatic zoom, captions"` sweeps a highlighter over that phrase, even inside a paragraph (scrolling to it only if it's off screen, and below a sticky header). `mark: { css: "table tr:nth-child(3)" }` marks any target with a box. Options: `ms` (sweep time, default 700), `color` (default: theme accent), `box: true/false`. Marks stay until the step ends. |
 | `unmark` | `unmark: true` clears the marks (and notes) earlier |
 | `note` | `note: { target: { label: Database }, text: Curated proteins only }` puts a short label with an arrow next to the element, on the side with the most room (or `side: left/right/top/bottom`). It stays until the step ends and gets reading time (about 3 words a second, or `ms`). |
 | `paste` | `paste: { target: { label: JSON }, text: '{"a": 1}' }` pastes text in one go through the real clipboard (with a ⌘V badge), so editors react as to a real paste; `paste: "..."` pastes into whatever has focus |
@@ -375,7 +375,7 @@ In-page anchor links (`href="#..."`) scroll smoothly instead of jumping.
 |---|---|
 | `target` | What to center on: a target, or a point `{ x: 0.5, y: 0.3 }`. If a step action used the same target, its position at that moment is used (so you can zoom on a button that disappears after the click). Otherwise it is measured at the start of the step when the zoom begins in the first half, or at the end of the step otherwise. |
 | `scale` | Zoom factor (default 1.3). 1.2–1.5 works well. |
-| `start`, `end` | Seconds from the start of the step. The camera eases in from 1× at `start` and is back at 1× at `end` (default: the step's end). `end` may run past the step, e.g. to hold the zoom through a click. |
+| `start`, `end` | Seconds from the start of the step. The camera eases in from 1× at `start` and is back at 1× at `end` (default: the step's end). A zoom belongs to its step: an `end` past the step's end stops there, with a warning. |
 | `ramp` | Ease-in / ease-out seconds: `0.5` or `[in, out]`. |
 | `offset` | Moves the camera center from the target's center, in viewport CSS px. `{ y: -120 }` centers 120 px above the target. |
 

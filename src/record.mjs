@@ -55,20 +55,53 @@ function pageScript({ scrollOffset }) {
     for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) if (scrollable(p)) return p;
     return docEl();
   };
+  // `behavior: 'instant'` on every frame: with `scroll-behavior: smooth` in the page's CSS (GitHub has it),
+  // plain scrollTop writes each start a smooth scroll of their own, so the page lags behind and is still
+  // moving after the step that scrolled it is over
   window.__demoScrollBy = (dy, ms = 1200, sc = mainScroller()) => new Promise((done) => {
     const start = sc.scrollTop, t0 = performance.now();
     const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
     const step = (now) => {
-      const k = Math.min(1, (now - t0) / ms);
-      sc.scrollTop = start + dy * ease(k);
+      const k = ms > 0 ? Math.min(1, Math.max(0, (now - t0) / ms)) : 1;
+      sc.scrollTo({ top: start + dy * ease(k), behavior: 'instant' });
       if (k < 1) requestAnimationFrame(step); else done();
     };
     requestAnimationFrame(step);
   });
-  window.__demoScrollTo = (el, ms) => {
-    const sc = scrollerFor(el), top = sc === docEl() ? 0 : sc.getBoundingClientRect().top;
-    return window.__demoScrollBy(el.getBoundingClientRect().top - top - scrollOffset, ms, sc);
+  // How far down a header will cover the window once `el` is scrolled to the top: bars fixed at the top,
+  // and sticky ones that stick inside a box holding `el` (GitHub's README bar sticks within the README).
+  const headerCover = (el) => {
+    let cover = 0;
+    for (const h of document.querySelectorAll('body *')) {
+      if (h.id?.startsWith('__demo') || h.contains(el)) continue;
+      const cs = getComputedStyle(h);
+      if (cs.position !== 'fixed' && cs.position !== 'sticky') continue;
+      const r = h.getBoundingClientRect();
+      if (!r.height || r.height > innerHeight * 0.3 || r.width < innerWidth * 0.3 || cs.visibility === 'hidden' || cs.opacity === '0') continue;
+      if (cs.position === 'fixed' && r.top <= 1) cover = Math.max(cover, r.bottom);
+      const stick = parseFloat(cs.top);
+      if (cs.position === 'sticky' && !Number.isNaN(stick) && stick < innerHeight * 0.3 && h.parentElement?.contains(el)) cover = Math.max(cover, stick + r.height);
+    }
+    return cover;
   };
+  // the element's top lands `scrollOffset` px down, or just below a header that would cover it there
+  window.__demoScrollTo = (el, ms) => {
+    const sc = scrollerFor(el), docs = sc === docEl(), top = docs ? 0 : sc.getBoundingClientRect().top;
+    const offset = docs ? Math.max(scrollOffset, headerCover(el) + 12) : scrollOffset;
+    return window.__demoScrollBy(el.getBoundingClientRect().top - top - offset, ms, sc);
+  };
+  // resolves once nothing has scrolled for a few frames (the page's own smooth scrolling included)
+  window.__demoScrollIdle = (max = 2000) => new Promise((done) => {
+    const sc = mainScroller(), pos = () => `${scrollX},${scrollY},${sc.scrollTop}`;
+    const end = performance.now() + max;
+    let last = pos(), still = 0;
+    const check = () => {
+      const now = pos();
+      still = now === last ? still + 1 : 0; last = now;
+      if (still >= 3 || performance.now() > end) done(); else requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
+  });
   // Tutorial callouts: spotlight a target, show a pressed key combo.
   window.__demoSpot = (r) => {
     let el = document.getElementById('__demo_spot');
@@ -86,9 +119,10 @@ function pageScript({ scrollOffset }) {
     Object.assign(el.style, { left: `${r.x - pad}px`, top: `${r.y - pad}px`, width: `${r.width + 2 * pad}px`, height: `${r.height + 2 * pad}px` });
     requestAnimationFrame(() => { el.style.opacity = '1'; });
   };
-  window.__demoSpotOff = () => {
+  window.__demoSpotOff = (instant) => {
     const el = document.getElementById('__demo_spot');
-    if (el) { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }
+    if (el && instant) el.remove();
+    else if (el) { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }
   };
   window.__demoKeys = (label) => {
     const el = document.createElement('div');
@@ -424,7 +458,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
     await sleep(280);
     return true;
   }
-  const spotOff = () => page.evaluate(() => window.__demoSpotOff()).catch(() => {});
+  const spotOff = (instant) => page.evaluate((i) => window.__demoSpotOff(i), !!instant).catch(() => {});
   const keyLabel = (k) => k.split('+').map((p) => ({ Meta: '⌘', ControlOrMeta: '⌘', Control: 'Ctrl', Shift: '⇧', Alt: '⌥', Enter: '↵ Enter', Escape: 'Esc', Backspace: '⌫', Tab: '⇥ Tab' })[p] ?? (p.length === 1 ? p.toUpperCase() : p)).join(' ');
 
   async function runAction(action) {
@@ -608,11 +642,9 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
         let box = null;
         const phraseOnly = v.text && Object.keys(v).every((k) => ['text', 'exact'].includes(k));
         if (phraseOnly) {
+          await page.evaluate(() => window.__demoScrollIdle()).catch(() => {}); // judge "in view" where the page ends up
           const found = await page.evaluate((t) => window.__demoFind(t), v.text);
-          if (found && !found.inView) {
-            await page.evaluate((ms) => window.__demoScrollTo(window.__demoFound.startContainer.parentElement, ms), fast ? 0 : 900);
-            await sleep(fast ? 50 : 950);
-          }
+          if (found && !found.inView) await page.evaluate((ms) => window.__demoScrollTo(window.__demoFound.startContainer.parentElement, ms), fast ? 0 : 900);
           if (found) box = await page.evaluate(([ms, color, b]) => window.__demoMark('found', { ms, color, box: b }), [ms, color, opt.box ?? false]);
         }
         if (!box) {
@@ -759,9 +791,10 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
     const n = Math.min(inspectAfter, cfg.steps.length);
     for (const [i, s] of cfg.steps.slice(0, n).entries()) {
       stepHighlight = false;
-      // like the recording: marks and notes end with their step (the last step's stay in the screenshot)
-      if (i > 0) await page.evaluate(() => { window.__demoUnmark(); window.__demoUnnote(); }).catch(() => {});
+      // like the recording: marks, notes and spotlights end with their step (the last step's stay in the screenshot)
+      if (i > 0) await page.evaluate(() => { window.__demoUnmark(true); window.__demoUnnote(true); window.__demoSpotOff(true); }).catch(() => {});
       await runAll(s.actions, `step ${i + 1}`);
+      await page.evaluate(() => window.__demoScrollIdle()).catch(() => {});
     }
     await sleep(800);
     const shot = path.join(cfg.work, `inspect-after-${n}.jpg`);
@@ -804,10 +837,14 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
     const zoomTarget = s.zoom?.target && !isPoint(s.zoom.target);
     const startBox = zoomTarget ? await boxNow() : null;
     await runAll(s.actions, `step ${i + 1}`);
+    // a scroll still running (the page's own smooth scrolling) ends in this step, not in the next one's first shot
+    await page.evaluate(() => window.__demoScrollIdle()).catch(() => {});
     const end = now(); // before clearing: a step that is held for its narration keeps its marks
-    await spotOff();
-    // docs clips start where the step starts: clear at once, so no fading callout leaks into the next clip
-    await page.evaluate((i) => { window.__demoUnmark(i); window.__demoUnnote(i); }, cfg.clips.length > 0).catch(() => {});
+    // docs clips start where the step starts, and a hidden step is cut: clear at once, so no fading
+    // callout leaks into the next shot
+    const instant = cfg.clips.length > 0 || !!s.hidden;
+    await spotOff(instant);
+    await page.evaluate((i) => { window.__demoUnmark(i); window.__demoUnnote(i); }, instant).catch(() => {});
     let zoomBox = null;
     if (s.zoom?.target) {
       if (isPoint(s.zoom.target)) {
