@@ -15,6 +15,12 @@ second or two on screen.
 The agent plans, writes and fixes the storyboard. Storyshot does the
 recording and editing, and the same storyboard always renders the same video.
 
+https://github.com/user-attachments/assets/05dd9a73-2edc-46af-9b2b-a8e33c7005b4
+
+A 68-second pitch for Storyshot, made with [HyperFrames](https://hyperframes.heygen.com) and a free
+local voice (Kokoro). The request, storyboard, recording, contact sheet and render log in it, and the
+16 videos on the wall, are real Storyshot output.
+
 ## Gallery
 
 **[boheling.github.io/storyshot-gallery](https://boheling.github.io/storyshot-gallery/)**: promos,
