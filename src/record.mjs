@@ -73,7 +73,7 @@ function pageScript({ scrollOffset }) {
   const headerCover = (el) => {
     let cover = 0;
     for (const h of document.querySelectorAll('body *')) {
-      if (h.id?.startsWith('__demo') || h.contains(el)) continue;
+      if (h.getAttribute('id')?.startsWith('__demo') || h.contains(el)) continue; // not h.id: a form with an <input name=id> has that input as its .id
       const cs = getComputedStyle(h);
       if (cs.position !== 'fixed' && cs.position !== 'sticky') continue;
       const r = h.getBoundingClientRect();
@@ -102,6 +102,14 @@ function pageScript({ scrollOffset }) {
     };
     requestAnimationFrame(check);
   });
+  // a slider's value and range: an <input type=range>, or an ARIA slider (Desmos: [role=slider] on its knob)
+  window.__demoSliderValue = (el) => {
+    const r = el.type === 'range' ? el : el.querySelector?.('input[type=range]');
+    if (r) return { now: Number(r.value), lo: Number(r.min || 0), hi: Number(r.max || 100), native: r };
+    const aria = el.hasAttribute('aria-valuenow') ? el : el.querySelector?.('[aria-valuenow]');
+    const now = Number(aria?.getAttribute('aria-valuenow'));
+    return aria && Number.isFinite(now) ? { now, lo: Number(aria.getAttribute('aria-valuemin') ?? 0), hi: Number(aria.getAttribute('aria-valuemax') ?? 100) } : null;
+  };
   // Tutorial callouts: spotlight a target, show a pressed key combo.
   window.__demoSpot = (r) => {
     let el = document.getElementById('__demo_spot');
@@ -607,25 +615,28 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
       }
       case 'slide': {
         // slide: { target: <slider>, to: 0.2 } — drag a slider to a position along its track (0 = start,
-        // 1 = end), found from the element instead of pixel positions that break when the layout moves
-        if (!value?.target || typeof value?.to !== 'number') throw new Error('slide needs { target: <slider>, to: 0..1 }');
+        // 1 = end), or { target, value: 3 } — to a value, for sliders that report their range; found from
+        // the element instead of pixel positions that break when the layout moves
+        if (!value?.target || (typeof value?.to !== 'number' && typeof value?.value !== 'number')) throw new Error('slide needs { target: <slider>, to: 0..1 } or { target: <slider>, value: <number> }');
         const p = await pointOf(value.target, value);
-        const b = p.box;
-        const from = await locate(page, value.target).evaluate((el) => {
-          const r = el.type === 'range' ? el : el.querySelector?.('input[type=range]');
-          if (r) return (Number(r.value) - Number(r.min || 0)) / ((Number(r.max || 100) - Number(r.min || 0)) || 1);
-          const aria = el.hasAttribute('aria-valuenow') ? el : el.querySelector?.('[aria-valuenow]');
-          if (aria) {
-            const now = Number(aria.getAttribute('aria-valuenow')), lo = Number(aria.getAttribute('aria-valuemin') ?? 0), hi = Number(aria.getAttribute('aria-valuemax') ?? 100);
-            if (Number.isFinite(now)) return (now - lo) / ((hi - lo) || 1);
+        const s = await locate(page, value.target).evaluate((el) => {
+          // a knob (Desmos's [role=slider] is its 38 px thumb): slide along its track, the nearest wide parent
+          let track = el;
+          const w = el.getBoundingClientRect().width;
+          for (let a = el.parentElement, i = 0; w < 60 && a && i < 4; a = a.parentElement, i++) if (a.getBoundingClientRect().width >= 3 * w) { track = a; break; }
+          const t = track.getBoundingClientRect(), v = window.__demoSliderValue(el);
+          let from = v ? (v.now - v.lo) / ((v.hi - v.lo) || 1) : null;
+          if (from == null) {
+            // custom sliders: start where the knob is drawn, so the value doesn't jump first
+            const knob = [...track.querySelectorAll('[role=slider], [class*=thumb], [class*=handle], [class*=knob]')]
+              .map((k) => k.getBoundingClientRect()).find((k) => k.width > 0 && k.width < t.width * 0.5);
+            from = knob ? (knob.x + knob.width / 2 - t.x) / (t.width || 1) : 0.5;
           }
-          // custom sliders (e.g. Desmos): start where the knob is drawn, so the value doesn't jump first
-          const t = el.getBoundingClientRect();
-          const knob = [...el.querySelectorAll('[role=slider], [class*=thumb], [class*=handle], [class*=knob]')]
-            .map((k) => k.getBoundingClientRect()).find((k) => k.width > 0 && k.width < t.width * 0.5);
-          return knob ? (knob.x + knob.width / 2 - t.x) / (t.width || 1) : 0.5;
-        }).catch(() => 0.5);
-        const x0 = b.x + b.width * from, x1 = b.x + b.width * Math.max(0, Math.min(1, value.to)), y = b.y + b.height / 2;
+          return { box: { x: t.x, y: t.y, width: t.width, height: t.height }, from, range: v && { lo: v.lo, hi: v.hi } };
+        }).catch(() => ({ box: p.box, from: 0.5, range: null }));
+        if (typeof value.value === 'number' && !s.range) throw new Error('slide value: this slider doesn\'t report its range (no aria-valuemin/max, not an <input type=range>) — use to: 0..1');
+        const to = typeof value.value === 'number' ? (value.value - s.range.lo) / ((s.range.hi - s.range.lo) || 1) : value.to;
+        const b = s.box, x0 = b.x + b.width * s.from, x1 = b.x + b.width * Math.max(0, Math.min(1, to)), y = b.y + b.height / 2;
         await moveTo(x0, y, value.ms ?? cfg.pace.cursor);
         await sleep(120);
         clicks.push(now());
@@ -633,6 +644,19 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
         await moveTo(x1, y, value.dragMs ?? 900);
         await sleep(120);
         await page.mouse.up();
+        if (typeof value.value === 'number') {
+          // a native range's thumb doesn't reach the ends of its box, so the drag can land a step off: set it
+          const got = await locate(page, value.target).evaluate((el, want) => {
+            const v = window.__demoSliderValue(el), r = v?.native;
+            if (r && v.now !== want) {
+              Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(r, String(want));
+              r.dispatchEvent(new Event('input', { bubbles: true })); r.dispatchEvent(new Event('change', { bubbles: true }));
+              return Number(r.value);
+            }
+            return v?.now;
+          }, value.value).catch(() => null);
+          if (got != null && Math.abs(got - value.value) > 1e-9) log(`  ⚠ ${acting}: slide stopped at ${got}, not ${value.value} — the slider snaps to its step`);
+        }
         await settle();
         await beat();
         break;
@@ -694,7 +718,9 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
 
   // --- setup (not recorded) -----------------------------------------------------------
   // Run a list of actions; on failure, say exactly which one and save a screenshot.
+  let acting = '';
   async function runAll(actions, where) {
+    acting = where;
     for (const [j, a] of actions.entries()) {
       try {
         // watchdog: an action that hangs (a frozen page, a stalled browser) fails with a clear message

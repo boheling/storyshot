@@ -22,15 +22,20 @@ const REPO = 'mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-bf16';
 const REVISION = '6415d95f88be018ff9e46813119dc3bc12261328';
 // 0.9 (the model's default) now and then runs on into made-up words; 0.7 keeps the same voice steadier
 const TEMPERATURE = 0.7;
+// Each take is checked by ear: Qwen3-ASR (Apache-2.0, ~1 GB) transcribes it, and a line it hears
+// differently is sampled again (pypinyin compares Chinese by sound, so homophones don't count)
+const ASR_REPO = 'mlx-community/Qwen3-ASR-0.6B-8bit';
+const ASR_REVISION = '89e96d92ba34aca20b3e29fb10cc284097d1219f';
 const REQUIREMENTS = ['mlx-audio==0.6.3', 'mlx==0.32.4', 'mlx-metal==0.32.4', 'transformers==5.22.0', 'huggingface-hub==2.4.0',
-  'tokenizers==0.23.3', 'safetensors==0.8.0', 'numpy==2.5.4'];
+  'tokenizers==0.23.3', 'safetensors==0.8.0', 'numpy==2.5.4', 'pypinyin==0.55.0'];
 // Part of every cached line's hash: change it when the model, the packages or qwen_tts.py's sampling change.
-export const QWEN_TTS_ID = `${REPO}@${REVISION.slice(0, 7)}|${REQUIREMENTS[0]}|t${TEMPERATURE}|guard-1`;
+export const QWEN_TTS_ID = `${REPO}@${REVISION.slice(0, 7)}|${REQUIREMENTS[0]}|t${TEMPERATURE}|guard-2|${ASR_REPO}@${ASR_REVISION.slice(0, 7)}`;
 const CACHE = path.join(os.homedir(), '.cache', 'storyshot');
 export const QWEN_VENV = path.join(CACHE, 'qwen-venv');
 const HELPER = path.join(path.dirname(fileURLToPath(import.meta.url)), 'qwen_tts.py');
 const HUB = process.env.HF_HUB_CACHE ?? path.join(process.env.HF_HOME ?? path.join(os.homedir(), '.cache', 'huggingface'), 'hub');
 const MODEL_FILE = path.join(HUB, `models--${REPO.replace('/', '--')}`, 'snapshots', REVISION, 'model.safetensors');
+const ASR_FILE = path.join(HUB, `models--${ASR_REPO.replace('/', '--')}`, 'snapshots', ASR_REVISION, 'model.safetensors');
 
 // --- text (TTS only: subtitles keep the original) --------------------------------------------------
 // The model reads = + 2个 第2行 x² itself; a minus sign before a number it drops, and a number like
@@ -66,7 +71,7 @@ const NO_PYTHON = () => 'the Qwen3-TTS voice needs Python 3.10–3.12 to run (br
 // For doctor and check: can this machine use it, and what's still to come on first use?
 export function qwenStatus() {
   if (!qwenSupported()) return { supported: false };
-  const model = fs.existsSync(MODEL_FILE);
+  const model = fs.existsSync(MODEL_FILE) && fs.existsSync(ASR_FILE);
   if (venvReady()) return { supported: true, ready: true, venv: QWEN_VENV, model };
   const python = findPython();
   return { supported: true, ready: false, venv: QWEN_VENV, model, python, problem: python ? null : NO_PYTHON() };
@@ -74,13 +79,22 @@ export function qwenStatus() {
 
 function ensureVenv(log) {
   if (venvReady()) return venvPython(QWEN_VENV);
-  const py = findPython();
-  if (!py) throw new Error(NO_PYTHON());
-  log(`setting up the Qwen3-TTS voice (one time): a Python ${py.version} venv in ${QWEN_VENV} with mlx-audio (~400 MB, 1–2 min)…`);
   const run = (cmd, args, what) => {
     const r = spawnSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     if (r.status !== 0) throw new Error(`${what} failed: ${(r.stderr || r.stdout || r.error?.message || '').trim().split('\n').slice(-6).join('\n')}`);
   };
+  if (fs.existsSync(venvPython(QWEN_VENV))) {
+    // a venv from an older storyshot: bring its packages up to date in place, rebuild it only if that fails
+    log(`updating the Qwen3-TTS venv in ${QWEN_VENV}…`);
+    try {
+      run(venvPython(QWEN_VENV), ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '-q', ...REQUIREMENTS], 'updating the venv');
+      fs.writeFileSync(path.join(QWEN_VENV, STAMP), REQUIREMENTS.join('\n'));
+      return venvPython(QWEN_VENV);
+    } catch (e) { log(`  ${e.message.split('\n')[0]} — rebuilding it`); }
+  }
+  const py = findPython();
+  if (!py) throw new Error(NO_PYTHON());
+  log(`setting up the Qwen3-TTS voice (one time): a Python ${py.version} venv in ${QWEN_VENV} with mlx-audio (~400 MB, 1–2 min)…`);
   fs.rmSync(QWEN_VENV, { recursive: true, force: true });
   fs.mkdirSync(CACHE, { recursive: true });
   run(py.exe, ['-m', 'venv', QWEN_VENV], `creating the venv with ${py.exe} -m venv`);
@@ -96,12 +110,13 @@ export async function synthQwen(v, entries, { log = console.log } = {}) {
   if (!qwenSupported()) throw new Error('the Qwen3-TTS voice runs on Apple Silicon Macs only (it uses MLX)');
   const py = ensureVenv(log);
   if (!fs.existsSync(MODEL_FILE)) log(`downloading the Qwen3-TTS model (one time, ~2.3 GB) into ${HUB}…`);
+  if (!fs.existsSync(ASR_FILE)) log(`downloading the Qwen3-ASR model that listens to each take (one time, ~1 GB) into ${HUB}…`);
   const lines = entries.map((e) => ({
     text: e.text, file: `${e.file}.raw.wav`, voice: v.voice, lang: qwenLang(e.text),
     // the same line gets the same take: a seed from the text
     seed: parseInt(crypto.createHash('sha1').update(e.text).digest('hex').slice(0, 7), 16),
   }));
-  const job = JSON.stringify({ repo: REPO, revision: REVISION, temperature: TEMPERATURE, lines });
+  const job = JSON.stringify({ repo: REPO, revision: REVISION, temperature: TEMPERATURE, asr: { repo: ASR_REPO, revision: ASR_REVISION }, lines });
   const { code, stdout, tail } = await new Promise((resolve, reject) => {
     const p = spawn(py, ['-I', HELPER], { env: { ...process.env, HF_HUB_DISABLE_TELEMETRY: '1', TRANSFORMERS_VERBOSITY: 'error' } });
     let out = '', err = '', buf = '';
@@ -121,9 +136,15 @@ export async function synthQwen(v, entries, { log = console.log } = {}) {
     p.stdin.end(job);
   });
   if (code !== 0) throw new Error(`Qwen3-TTS failed (${py} ${HELPER}): ${tail.trim().split('\n').slice(-8).join('\n')}`);
-  const { results } = JSON.parse(stdout);
+  const { results, asr } = JSON.parse(stdout);
+  if (asr) log(`  ⚠ qwen: the speech check couldn't load (${asr}), so these takes were checked by length only`);
   for (const [i, e] of entries.entries()) {
-    if (results[i]?.suspect) log(`  ⚠ qwen: "${e.text}" still sounds off after ${results[i].tries} tries (${results[i].seconds.toFixed(1)}s) — listen to it, or rephrase the line / add a pronounce entry`);
+    const r = results[i];
+    if (r?.suspect) {
+      log(r.heard != null && r.mismatch > 0
+        ? `  ⚠ qwen: "${e.text}" still doesn't come out right after ${r.tries} tries — it sounds like "${r.heard}". Listen to it; rephrase the line or add a pronounce entry`
+        : `  ⚠ qwen: "${e.text}" still sounds off after ${r.tries} tries (${r.seconds.toFixed(1)}s) — listen to it, or rephrase the line / add a pronounce entry`);
+    }
     const raw = lines[i].file, tmp = `${e.file}.tmp.wav`;
     // the model has no speed control: ffmpeg's pitch-preserving atempo does it
     if ((v.speed ?? 1) !== 1) execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-i', raw, '-af', `atempo=${v.speed}`, tmp]);

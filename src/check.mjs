@@ -135,7 +135,7 @@ export function check(file, { draft = false } = {}) {
     if (type === 'target') target(v, `${where} (${kind})`);
     if (type === 'mark' && typeof v !== 'string') target(v, `${where} (mark)`); // a string is a phrase to highlight
     if (type === 'slide') {
-      if (!v?.target || typeof v?.to !== 'number' || v.to < 0 || v.to > 1) errors.push(`${where}: slide needs { target: <slider>, to: 0..1 } (0 = start of the track, 1 = end)`);
+      if (!v?.target || (typeof v?.value !== 'number' && (typeof v?.to !== 'number' || v.to < 0 || v.to > 1))) errors.push(`${where}: slide needs { target: <slider>, to: 0..1 } (0 = start of the track, 1 = end) or { target: <slider>, value: <number> }`);
       else target(v.target, `${where} (slide.target)`);
     }
     if (type === 'select') {

@@ -44,7 +44,8 @@ function collect() {
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
   // a short CSS selector (tag + classes, or #id) — the last-resort target when names don't resolve
   const cssOf = (el) => {
-    if (el.id && !/^[0-9:]|:/.test(el.id)) return `#${CSS.escape(el.id)}`;
+    const id = el.getAttribute('id'); // not el.id: a form with an <input name=id> has that input as its .id
+    if (id && !/^[0-9:]|:/.test(id)) return `#${CSS.escape(id)}`;
     const cls = [...el.classList].filter((c) => !/^(css|sc|jsx|svelte|tw)-|\d{3,}|__/.test(c)).slice(0, 2).map((c) => `.${CSS.escape(c)}`).join('');
     return cls ? `${el.tagName.toLowerCase()}${cls}` : null;
   };
@@ -68,10 +69,17 @@ function collect() {
   // a label's own text, without the links/buttons inside it (e.g. a "Clear" link)
   const labelText = (lab) => { if (!lab) return null; const c = lab.cloneNode(true); c.querySelectorAll('a,button,select,input,textarea').forEach((x) => x.remove()); return clean(c.innerText) || null; };
   // styled checkboxes and radios hide the real input and draw their label instead: list them where the label is
+  // a slider's range and value, when it says (an <input type=range>, or aria-valuemin/max/now)
+  const sliderRange = (el) => {
+    const n = (a) => (el.getAttribute(a) == null ? NaN : Number(el.getAttribute(a)));
+    const [lo, hi, now] = el.type === 'range' ? [Number(el.min || 0), Number(el.max || 100), Number(el.value)] : [n('aria-valuemin'), n('aria-valuemax'), n('aria-valuenow')];
+    return [lo, hi, now].every(Number.isFinite) ? { lo, hi, now } : null;
+  };
   const shownBy = (el) => (el.tagName === 'INPUT' && ['checkbox', 'radio'].includes(el.type) && !vis(el) ? [...(el.labels ?? [])].find(vis) : null);
   const interactive = [...document.querySelectorAll(NATIVE)]
     .filter((el) => (vis(el) || shownBy(el)) && el.tagName !== 'LABEL' && !isAd(el) && !(el.isContentEditable && el.parentElement?.isContentEditable))
     .map((el) => ({ kind: 'role', role: roleOf(el), name: (el.isContentEditable || el.tagName === 'TEXTAREA' ? editorName(el) : nameOf(el)).slice(0, 80), shows: clean(el.innerText).slice(0, 60), alt: clean(el.querySelector('img[alt]')?.alt) || null, href: el.getAttribute('href'), label: labelText(el.labels?.[0]),
+      range: roleOf(el) === 'slider' ? sliderRange(el) : null,
       options: el.tagName === 'SELECT' ? [...el.options].map((o) => ({ text: clean(o.text), on: o.selected })).filter((o) => o.text).slice(0, 12) : null, ...pos(shownBy(el) ?? el) }));
   // custom clickables: outermost cursor:pointer elements that aren't native controls
   const pointer = [];
@@ -85,11 +93,11 @@ function collect() {
   return {
     title: document.title,
     height: scroller ? scroller.scrollHeight : document.documentElement.scrollHeight,
-    scroller: scroller ? (scroller.id ? `#${scroller.id}` : scroller.tagName.toLowerCase() + (scroller.className && typeof scroller.className === 'string' ? '.' + scroller.className.trim().split(/\s+/)[0] : '')) : null,
+    scroller: scroller ? (scroller.getAttribute('id') ? `#${scroller.getAttribute('id')}` : scroller.tagName.toLowerCase() + (scroller.className && typeof scroller.className === 'string' ? '.' + scroller.className.trim().split(/\s+/)[0] : '')) : null,
     headings: [...document.querySelectorAll('h1, h2, h3')].filter(vis).map((h) => ({ tag: h.tagName.toLowerCase(), text: clean(h.innerText).slice(0, 100), ...pos(h) })),
     anchors: [...document.querySelectorAll('[id]')].filter((el) => vis(el) && el !== scroller && el.getBoundingClientRect().height > 150 &&
-      el.getBoundingClientRect().height < document.documentElement.scrollHeight * 0.8 && !/^(__|radix|headlessui|:)/.test(el.id))
-      .map((el) => ({ id: el.id, ...pos(el) })).slice(0, 30),
+      el.getBoundingClientRect().height < document.documentElement.scrollHeight * 0.8 && !/^(__|radix|headlessui|:)/.test(el.getAttribute('id')))
+      .map((el) => ({ id: el.getAttribute('id'), ...pos(el) })).slice(0, 30),
     images: [...document.querySelectorAll('img[alt]')].filter((el) => vis(el) && el.alt.trim()).map((el) => ({ alt: clean(el.alt).slice(0, 80), ...pos(el) })).slice(0, 30),
     interactive: [...interactive, ...pointer],
   };
@@ -160,7 +168,7 @@ export async function describePage(page, viewport, { maxElements = 80 } = {}) {
     '',
     '## Clickable elements — verified targets (each matches exactly one visible element) for click/move/zoom',
     '   Copy targets exactly; `name` is the accessible name, which may differ from the on-screen label.',
-    ...elements.map((e) => `${fold(e.y)} y=${e.y}\tat (${e.cx}, ${e.cy})\t${yaml(e.target)}${e.role === 'textbox' ? `  (text input ${e.w}×${e.h} — click it, then \`type: …\`)` : e.role === 'slider' ? '  (slider — `slide: { target: …, to: 0..1 }`)' : e.options ? `  (dropdown — \`select: { target: …, option: "…" }\`; options: ${e.options.map((o) => `"${o.text}"${o.on ? ' (selected)' : ''}`).join(', ')})` : shows(e)}${e.href ? `  → ${e.href}` : ''}${e.kind === 'pointer' ? '  (custom clickable)' : ''}`),
+    ...elements.map((e) => `${fold(e.y)} y=${e.y}\tat (${e.cx}, ${e.cy})\t${yaml(e.target)}${e.role === 'textbox' ? `  (text input ${e.w}×${e.h} — click it, then \`type: …\`)` : e.role === 'slider' ? (e.range ? `  (slider ${e.range.lo}…${e.range.hi}, now ${e.range.now} — \`slide: { target: …, value: ${e.range.now} }\`)` : '  (slider — `slide: { target: …, to: 0..1 }`)') : e.options ? `  (dropdown — \`select: { target: …, option: "…" }\`; options: ${e.options.map((o) => `"${o.text}"${o.on ? ' (selected)' : ''}`).join(', ')})` : shows(e)}${e.href ? `  → ${e.href}` : ''}${e.kind === 'pointer' ? '  (custom clickable)' : ''}`),
     '',
     '## Images with alt text (target: { alt: "..." })',
     ...(info.images.length ? info.images.map((i) => `${fold(i.y)} y=${i.y}\t"${i.alt}"`) : ['(none)']),

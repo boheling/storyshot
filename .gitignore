@@ -20,3 +20,4 @@ videos/*-login.json
 *.chapters.txt
 *-steps/
 cursortest/
+__pycache__/

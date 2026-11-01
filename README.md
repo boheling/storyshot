@@ -153,7 +153,7 @@ Rendering is free and runs locally. Only the voiceover can cost money:
 |---|---|---|
 | none | free | captions only |
 | `kokoro` | free | local, English and Mandarin Chinese (`zf_001`); downloads a ~90 MB model on first use (Chinese: ~130 MB, and needs Python 3.10–3.12) |
-| `qwen` | free | local, Apple Silicon Macs only; the most natural free Chinese voice (`dylan`, `serena`); downloads a ~2.3 GB model and needs Python 3.10–3.12 |
+| `qwen` | free | local, Apple Silicon Macs only; the most natural free Chinese voice (`dylan`, `serena`); every take is checked by a speech recognizer and made again if it comes out wrong; downloads ~3.3 GB of models and needs Python 3.10–3.12 |
 | ElevenLabs | your credits | the most natural voice; many languages including Chinese. Put `ELEVENLABS_API_KEY` in `.env`. |
 | OpenAI | your credits | `OPENAI_API_KEY` |
 
@@ -248,7 +248,7 @@ viewport: { width: 1600, height: 900 }          # CSS px the site is laid out at
 output: { width: 1920, height: 1080, fps: 30 }  # same aspect ratio; use 1080x1920 with a 900x1600 viewport for vertical
 theme: { accent: "#d9f75b", ink: "#0f172a", font: Inter }
 music: { bpm: 120, volume: 1 }                  # or { file: track.mp3 }, or false
-sfx: true                                       # click / whoosh / riser sounds; clicks = no whooshes on cards and page changes (tutorial and course default); false = none
+sfx: true                                       # click / whoosh / riser sounds; clicks = no whooshes on cards and page changes, and no rising sound under a riser step, only its chime (tutorial and course default); false = none
 voice: { provider: elevenlabs, voice: hpp4J3VqNfWAUOO0d1Us }   # optional voiceover, see below
 storageState: auth.json                         # optional Playwright login state
 ignoreHTTPSErrors: true                         # internal site with a self-signed HTTPS certificate (plain http:// needs nothing)
@@ -287,7 +287,7 @@ steps:
       - click: { role: button, name: Try it }
   - caption: AI does the work
     duration: 1.3
-    sfx: riser                                        # rising sound + chime (or `chime`)
+    sfx: riser                                        # rising sound + chime (or `chime`); a tutorial or lesson plays only the chime
     actions:
       - waitFor: { text: Done, timeout: 120000 }      # waiting is compressed automatically
   - card: { kicker: Part 2, title: Read the results }  # a section card before this step (tutorials); becomes a chapter
@@ -340,7 +340,7 @@ You can add `exact: true`, `last: true` or `nth: 2` to any of them.
 | `unmark` | `unmark: true` clears the marks (and notes) earlier |
 | `note` | `note: { target: { label: Database }, text: Curated proteins only }` puts a short label with an arrow next to the element, on the side with the most room (or `side: left/right/top/bottom`). It stays until the step ends and gets reading time (about 3 words a second, or `ms`). |
 | `paste` | `paste: { target: { label: JSON }, text: '{"a": 1}' }` pastes text in one go through the real clipboard (with a ⌘V badge), so editors react as to a real paste; `paste: "..."` pastes into whatever has focus |
-| `slide` | `slide: { target: { label: Quality }, to: 0.2 }` drags a slider to a position along its track (0 = start, 1 = end), found from the element, not pixels |
+| `slide` | `slide: { target: { label: Quality }, to: 0.2 }` drags a slider to a position along its track (0 = start, 1 = end), found from the element, not pixels. `value: 3` drags it to that value instead, when the slider reports its range (an `<input type=range>`, or an ARIA slider such as Desmos's; `inspect` shows the range). The target can be the slider or its knob |
 | `select` | `select: { target: { label: Database }, option: "UniProtKB/Swiss-Prot" }` picks an option in a dropdown (by its visible text, or part of it). `inspect` lists each dropdown's options. |
 
 `ms` sets how long the cursor takes to travel to the target (`dragMs` for each
@@ -419,9 +419,13 @@ for Chinese tutorials, lessons and docs), `serena` (female, warm; the default fo
 `vivian` (female, bright), `uncle_fu` (male, mellow), `eric` (male, Sichuan accent), and `ryan`, `aiden` (English), `ono_anna` (Japanese), `sohee` (Korean). On
 first use Storyshot creates a venv in `~/.cache/storyshot/qwen-venv` (Python 3.10–3.12, about 400 MB)
 and downloads the ~2.3 GB model into the Hugging Face cache. It speaks at about 2x real time on an M4 Pro
-and peaks at about 8 GB of memory. The model samples its speech, so a line now and then runs on into
-invented words or stops short. Storyshot regenerates such a take (it judges by length) and warns if
-one still looks off. A scientific number like `2e-105` is spelled out in Chinese, because it sets the
+and peaks at about 8 GB of memory. The model samples its speech, so a take now and then garbles a few
+words, drops one, runs on into invented words or stops short. Storyshot listens to every take with
+[Qwen3-ASR 0.6B](https://huggingface.co/Qwen/Qwen3-ASR-0.6B) (Apache-2.0, a ~1 GB model downloaded on
+first use) and compares what it hears with the line: Chinese by sound, so a homophone isn't a mistake, and
+numbers digit by digit. A take that comes out wrong, or far too long or short, is made again with another
+seed (up to 4 tries), and Storyshot warns, quoting what it heard, if a line still doesn't come out right.
+This adds about 0.2 s per line. A scientific number like `2e-105` is spelled out in Chinese, because it sets the
 model babbling. On other machines the same storyboard renders with `kokoro` (`zf_001`, or `draftVoice`),
 with a note.
 
@@ -461,11 +465,12 @@ usually shouldn't.
 | `say` | Voiceover line played over the end card. |
 | `emblem` | With `hyperframes`: one to three short monospace lines over the title (an alignment, a formula, a line of code); `false` for none. |
 
-### HyperFrames cards (optional)
+### HyperFrames cards
 
-`hyperframes: true` renders the intro, section and end cards with
+Tutorials and lessons render their intro, section and end cards with
 [HyperFrames](https://hyperframes.heygen.com) (HeyGen's open-source HTML-to-video
-renderer, Apache-2.0) for more motion. Two templates, picked by `purpose`:
+renderer, Apache-2.0) for more motion; `hyperframes: false` keeps the built-in
+cards, and `hyperframes: true` turns them on for a promo. Two templates, picked by `purpose`:
 
 - **lesson** (tutorials, courses, docs): the title lands word by word over a
   slowly drifting, blurred view of the page the section leads into; section
@@ -487,7 +492,7 @@ hyperframes:
   backdrop: false         # lesson: plain background instead of the blurred page
 ```
 
-It needs Node 22 or newer. On first use storyshot installs the pinned
+It needs Node 22 or newer; on older Node, tutorials and lessons use the built-in cards. On first use storyshot installs the pinned
 HyperFrames version into `~/.cache/storyshot/hyperframes/` (a local install
 of the `hyperframes` package wins); its telemetry is switched off. Cards are
 cached, so `compose` only re-renders the ones that changed (about 10–25 s

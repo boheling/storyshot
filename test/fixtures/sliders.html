@@ -1,0 +1,25 @@
+<!doctype html><meta charset=utf-8><title>Sliders</title>
+<style>
+  body { font: 20px sans-serif; margin: 0; }
+  form { position: sticky; top: 0; height: 60px; background: #eee; }
+  .track { position: relative; width: 400px; height: 22px; margin: 40px; background: #ddd; }
+  .thumb { position: absolute; top: -6px; width: 34px; height: 34px; margin-left: -17px; border-radius: 50%; background: #2d70b3; }
+</style>
+<!-- a form with an <input name=id>: its .id is that input, not a string -->
+<form><input name=id value=RID123></form>
+<label>Quality <input type=range min=0 max=100 step=5 value=20 style="width:500px;margin:40px"></label>
+<!-- like Desmos: the ARIA slider is the small knob, its track is the parent -->
+<div class=track><div class=thumb role=slider aria-label=m aria-valuemin=-10 aria-valuemax=10 aria-valuenow=1></div></div>
+<div style="height:2000px"></div>
+<h2 id=target>Target</h2>
+<div style="height:2000px"></div>
+<script>
+  const track = document.querySelector('.track'), thumb = document.querySelector('.thumb');
+  const show = (v) => { thumb.setAttribute('aria-valuenow', v); thumb.style.left = `${(v + 10) / 20 * 100}%`; };
+  show(1);
+  let held = false;
+  const at = (e) => { const r = track.getBoundingClientRect(); show(Math.round((Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * 20 - 10) * 10) / 10); };
+  track.addEventListener('mousedown', (e) => { held = true; at(e); });
+  addEventListener('mousemove', (e) => held && at(e));
+  addEventListener('mouseup', () => { held = false; });
+</script>

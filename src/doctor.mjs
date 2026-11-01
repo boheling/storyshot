@@ -81,8 +81,8 @@ export async function doctor({ log = console.log } = {}) {
       : '· Chinese voice (kokoro zf_001) needs Python 3.10–3.12 — optional: brew install python@3.12, or uv python install 3.12 (or set STORYSHOT_PYTHON)');
   const q = qwenStatus();
   lines.push(!q.supported ? '· Qwen3-TTS voice (provider: qwen) needs an Apple Silicon Mac; storyboards that use it fall back to kokoro here'
-    : q.ready ? `✔ Qwen3-TTS voice (provider: qwen): venv in ${q.venv}${q.model ? ', model downloaded' : '; the model (~2.3 GB) downloads on first use'}`
-      : q.python ? `· Qwen3-TTS voice (provider: qwen): Python ${q.python.version} found; storyshot sets up its venv in ${q.venv} and downloads the model (~2.3 GB) on first use`
+    : q.ready ? `✔ Qwen3-TTS voice (provider: qwen): venv in ${q.venv}${q.model ? ', models downloaded' : '; the models (~3.3 GB: the voice, and a speech recognizer that checks each take) download on first use'}`
+      : q.python ? `· Qwen3-TTS voice (provider: qwen): Python ${q.python.version} found; storyshot sets up its venv in ${q.venv} and downloads the models (~3.3 GB) on first use`
         : '· Qwen3-TTS voice (provider: qwen) needs Python 3.10–3.12 — optional: brew install python@3.12, or uv python install 3.12 (or set STORYSHOT_PYTHON)');
   const hf = hyperframesCli();
   lines.push(hf.error ? `· HyperFrames cards (hyperframes: true) unavailable — optional: ${hf.error}`

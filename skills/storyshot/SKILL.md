@@ -92,8 +92,11 @@ frames or stock footage presented as a recording of their app.
    best free Chinese voice is `voice: { provider: qwen }` (Qwen3-TTS: `dylan`,
    a male teacher's voice, for tutorials and lessons; `serena`, female, for
    promos; those are the defaults): clearer than
-   zf_001 with English words and letters, about 2x real time, a ~2.3 GB model
-   on first use. Elsewhere a `qwen` storyboard renders with kokoro. For other
+   zf_001 with English words and letters, about 2x real time, ~3.3 GB of
+   models on first use. Storyshot listens to each take and makes it again if
+   it comes out garbled; a `⚠ qwen: … sounds like "…"` warning means a line
+   still came out wrong after 4 tries: rephrase it (spell out a number, say
+   `一格` for `1 格`). Elsewhere a `qwen` storyboard renders with kokoro. For other
    languages, use ElevenLabs.
 3. **Login.** If the flow needs a logged-in page:
    - Tell the user a browser window will open and that they should log in
@@ -184,14 +187,18 @@ small controls are readable. Your job is the structure:
   `note` the field the reader must not miss. Set the article's heading and
   first paragraph with `article: { title: …, intro: … }`. Downloads show a
   "Downloaded" bubble; `paste` and copy-to-clipboard work.
-- **More motion on the cards** (when the user asks for livelier titles, or for
-  a launch video): `hyperframes: true` renders the intro, section and end
-  cards with HyperFrames (needs Node 22+; installs itself on first use). For a
-  subject with its own material, give the titles a backdrop from it:
+- **Animated cards that help explain.** Tutorials and lessons render their
+  cards with HyperFrames by default (Node 22+; it installs itself on first
+  use): titles land word by word, and each bullet lights up when the `say`
+  line names it, so write the bullets in the narration's own words. Use them:
+  a concept card for every idea that isn't on screen (the idea as the title,
+  its 2–4 steps as bullets, a formula or a line of code as `emblem`), a
+  question card for each check, and a recap end card. For a subject with its
+  own material, give every title a backdrop from it:
   `hyperframes: { band: <a sequence or formula>, emblem: [<1–3 short lines>] }`.
-  Promos get hand-drawn accents; `hand: true` uses hand lettering. Write the
-  intro's `bullets` and the end card's recap with the same words the `say`
-  line uses: each point lights up when the narration names it.
+  For a promo, `hyperframes: true` gives the launch template with hand-drawn
+  accents (`hand: true` for hand lettering). `hyperframes: false` keeps the
+  built-in cards.
 - **End with a recap**: `end_card` with `bullets` listing the steps or rules
   to remember, and a `say` that repeats them.
 - **Narrating real results.** You can't know the numbers (scores, counts,
@@ -245,7 +252,7 @@ common ones):
 2. A concrete case on screen first: change the value, show the result.
 3. Then name the idea, in plain words, the first time it appears.
 4. Why it works, in one or two sentences, with a concept card if it isn't on
-   screen.
+   screen (its bullets light up as you name them; a formula goes in `emblem`).
 5. A check: a question card, then the step that reveals the answer.
 6. The recap, in the same words as before.
 
@@ -278,11 +285,15 @@ Rules of thumb from real renders (promos and tutorials):
   `voice.pronounce` (e.g. `pxGenius: P X Genius`, `AI: A I`) so subtitles stay
   correct. For fixed durations, budget about 2.5 words per second.
 - **Isolate long waits** (AI processing, uploads) in their own step: a
-  `waitFor` the finished state, `sfx: riser`, and in `pitch` mode
-  `duration: 1.0–1.5`. Waiting is compressed automatically.
+  `waitFor` the finished state. In `pitch` mode add `sfx: riser` and
+  `duration: 1.0–1.5`. In tutorials and lessons, say what is happening
+  instead; at most `sfx: chime` when the result arrives (a riser there plays
+  only its chime). Waiting is compressed automatically.
 - **Zoom sparingly**, on 2–4 payoff moments (headline, clicked button, result,
   price), with `scale: 1.2–1.5`.
-- **Show the signature interaction.** Use `drag` for sliders and before/after
+- **Show the signature interaction.** Use `slide` for sliders:
+  `slide: { target: <the slider inspect lists>, value: 3 }` lands on that value
+  (`to: 0..1` for sliders that don't report a range). Use `drag` for before/after
   views (`drag: { from: { x: 0.57, y: 0.5 }, by: [{ x: -300 }, { x: 400 }] }`;
   `from` can be a target or a point). Use `type` for inputs: `type: y=x^2`
   types into whatever has focus (for editors and canvases with hidden inputs),

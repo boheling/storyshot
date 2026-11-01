@@ -108,7 +108,8 @@ export async function soundtrack(cfg, events, silentVideo, { log = console.log }
         return filt(rand(), 400 + 5000 * Math.sin(Math.PI * p), 1.6).bp * Math.pow(Math.sin(Math.PI * p), 2);
       }, 0.5);
     }
-    for (const [a, b] of events.risers) {
+    // the rising sound under a wait is for promos; tutorials and lessons (sfx: clicks) keep only its chime
+    for (const [a, b] of cfg.sfx.transitions ? events.risers : []) {
       const len = b - a, filt = svf();
       let ph = 0;
       add(sfx, a, len, (t) => {

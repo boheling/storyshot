@@ -31,10 +31,10 @@ export function loadEnv(dir) {
 
 // What the video is for sets sensible defaults; anything in the YAML overrides them.
 export const PURPOSES = {
-  pitch:    { duration: null,   music: { bpm: 120, volume: 1 },    sfx: true,  highlight: false, stepNumbers: false, subtitles: false, chapters: false, clips: null, frame: 'aurora', pace: 'fast', follow: false },
-  tutorial: { duration: 'auto', music: { bpm: 96, volume: 0.35 },  sfx: 'clicks', highlight: true,  stepNumbers: true,  subtitles: true,  chapters: true,  clips: null, frame: 'studio', pace: 'slow', follow: true },
-  course:   { duration: 'auto', music: false,                     sfx: 'clicks', highlight: true,  stepNumbers: false, subtitles: true,  chapters: true,  clips: null, frame: 'studio', pace: 'slow', follow: true },
-  docs:     { duration: 'auto', music: false,                     sfx: false, highlight: true,  stepNumbers: true,  subtitles: false, chapters: false, clips: ['gif', 'png'], frame: false, pace: 'normal', follow: false },
+  pitch:    { duration: null,   music: { bpm: 120, volume: 1 },    sfx: true,  highlight: false, stepNumbers: false, subtitles: false, chapters: false, clips: null, frame: 'aurora', pace: 'fast', follow: false, hyperframes: false },
+  tutorial: { duration: 'auto', music: { bpm: 96, volume: 0.35 },  sfx: 'clicks', highlight: true,  stepNumbers: true,  subtitles: true,  chapters: true,  clips: null, frame: 'studio', pace: 'slow', follow: true, hyperframes: true },
+  course:   { duration: 'auto', music: false,                     sfx: 'clicks', highlight: true,  stepNumbers: false, subtitles: true,  chapters: true,  clips: null, frame: 'studio', pace: 'slow', follow: true, hyperframes: true },
+  docs:     { duration: 'auto', music: false,                     sfx: false, highlight: true,  stepNumbers: true,  subtitles: false, chapters: false, clips: ['gif', 'png'], frame: false, pace: 'normal', follow: false, hyperframes: false },
 };
 
 // Where storyboards and their videos go, and how they're named: <site>-<kind>[-<topic>].yaml →
@@ -139,8 +139,9 @@ export function loadConfig(file, { draft = false } = {}) {
   if (frame?.icon) frame.iconFile = path.resolve(dir, frame.icon);
 
   // hyperframes: true | { template: lesson | launch, band, bandColors, emblem, hand, backdrop } — cards
-  // rendered by HyperFrames (see hyperframes.mjs); promos get the launch template, the rest the lesson one
-  const hf0 = raw.hyperframes;
+  // rendered by HyperFrames (see hyperframes.mjs); promos get the launch template, the rest the lesson one.
+  // On by default for tutorials and lessons, where Node can run it (22+); else the built-in cards
+  const hf0 = raw.hyperframes !== undefined ? raw.hyperframes : P.hyperframes && Number(process.versions.node.split('.')[0]) >= 22;
   const hyperframes = hf0 ? { template: purpose === 'pitch' ? 'launch' : 'lesson', backdrop: true, ...(typeof hf0 === 'object' ? hf0 : {}) } : null;
   if (hyperframes && !['lesson', 'launch'].includes(hyperframes.template)) throw new Error('hyperframes.template must be lesson or launch');
   if (hyperframes?.bandColors && !['aminoacid', 'nucleotide', 'accent'].includes(hyperframes.bandColors)) throw new Error('hyperframes.bandColors must be aminoacid, nucleotide or accent');
@@ -216,8 +217,8 @@ export function loadConfig(file, { draft = false } = {}) {
     follow,
     music,
     voice,
-    // sfx: true (clicks and transition whooshes), 'clicks' (no whooshes: tutorials and lessons, where a
-    // sound at every card soon grates), or false
+    // sfx: true (clicks, transition whooshes and risers), 'clicks' (no whooshes or risers: tutorials and
+    // lessons, where a sound at every card soon grates), or false
     sfx: pick('sfx') === false ? false : { clicks: true, transitions: pick('sfx') !== 'clicks' },
     draft,
     out: path.resolve(dir, raw.out ?? `${name}.mp4`).replace(/(\.[^./]+)?$/, (ext) => (draft ? `.draft${ext || '.mp4'}` : ext)),
