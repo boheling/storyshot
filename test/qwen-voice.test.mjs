@@ -14,6 +14,13 @@ test('voice names are matched loosely', () => {
   assert.equal(qwenVoice('zf_001'), null);
 });
 
+test('a line in Latin letters gets the storyboard language', () => {
+  assert.equal(qwenLang('Toda la recta sube.', 'es'), 'spanish');
+  assert.equal(qwenLang('Toda la recta sube.', 'es-MX'), 'spanish');
+  assert.equal(qwenLang('Toda la recta sube.'), 'auto');
+  assert.equal(qwenLang('每条直线都可以写成 y 等于 m x 加 b。', 'es'), 'chinese');
+});
+
 test('the language follows the script', () => {
   assert.equal(qwenLang('每条直线都可以写成 y 等于 m x 加 b。'), 'chinese');
   assert.equal(qwenLang('Desmos 的 Settings 菜单'), 'chinese');
@@ -56,6 +63,10 @@ test('the take check: garbles and wrong numbers fail, homophones and misheard le
     ['这节课用 Desmos，搞懂方程 y 等于 m x 加 b 里的 m 和 b。', '这节课用代数模式搞懂方程 y 等于 mx 加 b 里的 m 和 b。', false],
     ['再拖到 0.5，直线变得很平缓。', '再拖到零点五，直线变得很平缓。', false],
     ['Across the week, the average was about 26 point 3 degrees.', 'Across the week, the average was about 26.3 degrees.', false],
+    ['Ahora arrastra el deslizador de b hacia la derecha, hasta tres. Toda la recta sube; ahora cruza el eje y en tres.',
+      'Ahora arrastra el deslizador de B hacia la derecha hasta 3. Toda la recta sube. Ahora cruza el eje y en 3.', false],
+    ['Fíjate que la inclinación no cambió.', 'Fíjate que la inclinación no cambió.', false],
+    ['Ahora la recta cruza por debajo del origen, en menos dos.', 'Ahora la recta cruza para el bajo del orden de mundo, en menos dos.', true],
   ];
   const helper = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src');
   const out = execFileSync(path.join(QWEN_VENV, 'bin', 'python'), ['-I', '-B', '-c', `

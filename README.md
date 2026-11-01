@@ -398,7 +398,7 @@ mix is normalized to -14 LUFS.
 | `qwen` | none | Local and free, Apple Silicon Macs only: Qwen3-TTS, the most natural free Chinese voice here (`dylan`, `serena`, see below). |
 | `elevenlabs` | `ELEVENLABS_API_KEY` | Most natural, many languages including Chinese. `voice` is a voice ID; `model` defaults to `eleven_multilingual_v2`. The key needs Text to Speech access, plus Voices → Read to list voices. |
 | `openai` | `OPENAI_API_KEY` | `voice: alloy`, `model: gpt-4o-mini-tts`; optional `instructions` for tone. |
-| `say` | none | macOS built-in voices, robotic; fine for drafts. For Chinese, use `qwen` (Apple Silicon) or `kokoro` with `zf_001` rather than `Tingting`. |
+| `say` | none | macOS built-in voices, robotic; for drafts only: Apple's license allows them for personal, non-commercial use, and not in anything you publish or share. For Chinese, use `qwen` (Apple Silicon) or `kokoro` with `zf_001` rather than `Tingting`. |
 
 **Chinese narration.** `voice: { provider: kokoro, voice: zf_001 }` speaks Mandarin with Kokoro
 v1.1-zh, free and local, and is what `kokoro` uses when the `say:` lines are Chinese and no voice is
@@ -426,7 +426,9 @@ first use) and compares what it hears with the line: Chinese by sound, so a homo
 numbers digit by digit. A take that comes out wrong, or far too long or short, is made again with another
 seed (up to 4 tries), and Storyshot warns, quoting what it heard, if a line still doesn't come out right.
 This adds about 0.2 s per line. A scientific number like `2e-105` is spelled out in Chinese, because it sets the
-model babbling. On other machines the same storyboard renders with `kokoro` (`zf_001`, or `draftVoice`),
+model babbling. Lines in Latin letters are read in the storyboard's `lang` when Qwen3-TTS knows it
+(`en`, `es`, `fr`, `de`, `it`, `pt`), so a Spanish lesson with `lang: es` gets a Spanish reading, checked
+by ear in Spanish. On other machines the same storyboard renders with `kokoro` (`zf_001`, or `draftVoice`),
 with a note.
 
 Other fields: `speed` (default 1), `volume` (default 1), `pause` (the shortest pause between the
@@ -499,6 +501,29 @@ cached, so `compose` only re-renders the ones that changed (about 10–25 s
 each). Any card that can't be rendered falls back to the built-in one with a
 warning. The Virgil font is © Ellinor Rapp, SIL Open Font License 1.1
 (`src/fonts/Virgil-LICENSE.md`).
+
+## Licenses of what Storyshot uses
+
+Storyshot is MIT. What it installs and downloads:
+
+- **npm packages** are MIT, BSD, ISC, Apache-2.0 or BlueOak, with two exceptions, both under the optional
+  `kokoro-js` (the `kokoro` voice):
+  - `phonemizer` says Apache-2.0, but it bundles [eSpeak NG](https://github.com/espeak-ng/espeak-ng),
+    which is GPL-3.0-or-later, compiled to WebAssembly. If you ship Storyshot inside a closed-source
+    product, account for that, or install without it (`npm install --omit=optional`) and narrate with
+    `qwen` or a cloud voice.
+  - `sharp` loads libvips (LGPL-3.0) as a separate library.
+- **Downloaded on first use:** Chromium (through Playwright), HyperFrames (Apache-2.0), the voice and
+  speech models (Kokoro-82M, Qwen3-TTS, Qwen3-ASR: all Apache-2.0) and their Python packages
+  (mlx-audio: MIT, pypinyin: MIT). ffmpeg is your own install; Storyshot runs it as a separate program.
+- **The cards** animate with the browser's own Web Animations API. The Virgil font is under the SIL Open
+  Font License 1.1. The music and sound effects are synthesized by Storyshot.
+- **Your videos:** narration made with `kokoro` or `qwen` comes from Apache-2.0 models, so you can use it
+  in commercial work. The macOS `say` voices are for drafts only: Apple's license allows them for
+  personal, non-commercial use, and not in anything published or shared. ElevenLabs and OpenAI voices
+  follow those services' terms.
+
+This is a summary, not legal advice.
 
 ## License
 

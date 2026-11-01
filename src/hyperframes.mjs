@@ -19,7 +19,6 @@ import { fileURLToPath } from 'node:url';
 
 export const HF_VERSION = '0.8.217';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const GSAP_CDN = 'https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js';
 // families HyperFrames resolves by name; any other needs an @font-face
 const BUNDLED = ['Inter', 'Montserrat', 'Outfit', 'Nunito', 'Oswald', 'League Gothic', 'Archivo Black', 'Space Mono', 'IBM Plex Mono', 'JetBrains Mono',
   'EB Garamond', 'Playfair Display', 'Source Code Pro', 'Noto Sans JP', 'Roboto', 'Open Sans', 'Lato', 'Poppins'];
@@ -148,8 +147,82 @@ const fontFaces = (font, { hand = false } = {}) => [
   hand ? `@font-face{font-family:'Virgil';src:url('assets/Virgil.woff2') format('woff2')}` : '',
 ].join('\n');
 
-const doc = ({ W, H, D, css, body, js, bg = 'transparent', gsap }) => `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=${W}, height=${H}">
-<script src="${gsap}"></script>
+// The cards animate with the browser's own Web Animations API, which HyperFrames seeks frame by frame.
+// The templates describe their motion with GSAP-style calls (tl.fromTo / tl.to with duration, ease,
+// stagger); this small timeline collects them, then gives each element one animation per property that
+// spans the whole card, with keyframes at each tween's start and end, so tweens on the same element play
+// in time order however they were written. It runs in the card's page.
+function pageTimeline(D) {
+  const EASES = { none: 'linear', 'power1.out': 'cubic-bezier(0.5,1,0.89,1)', 'power1.inOut': 'cubic-bezier(0.45,0,0.55,1)',
+    'power2.in': 'cubic-bezier(0.32,0,0.67,0)', 'power2.out': 'cubic-bezier(0.33,1,0.68,1)', 'power2.inOut': 'cubic-bezier(0.65,0,0.35,1)',
+    'power3.inOut': 'cubic-bezier(0.76,0,0.24,1)', 'power4.out': 'cubic-bezier(0.22,1,0.36,1)', 'expo.out': 'cubic-bezier(0.16,1,0.3,1)' };
+  const easing = (e = 'power1.out') => {
+    if (EASES[e]) return EASES[e];
+    if (/^back\.out/.test(e)) return 'cubic-bezier(0.34,1.56,0.64,1)';
+    const steps = /^steps\((\d+)\)$/.exec(e);
+    return steps ? `steps(${steps[1]}, end)` : 'linear';
+  };
+  const TF = ['x', 'y', 'scale', 'scaleX', 'scaleY'];
+  const setTf = (s, p) => {
+    for (const [k, v] of Object.entries(p ?? {})) {
+      if (k === 'x' || k === 'y') s[k] = v;
+      else if (k === 'scale') s.sx = s.sy = v;
+      else if (k === 'scaleX') s.sx = v;
+      else if (k === 'scaleY') s.sy = v;
+    }
+    return s;
+  };
+  const tfText = (s) => `translate(${s.x}px, ${s.y}px) scale(${s.sx}, ${s.sy})`;
+  const tweens = [];
+  const add = (sel, from, to, at) => {
+    const { duration = 0.5, ease, stagger = 0, immediateRender, ...props } = to;
+    [...document.querySelectorAll(sel)].forEach((el, i) => tweens.push({ el, from, to: props, t0: at + i * stagger, d: duration, ease: easing(ease), n: tweens.length }));
+  };
+  const build = () => {
+    const byEl = new Map();
+    for (const t of tweens) byEl.set(t.el, [...(byEl.get(t.el) ?? []), t]);
+    for (const [el, list] of byEl) {
+      list.sort((a, b) => a.t0 - b.t0 || a.n - b.n);
+      const cs = getComputedStyle(el);
+      const state = { tf: { x: 0, y: 0, sx: 1, sy: 1 }, opacity: Number(cs.opacity), filter: cs.filter === 'none' ? 'blur(0px)' : cs.filter,
+        strokeDashoffset: parseFloat(cs.strokeDashoffset) || 0, backgroundSize: cs.backgroundSize, clipPath: cs.clipPath };
+      const tracks = {};
+      const push = (ch, t, v0, v1) => (tracks[ch] ??= []).push({ t0: t.t0, t1: t.t0 + t.d, v0, v1, e: t.ease });
+      for (const t of list) {
+        const keys = [...new Set([...Object.keys(t.from ?? {}), ...Object.keys(t.to)])];
+        if (keys.some((k) => TF.includes(k))) {
+          const a = setTf({ ...state.tf }, Object.fromEntries(Object.entries(t.from ?? {}).filter(([k]) => TF.includes(k))));
+          const b = setTf({ ...a }, Object.fromEntries(Object.entries(t.to).filter(([k]) => TF.includes(k))));
+          push('transform', t, tfText(a), tfText(b));
+          state.tf = b;
+        }
+        for (const k of keys.filter((k) => !TF.includes(k))) {
+          const v0 = t.from && k in t.from ? t.from[k] : state[k], v1 = k in t.to ? t.to[k] : v0;
+          push(k, t, v0, v1);
+          state[k] = v1;
+        }
+      }
+      const at = (t) => Math.min(1, Math.max(0, t / D));
+      for (const [ch, segs] of Object.entries(tracks)) {
+        const val = (v) => (ch === 'strokeDashoffset' ? `${v}px` : String(v));
+        const kf = [{ offset: 0, [ch]: val(segs[0].v0), easing: 'linear' }];
+        let last = segs[0].v0;
+        segs.forEach((s, i) => {
+          const end = i + 1 < segs.length ? Math.min(s.t1, Math.max(s.t0, segs[i + 1].t0)) : s.t1; // a later tween cuts it short
+          kf.push({ offset: at(s.t0), [ch]: val(last), easing: 'linear' }, { offset: at(s.t0), [ch]: val(s.v0), easing: s.e }, { offset: at(end), [ch]: val(s.v1), easing: 'linear' });
+          last = s.v1;
+        });
+        kf.push({ offset: 1, [ch]: val(last) });
+        const a = el.animate(kf, { duration: D * 1000, fill: 'both' });
+        a.pause();
+        a.currentTime = 0;
+      }
+    }
+  };
+  return { fromTo: (sel, from, to, at = 0) => add(sel, from, to, at), to: (sel, to, at = 0) => add(sel, null, to, at), build };
+}
+
+const doc = ({ W, H, D, css, body, js, bg = 'transparent' }) => `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=${W}, height=${H}">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:${W}px;height:${H}px;overflow:hidden;background:${bg}}
@@ -163,11 +236,11 @@ ${css}
 ${body}
 </div></div>
 <script>
-const tl = gsap.timeline({ paused: true });
+const tl = (${pageTimeline})(${D.toFixed(3)});
 const blurIn = (sel, at, o = {}) => { if (document.querySelector(sel)) tl.fromTo(sel, { opacity: 0, filter: 'blur(8px)', ...o.from }, { opacity: 1, filter: 'blur(0px)', duration: o.d ?? 0.18, ease: 'power4.out', stagger: o.stagger ?? 0, ...o.to }, at); };
 const draw = (sel, at, d = 0.35, stagger = 0.12) => { if (document.querySelector(sel)) tl.fromTo(sel, { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: d, ease: 'power1.inOut', stagger }, at); };
 ${js}
-window.__timelines["main"] = tl;
+tl.build();
 </script></body></html>`;
 
 // --- lesson: tutorials, courses, docs ---------------------------------------------------------------
@@ -315,7 +388,7 @@ ${isCmd(c.cta) ? `tl.fromTo('#type', { clipPath: 'inset(0 100% 0 0)' }, { clipPa
 ${think ? `blurIn('#think', ${n(job.thinkAt)});
 tl.fromTo('#drain', { scaleX: 1 }, { scaleX: 0, duration: ${c.think}, ease: 'none' }, ${n(job.thinkAt)});` : ''}
 `;
-  return doc({ W, H, D, css, body, js, bg: P.ground, gsap: ctx.gsap });
+  return doc({ W, H, D, css, body, js, bg: P.ground });
 }
 
 // --- launch: promos ----------------------------------------------------------------------------------
@@ -384,7 +457,7 @@ ${hasLogo ? (T ? `tl.to('#logo', { x: 0, y: 0, scale: 1, duration: ${shrink}, ea
       : `tl.to('#logo', { opacity: 0, filter: 'blur(6px)', duration: 0.22, ease: 'power2.in' }, ${n(exitAt)});`) : ''}
 ${F.chrome ? `tl.to('#chrome, #url', { opacity: 1, duration: 0.3, ease: 'power2.out' }, ${n(exitAt + 0.35)});` : ''}
 `;
-    return doc({ W, H, D, css, body, js, bg: '#fff', gsap: ctx.gsap });
+    return doc({ W, H, D, css, body, js, bg: '#fff' });
   }
 
   // the end card is drawn over the last frame, which storyshot zooms into the page underneath: the
@@ -439,7 +512,7 @@ draw('.ar', ${n(ctaAt + 0.55)}, 0.4, 0.1);
 draw('.ah', ${n(ctaAt + 0.9)}, 0.2, 0.05);
 blurIn('#try', ${n(ctaAt + 0.85)}, { d: 0.25 });` : ''}
 `;
-  return doc({ W, H, D, css, body, js, bg: 'transparent', gsap: ctx.gsap });
+  return doc({ W, H, D, css, body, js, bg: 'transparent' });
 }
 
 // --- rendering ---------------------------------------------------------------------------------------
@@ -457,8 +530,6 @@ export async function renderHyperframesCards(jobs, ctx, { log = console.log, war
   if (!jobs.length) return {};
   let cli = hyperframesCli();
   if (cli.error) { warn(`hyperframes: ${cli.error} — using the built-in cards`); return {}; }
-  let gsapFile = null;
-  try { gsapFile = createRequire(import.meta.url).resolve('gsap/dist/gsap.min.js'); } catch { /* the CDN copy */ }
   const template = ctx.opts.template;
   const root = path.join(ctx.work, 'hf');
   fs.mkdirSync(root, { recursive: true });
@@ -470,10 +541,8 @@ export async function renderHyperframesCards(jobs, ctx, { log = console.log, war
       try { await import('roughjs'); } catch { warn('hyperframes: the launch template needs the roughjs package (npm i roughjs) — using the built-in cards'); return {}; }
     }
     const alpha = launchCard && job.kind === 'end';
-    const html = launchCard ? await launch(job, { ...ctx, gsap: gsapFile ? 'assets/gsap.min.js' : GSAP_CDN })
-      : lesson(job, { ...ctx, gsap: gsapFile ? 'assets/gsap.min.js' : GSAP_CDN });
+    const html = launchCard ? await launch(job, ctx) : lesson(job, ctx);
     const assets = {
-      ...(gsapFile ? { 'gsap.min.js': gsapFile } : {}),
       ...(launchCard ? { 'Virgil.woff2': path.join(HERE, 'fonts', 'Virgil.woff2') } : {}),
       ...(job.backdrop ? { 'backdrop.jpg': job.backdrop } : {}),
       ...(job.page ? { 'page.jpg': job.page } : {}),

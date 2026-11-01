@@ -77,7 +77,7 @@ def units(text, chinese, pinyin):
     if chinese:
         t = re.sub(r'\d+(?:\.\d+)?', cn_number, t)
     out = []
-    for tok in re.findall(r'[㐀-鿿]|[a-z]+|\d+', t):
+    for tok in re.findall(r'[㐀-鿿]|[^\W\d_㐀-鿿]+|\d+', t):  # Han one by one, words (with accents), numbers
         if chinese and re.match(r'[㐀-鿿]', tok):
             out += [{'liang': 'er'}.get(p, p) for p in pinyin(tok)]
         elif tok.isdigit():
@@ -104,8 +104,9 @@ def mismatch(text, heard, chinese, pinyin):
                 ways.append((d[i, j - 1][0] + 1, (i, j - 1, 1)))
             if i and j:
                 x, y = a[i - 1], b[j - 1]
-                # a variable (m, b, x) the recognizer wrote as a character is half a mistake
-                cost = 0 if x == y else 0.5 if letter(x) or letter(y) else 1
+                # a variable (m, b, x) the recognizer wrote as a character, or a number word it wrote in digits
+                # (tres → 3), is half a mistake
+                cost = 0 if x == y else 0.5 if letter(x) or letter(y) or x.isdigit() != y.isdigit() else 1
                 ways.append((d[i - 1, j - 1][0] + cost, (i - 1, j - 1, cost)))
                 # a name in Latin letters in a Chinese line (Desmos) can come back as a few syllables: one mistake
                 if chinese and len(x) > 3 and x[0] == '#':
@@ -144,12 +145,14 @@ def main():
         def hear(audio, line):
             """(what the recognizer heard, mismatch), or (None, None) for a line it can't check."""
             chinese = line['lang'] == 'chinese'
-            if asr is None or not (chinese or (line['lang'] == 'auto' and not re.search(r'[㐀-鿿]', line['text']))):
+            latin = {'english': 'English', 'spanish': 'Spanish', 'french': 'French', 'german': 'German', 'italian': 'Italian',
+                     'portuguese': 'Portuguese'}.get(line['lang'], 'English' if line['lang'] == 'auto' else None)
+            if asr is None or not (chinese or (latin and not re.search(r'[㐀-鿿]', line['text']))):
                 return None, None
             tmp = line['file'] + '.check.wav'
             write(tmp, audio, model.sample_rate)
             try:
-                heard = asr.generate(tmp, language='Chinese' if chinese else 'English').text.strip()
+                heard = asr.generate(tmp, language='Chinese' if chinese else latin).text.strip()
             finally:
                 os.remove(tmp)
             return heard, mismatch(line['text'], heard, chinese, pinyin)

@@ -154,7 +154,7 @@ export function loadConfig(file, { draft = false } = {}) {
     // kokoro's and qwen's default voices follow the narration's language (zf_001 / serena for Chinese)
     const kokoroVoice = kokoroVoiceFor(raw);
     const byLang = { kokoro: kokoroVoice, qwen: qwenVoiceFor(raw) }[provider];
-    voice = { speed: pace0.voiceSpeed, volume: 1, pause: pace0.sentencePause, ...VOICE_DEFAULTS[provider], ...(byLang ? { voice: byLang } : {}), ...raw.voice, provider };
+    voice = { speed: pace0.voiceSpeed, volume: 1, pause: pace0.sentencePause, ...VOICE_DEFAULTS[provider], ...(byLang ? { voice: byLang } : {}), ...(raw.lang ? { lang: raw.lang } : {}), ...raw.voice, provider };
     if (!(typeof voice.pause === 'number' && voice.pause >= 0 && voice.pause <= 3)) throw new Error('voice.pause is the shortest pause between the sentences of a line, in seconds, 0–3 (0 leaves the voice as it is)');
     if (provider === 'qwen') {
       const v = qwenVoice(voice.voice);

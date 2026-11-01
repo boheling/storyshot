@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { isZhVoice, synthZh, zhSpeakText, ZH_DEFAULT_VOICE, ZH_TTS_ID } from './kokoro-zh.mjs';
-import { qwenSpeakText, QWEN_TTS_ID, synthQwen } from './qwen-tts.mjs';
+import { qwenLang, qwenSpeakText, QWEN_TTS_ID, synthQwen } from './qwen-tts.mjs';
 
 const SR = 48000;
 export const VOICE_DEFAULTS = {
@@ -112,7 +112,7 @@ function cached(cfg, line) {
   const zh = v.provider === 'kokoro' && isZhVoice(v.voice), qwen = v.provider === 'qwen';
   const text = zh ? zhSpeakText(pronounce(v, line)) : qwen ? qwenSpeakText(pronounce(v, line)) : pronounce(v, line);
   const ext = { kokoro: 'wav', qwen: 'wav', say: 'aiff' }[v.provider] ?? 'mp3';
-  const key = zh ? [v.provider, v.voice, ZH_TTS_ID, v.speed, text] : qwen ? [v.provider, v.voice, QWEN_TTS_ID, v.speed, text]
+  const key = zh ? [v.provider, v.voice, ZH_TTS_ID, v.speed, text] : qwen ? [v.provider, v.voice, QWEN_TTS_ID, v.speed, text, ...(qwenLang(text, v.lang) !== qwenLang(text) ? [qwenLang(text, v.lang)] : [])]
     : [v.provider, v.voice, v.model, v.speed, v.instructions, text];
   const hash = crypto.createHash('sha1').update(JSON.stringify(key)).digest('hex').slice(0, 16);
   return { text, file: path.join(dir, `${hash}.${ext}`), zh, qwen };

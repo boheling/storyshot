@@ -49,13 +49,16 @@ export function qwenSpeakText(text, lang = qwenLang(text)) {
   return t;
 }
 
-// The language the model is told: the script decides; Latin text is left to the model.
-export function qwenLang(text) {
+// The language the model is told: the script decides; a line in Latin letters gets the storyboard's
+// `lang` (es → spanish) when the model knows it, else it's left to the model.
+const LATIN_LANGS = { en: 'english', es: 'spanish', fr: 'french', de: 'german', it: 'italian', pt: 'portuguese' };
+export function qwenLang(text, lang) {
   const s = String(text).replace(/\d+(?:\.\d+)?(?:[eE][-−+]?\d+)?/g, ' '); // the e in 2e-105 is no English word
   if (/[぀-ヿ]/.test(s)) return 'japanese';
   if (/[가-힯]/.test(s)) return 'korean';
-  const han = (s.match(/[㐀-鿿]/g) ?? []).length, latin = (s.match(/[A-Za-z]+/g) ?? []).length;
-  return han > latin ? 'chinese' : 'auto';
+  if (/[А-яЁё]/.test(s)) return 'russian';
+  const han = (s.match(/[㐀-鿿]/g) ?? []).length, latin = (s.match(/[A-Za-zÀ-ÿ]+/g) ?? []).length;
+  return han > latin ? 'chinese' : LATIN_LANGS[String(lang ?? '').toLowerCase().split(/[-_]/)[0]] ?? 'auto';
 }
 
 // --- the venv ---------------------------------------------------------------------------------------
@@ -112,7 +115,7 @@ export async function synthQwen(v, entries, { log = console.log } = {}) {
   if (!fs.existsSync(MODEL_FILE)) log(`downloading the Qwen3-TTS model (one time, ~2.3 GB) into ${HUB}…`);
   if (!fs.existsSync(ASR_FILE)) log(`downloading the Qwen3-ASR model that listens to each take (one time, ~1 GB) into ${HUB}…`);
   const lines = entries.map((e) => ({
-    text: e.text, file: `${e.file}.raw.wav`, voice: v.voice, lang: qwenLang(e.text),
+    text: e.text, file: `${e.file}.raw.wav`, voice: v.voice, lang: qwenLang(e.text, v.lang),
     // the same line gets the same take: a seed from the text
     seed: parseInt(crypto.createHash('sha1').update(e.text).digest('hex').slice(0, 7), 16),
   }));

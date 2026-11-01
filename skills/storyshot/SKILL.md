@@ -96,8 +96,11 @@ frames or stock footage presented as a recording of their app.
    models on first use. Storyshot listens to each take and makes it again if
    it comes out garbled; a `⚠ qwen: … sounds like "…"` warning means a line
    still came out wrong after 4 tries: rephrase it (spell out a number, say
-   `一格` for `1 格`). Elsewhere a `qwen` storyboard renders with kokoro. For other
-   languages, use ElevenLabs.
+   `一格` for `1 格`). Elsewhere a `qwen` storyboard renders with kokoro.
+   `qwen` also reads Spanish, French, German, Italian and Portuguese: set the
+   storyboard's `lang` (`lang: es`). For other languages, use ElevenLabs.
+   Never publish a video narrated with macOS `say`: Apple's license allows its
+   voices only for personal, non-commercial use, so keep it for drafts.
 3. **Login.** If the flow needs a logged-in page:
    - Tell the user a browser window will open and that they should log in
      there, preferably with a demo account (the video shows whatever is on
