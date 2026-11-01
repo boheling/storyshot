@@ -25,7 +25,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   const cardLen = (c, voice, min) => (c.duration === 'auto' || c.duration == null ? Math.max(min, (voice ?? 0) + 0.9, readTime(c)) + (c.think ?? 0) : c.duration);
   // the end card carries the call to action: long enough to read it (and for a command to type itself out)
   const ctaTime = (c) => (c?.cta ? 0.8 + String(c.cta).length * 0.045 + 1.6 : 0);
-  const END = !ec0 ? 0 : ec0.duration === 'auto' ? Math.max(2.5, (voiceLens.endCard ?? 0) + 0.6, readTime(ec0), ctaTime(ec0)) : ec0.duration;
+  const END = !ec0 ? 0 : ec0.duration === 'auto' ? Math.max(2.5, (voiceLens.endCard ?? 0) + 0.6 + cfg.pace.tail * 0.6, readTime(ec0), ctaTime(ec0)) : ec0.duration;
   if (ec0 && END < 2.5) warn(`the end card shows for only ${END.toFixed(1)}s: too short to read its call to action — use duration: auto, or at least 2.5`);
   const in0 = cfg.intro;
   const INTRO = !in0 ? 0 : in0.duration === 'auto' ? Math.max(cfg.hyperframes?.template === 'launch' ? 2.8 : 1.8, (voiceLens.intro ?? 0) + 0.8, readTime(in0)) : in0.duration;
@@ -56,21 +56,27 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     const M = parts.filter((p) => !p[2]).reduce((x, p) => x + p[1] - p[0], 0);
     const Wt = parts.filter((p) => p[2]).reduce((x, p) => x + p[1] - p[0], 0);
     let D, waitBudget, motionBudget, hold = 0;
+    // when the line starts: `sayAt: after` once the step's actions are done (a line about their result:
+    // "now the line is flat"), else this many seconds into the step
+    let sayAt = typeof s.sayAt === 'number' ? s.sayAt : 0.15;
     if (s.duration === 'auto') {
-      const voiceNeed = voiceLens.steps[i] != null ? voiceLens.steps[i] + (s.sayAt ?? 0.15) + cfg.pace.tail : 0;
       waitBudget = Math.min(Wt, cfg.maxWait);
       motionBudget = M;
+      if (s.sayAt === 'after') sayAt = M + waitBudget + 0.2;
+      const voiceNeed = voiceLens.steps[i] != null ? voiceLens.steps[i] + sayAt + cfg.pace.tail : 0;
       // a silent step holds its result too (docs GIFs: long enough to see it before the loop restarts)
       const quiet = s.say ? 0 : cfg.clips.length ? 1.5 : cfg.pace.tail;
       D = Math.max(M + waitBudget + quiet, voiceNeed, 0.8);
       let extra = D - M - waitBudget;
-      const stretch = Math.min(extra, Wt - waitBudget);
+      // more of the waiting first, then hold the last frame (after the line about the result: only hold)
+      const stretch = s.sayAt === 'after' ? 0 : Math.min(extra, Wt - waitBudget);
       waitBudget += stretch; extra -= stretch;
       hold = extra;
     } else {
       D = s.duration;
       waitBudget = M + Wt <= D ? Wt * D / (M + Wt) : M === 0 ? D : Math.min(Wt, Math.max(D - M, 0.15 * D));
       motionBudget = D - waitBudget;
+      if (s.sayAt === 'after') warn(`step ${i + 1}: sayAt: after needs duration: auto (a fixed-length step has no time after its actions) — the line starts with the step`);
     }
     if (s.card) {
       // a section card plays over the step's first frame, before the step
@@ -83,7 +89,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       cards.push({ i, t0: acc, t1: acc + C, card: s.card, thinkAt: C - (s.card.think ?? 0) - 0.3 });
       acc += C;
     }
-    const g = { i, step: s, o0: acc, o1: acc + D, zoomBox: r.zoomBox, afterHidden, hold,
+    const g = { i, step: s, o0: acc, o1: acc + D, sayAt, zoomBox: r.zoomBox, afterHidden, hold,
       motionSpeed: M && motionBudget ? M / motionBudget : 1, waitSpeed: Wt && waitBudget ? Wt / waitBudget : 1 };
     for (const [a, b, w] of parts) {
       const len = (b - a) / (w ? g.waitSpeed : g.motionSpeed);
@@ -173,7 +179,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     const spoken = [
       ...(in0 ? [[0, INTRO]] : []), // cards are their own pictures (the frames under them don't show)
       ...cards.map((c) => [c.t0, c.t1]),
-      ...segs.filter((g) => voiceLens.steps[g.i] != null).map((g) => [g.o0 + (g.step.sayAt ?? 0.15), g.o0 + (g.step.sayAt ?? 0.15) + voiceLens.steps[g.i]]),
+      ...segs.filter((g) => voiceLens.steps[g.i] != null).map((g) => [g.o0 + g.sayAt, g.o0 + g.sayAt + voiceLens.steps[g.i]]),
     ];
     let from = null;
     const report = (to) => {
@@ -360,7 +366,8 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       warn(`step ${g.i + 1}: the ${want} caption would cover ${hit.what}, so it was moved to the ${other}` + (explicit ? ` (despite captionPosition: ${explicit})` : '') + ` — set captionPosition: ${other} to make this explicit`);
     } else if (hit) warn(`step ${g.i + 1}: the caption covers ${hit.what} at both top and bottom — shorten the caption, or change the zoom`);
     if (prev && n === prev.n && prev.pos === pos) prev.t[1] = g.o1;
-    else captions.push({ text: g.step.caption, t: [g.o0, g.o1], pos, n, h });
+    // a line about the step's result (sayAt: after) shows its caption with it, not before the result is there
+    else captions.push({ text: g.step.caption, t: [g.step.sayAt === 'after' ? g.o0 + Math.max(0, g.sayAt - 0.1) : g.o0, g.o1], pos, n, h });
   }
   for (const [i, c] of (cfg.captions ? captions : []).entries()) await shot(bubble(c.text, c.n, c.pos), path.join(cfg.work, `cap${i}.png`), true);
   // Intro and end cards are short animations (logo pops, title rises, the highlight sweeps, a command
@@ -488,10 +495,22 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       return f;
     };
     const sizeOf = (f) => {
+      if (/\.svg$/i.test(f)) {
+        // ffprobe can't read SVG: its shape from width/height or the viewBox, as large as the cards draw a logo
+        const tag = fs.readFileSync(f, 'utf8').match(/<svg\b[^>]*>/i)?.[0] ?? '';
+        const attr = (a) => parseFloat(tag.match(new RegExp(`\\s${a}\\s*=\\s*["']?([\\d.]+)(px)?["'\\s>]`, 'i'))?.[1]);
+        const vb = tag.match(/viewBox\s*=\s*["']\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)/i);
+        const [w, h] = attr('width') > 0 && attr('height') > 0 ? [attr('width'), attr('height')] : vb ? [+vb[1], +vb[2]] : [0, 0];
+        if (!(w > 0 && h > 0)) { warn(`the logo ${path.basename(f)} has no width/height or viewBox, so the cards leave it out — add a viewBox, or use a PNG`); return null; }
+        const k = Math.min((W * 0.42) / w, (H * 0.17) / h) / 3.2;
+        return { w: w * k, h: h * k };
+      }
       try {
         const [w, h] = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', f]).toString().trim().split(',').map(Number);
-        return w && h ? { w, h } : null;
-      } catch { return null; }
+        if (w && h) return { w, h };
+      } catch {}
+      warn(`could not read the size of the logo ${path.basename(f)}, so the cards leave it out — use a PNG, JPG or SVG`);
+      return null;
     };
     const voice = (text, start, len) => (text && len ? { text, start, len } : null);
     const jobs = [];
@@ -675,7 +694,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     voice: [
       ...(in0?.say ? [{ text: in0.say, start: 0.15, where: 'intro' }] : []),
       ...cards.filter((c) => c.card.say).map((c) => ({ text: c.card.say, start: c.t0 + 0.15, where: `step ${c.i + 1} card` })),
-      ...segs.filter((g) => g.step.say).map((g) => ({ text: g.step.say, start: g.o0 + (g.step.sayAt ?? 0.15), where: `step ${g.i + 1}` })),
+      ...segs.filter((g) => g.step.say).map((g) => ({ text: g.step.say, start: g.o0 + g.sayAt, where: `step ${g.i + 1}` })),
       ...(ec?.say ? [{ text: ec.say, start: VIDEO + 0.05, where: 'end card' }] : []),
     ],
   };

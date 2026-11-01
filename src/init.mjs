@@ -7,11 +7,12 @@ import { PURPOSES, defaultStoryboard } from './config.mjs';
 import { loginAdvice } from './auth.mjs';
 
 const q = (s) => JSON.stringify(String(s));
-// The product's name from the page title: its first part ("Squoosh | Image compressor" → "Squoosh"),
+// The product's name from the page title: its first part ("Squoosh | Image compressor" → "Squoosh",
+// "Hoppscotch • Open source API development ecosystem • Hoppscotch" → "Hoppscotch"),
 // or the repo on a code host ("GitHub - boheling/storyshot: Ask…" → "storyshot"). Only spaced
 // separators split, so a hyphenated name (Tic-Tac-Toe) stays whole.
 export function productName(title, host) {
-  const segs = String(title ?? '').split(/\s+[|—–·-]\s+|:\s+/).map((s) => s.trim()).filter(Boolean);
+  const segs = String(title ?? '').split(/\s+[|｜—–·•∙‧-]\s+|:\s+/).map((s) => s.trim()).filter(Boolean);
   const repo = segs.find((s) => /^[\w.-]+ ?\/ ?[\w.-]+$/.test(s));
   return repo ? repo.split('/')[1].trim() : segs[0] ?? host;
 }

@@ -3,7 +3,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
-import { describePage } from './inspect.mjs';
+import { clickableKeys, describePage } from './inspect.mjs';
 import { detectLogin, loginAdvice, sessionContext } from './auth.mjs';
 import { certError } from './config.mjs';
 
@@ -132,17 +132,24 @@ function pageScript({ scrollOffset }) {
     if (el && instant) el.remove();
     else if (el) { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }
   };
-  window.__demoKeys = (label) => {
+  // the key badge sits just below the cursor (above it near the bottom), where the action is: a zoom on
+  // that spot keeps it in the frame. Returns its box, so captions keep off it.
+  window.__demoKeys = (label, x = innerWidth / 2, y = innerHeight * 0.7) => {
     const el = document.createElement('div');
     el.textContent = label;
     Object.assign(el.style, {
-      position: 'fixed', left: '50%', bottom: '22%', transform: 'translateX(-50%)', zIndex: '2147483646', pointerEvents: 'none',
+      position: 'fixed', left: '0', top: '0', zIndex: '2147483646', pointerEvents: 'none', whiteSpace: 'nowrap',
       font: '600 30px -apple-system, "Segoe UI", sans-serif', color: '#fff', background: 'rgba(15,23,42,.88)',
       padding: '14px 26px', borderRadius: '14px', boxShadow: '0 10px 30px rgba(0,0,0,.3)', letterSpacing: '.04em',
     });
     document.documentElement.appendChild(el);
-    el.animate([{ opacity: 0, transform: 'translateX(-50%) scale(.9)' }, { opacity: 1, transform: 'translateX(-50%) scale(1)', offset: 0.15 },
+    const { width: w, height: h } = el.getBoundingClientRect();
+    const left = Math.max(16, Math.min(innerWidth - w - 16, x - w / 2));
+    const top = y + 48 + h < innerHeight - 16 ? y + 48 : Math.max(16, y - 40 - h);
+    Object.assign(el.style, { left: `${left}px`, top: `${top}px` });
+    el.animate([{ opacity: 0, transform: 'scale(.9)' }, { opacity: 1, transform: 'scale(1)', offset: 0.15 },
       { opacity: 1, offset: 0.8 }, { opacity: 0 }], { duration: 1400, easing: 'ease-out' }).onfinish = () => el.remove();
+    return { x: left, y: top, width: w, height: h };
   };
   // `mark`: a highlighter sweeps over a phrase (a text Range, even across inline elements) or an
   // element, line by line. Marks follow scrolling (positions are re-read every frame).
@@ -390,6 +397,8 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
   });
   const sleep = (ms) => page.waitForTimeout(ms);
   const now = () => Date.now() / 1000;
+  const warned = []; // also printed by inspect --after, whose log is silent
+  const warn = (m) => { warned.push(m); log(`  ⚠ ${m}`); };
 
   // --- cursor ---------------------------------------------------------------------
   let cur = { x: VW * 0.62, y: VH * 0.55 };
@@ -445,7 +454,13 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
     const l = locate(page, spec);
     await waiting(() => l.waitFor({ state: 'visible', timeout }));
     await l.scrollIntoViewIfNeeded();
-    const b = await l.boundingBox();
+    let b = await l.boundingBox();
+    if (b && (b.x + b.width <= 0 || b.y + b.height <= 0)) {
+      // parked off screen, the way styled radios and checkboxes hide the real input: go to its label
+      const label = (await l.evaluateHandle((el) => [...(el.labels ?? [])].find((x) => { const r = x.getBoundingClientRect(); return r.width > 2 && r.height > 2 && r.right > 0; }) ?? null).catch(() => null))?.asElement();
+      if (label) { await label.scrollIntoViewIfNeeded().catch(() => {}); b = (await label.boundingBox()) ?? b; }
+      else warn(`${acting}: the target is off screen (at x=${Math.round(b.x)}, y=${Math.round(b.y)}) — the page hides it there; target what it shows instead (inspect lists it)`);
+    }
     boxes.set(keyOf(spec), b);
     marks.push({ t: now(), box: b });
     const o = opt.offset ?? { x: 0.5, y: 0.5 };
@@ -467,6 +482,10 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
     return true;
   }
   const spotOff = (instant) => page.evaluate((i) => window.__demoSpotOff(i), !!instant).catch(() => {});
+  const keys = async (label) => {
+    const box = await page.evaluate(([l, x, y]) => window.__demoKeys(l, x, y), [label, cur.x, cur.y]).catch(() => null);
+    if (box) marks.push({ t: now(), box });
+  };
   const keyLabel = (k) => k.split('+').map((p) => ({ Meta: '⌘', ControlOrMeta: '⌘', Control: 'Ctrl', Shift: '⇧', Alt: '⌥', Enter: '↵ Enter', Escape: 'Esc', Backspace: '⌫', Tab: '⇥ Tab' })[p] ?? (p.length === 1 ? p.toUpperCase() : p)).join(' ');
 
   async function runAction(action) {
@@ -485,6 +504,16 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
         const p = await pointOf(spec, opt);
         const lit = await spot(p.box, hl);
         await moveTo(p.x, p.y, opt.ms ?? cfg.pace.cursor);
+        if (!isPoint(spec)) {
+          const over = await locate(page, spec).evaluate((el, [x, y]) => {
+            const hit = document.elementFromPoint(x, y);
+            const label = el.closest('label') ?? [...(el.labels ?? [])].find((l) => l.contains(hit));
+            if (!hit || el.contains(hit) || hit.contains(el) || (label && label.contains(hit)) || el.getRootNode() !== document || hit.closest('[id^=__demo]')) return null;
+            const text = (hit.innerText ?? '').replace(/\s+/g, ' ').trim().slice(0, 50);
+            return hit.tagName.toLowerCase() + [...hit.classList].slice(0, 2).map((c) => `.${c}`).join('') + (text ? ` "${text}"` : '');
+          }, [p.x, p.y]).catch(() => null);
+          if (over) warn(`${acting}: ${over} is on top of the click target, so the click lands on it — close or hide it first (in setup: click its close button, or hide: <its css>)`);
+        }
         await sleep(lit ? 350 + cfg.pace.beat / 3 : 120);
         if (kind === 'dblclick') { clicks.push(now()); await page.mouse.dblclick(p.x, p.y); } else await press();
         if (lit) { await sleep(150); await spotOff(); }
@@ -505,7 +534,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
       }
       case 'dismiss': {
         const l = locate(page, spec);
-        if (await l.isVisible().catch(() => false)) { await l.click(); await sleep(400); }
+        if (await l.isVisible().catch(() => false)) { await l.click({ timeout: 10000 }); await sleep(400); }
         break;
       }
       case 'waitFor': await waiting(() => locate(page, spec).waitFor({ state: 'visible', timeout: opt.timeout ?? 180000 })); await settle(); await nudge(); break;
@@ -603,7 +632,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
           document.addEventListener('paste', (e) => { window.__demoPasted = !!e.clipboardData?.getData('text'); }, { capture: true, once: true });
           return true;
         }, () => false), text).catch(() => false);
-        if (!fast) await page.evaluate((l) => window.__demoKeys(l), process.platform === 'darwin' ? '⌘ V' : 'Ctrl V').catch(() => {});
+        if (!fast) await keys(process.platform === 'darwin' ? '⌘ V' : 'Ctrl V');
         if (copied) await page.keyboard.press('ControlOrMeta+V');
         await sleep(200);
         const pasted = copied && await page.evaluate(() => window.__demoPasted === true).catch(() => false);
@@ -655,7 +684,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
             }
             return v?.now;
           }, value.value).catch(() => null);
-          if (got != null && Math.abs(got - value.value) > 1e-9) log(`  ⚠ ${acting}: slide stopped at ${got}, not ${value.value} — the slider snaps to its step`);
+          if (got != null && Math.abs(got - value.value) > 1e-9) warn(`${acting}: slide stopped at ${got}, not ${value.value} — the slider snaps to its step`);
         }
         await settle();
         await beat();
@@ -696,8 +725,10 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
         await l.evaluate((el) => { window.__demoMarkEl = el; });
         const box = await page.evaluate(([t, o]) => window.__demoNote(t, o), [String(value.text), { side: value.side, ink: cfg.theme.ink, accent: cfg.theme.accent }]);
         marks.push({ t: now(), box });
-        // reading time: about 3 words per second, at least a second
-        const read = fast ? 0 : value.ms ?? Math.max(1000, String(value.text).split(/\s+/).length * 330);
+        // reading time: about 3 words a second, or 5 Chinese/Japanese/Korean characters; at least a second
+        const t = String(value.text), cjk = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g;
+        const words = t.replace(cjk, ' ').split(/\s+/).filter(Boolean).length, chars = (t.match(cjk) ?? []).length;
+        const read = fast ? 0 : value.ms ?? Math.max(1000, words * 330 + chars * 200);
         holds += read / 1000;
         await sleep(read);
         break;
@@ -706,7 +737,7 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
         const key = typeof value === 'object' ? value.key : String(value);
         // on-screen key badge: shortcuts and special keys only (not plain characters), when highlighting
         const show = value?.show ?? (hl && (key.includes('+') || key.length > 1));
-        if (show && !fast) await page.evaluate((l) => window.__demoKeys(l), keyLabel(key)).catch(() => {});
+        if (show && !fast) await keys(keyLabel(key));
         await page.keyboard.press(key);
         await sleep(200);
         if (key === 'Enter') { await settle(); await beat(); }
@@ -751,10 +782,14 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
         const lw = await detectLogin(page).catch(() => ({})), loginWall = lw.wall ? lw.reason : null;
         if (desc) fs.writeFileSync(pageFile, desc.text);
         await browser.close().catch(() => {});
+        // Playwright's call log says when another element takes the click (a modal, a banner, an overlay)
+        const blocker = e.message.replace(/\u001b\[\d+m/g, '').match(/\n\s*-\s*(?:<[^\n]*?> from )?(<[^\n]*?>)(?: subtree)? intercepts pointer events/)?.[1];
         const err = new Error(`${where}, action ${j + 1} (${kind}: ${JSON.stringify(value)}) failed: ` +
-          `${e.message.split('\n')[0]}${matches}\n  page: ${page.url()}\n  screenshot of the moment it failed: ${shot}` +
+          `${e.message.split('\n')[0]}${matches}` +
+          (blocker ? `\n  another element is on top of it and takes the click: ${blocker.slice(0, 200)} — close it first (click its button, or hide: it in setup)` : '') +
+          `\n  page: ${page.url()}\n  screenshot of the moment it failed: ${shot}` +
           (loginWall ? `\n  ⚠ the page is asking to log in (${loginWall}) — ${cfg.storageState ? 'the saved session has probably expired; run login again' : loginAdvice(cfg.url)}` : '') +
-          (desc ? `\n  targets on the page at that moment: ${pageFile}` : ''));
+          (desc ? (fast ? `\n\nThe page at that moment:\n${desc.text}` : `\n  targets on the page at that moment: ${pageFile}`) : ''));
         err.screenshot = shot;
         err.pageDescription = desc?.text;
         throw err;
@@ -777,8 +812,11 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
   await runAll(cfg.setup, 'setup');
   for (const [card, file] of [[cfg.endCard, 'logo.png'], [cfg.intro, 'intro-logo.png']]) {
     if (!card?.logo || card.logoFile) continue;
-    await locate(page, card.logo).screenshot({ path: path.join(cfg.work, file), omitBackground: true, timeout: 5000 })
-      .catch((e) => log(`warning: could not capture logo (${e.message.split('\n')[0]})`));
+    await locate(page, card.logo).screenshot({ path: path.join(cfg.work, file), omitBackground: true, timeout: 5000 }).catch(async (e) => {
+      const all = locateAll(page, card.logo), n = await all.count().catch(() => 0), v = await all.filter({ visible: true }).count().catch(() => 0);
+      const why = !n ? 'nothing on the first page matches it' : !v ? `it matches ${n} element(s), none of them visible` : e.message.split('\n')[0];
+      log(`warning: could not capture the ${card === cfg.intro ? 'intro' : 'end card'} logo ${JSON.stringify(card.logo)}: ${why} — an inline <svg> logo is { css: "header a svg" } or similar, not an img; or give a logo file`);
+    });
   }
   // where the intro's logo sits on the first page: a HyperFrames launch intro lands its logo there
   const introLogo = cfg.intro?.logo && !cfg.intro.logoFile
@@ -818,8 +856,10 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
 
   if (fast) {
     const n = Math.min(inspectAfter, cfg.steps.length);
+    let before = null;
     for (const [i, s] of cfg.steps.slice(0, n).entries()) {
       stepHighlight = false;
+      if (i === n - 1) before = await clickableKeys(page);
       // like the recording: marks, notes and spotlights end with their step (the last step's stay in the screenshot)
       if (i > 0) await page.evaluate(() => { window.__demoUnmark(true); window.__demoUnnote(true); window.__demoSpotOff(true); }).catch(() => {});
       await runAll(s.actions, `step ${i + 1}`);
@@ -828,9 +868,9 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
     await sleep(800);
     const shot = path.join(cfg.work, `inspect-after-${n}.jpg`);
     await page.screenshot({ path: shot, quality: 80, scale: 'css' });
-    const desc = await describePage(page, cfg.viewport);
+    const desc = await describePage(page, cfg.viewport, { before });
     await browser.close();
-    return { text: `State after ${n ? `step ${n}` : 'setup'} of ${cfg.name}:\n${desc.text}\n\nScreenshot: ${shot}`, screenshot: shot };
+    return { text: `State after ${n ? `step ${n}` : 'setup'} of ${cfg.name}:\n${warned.map((w) => `⚠ ${w}\n`).join('')}${desc.text}\n\nScreenshot: ${shot}`, screenshot: shot };
   }
 
   // --- recording ----------------------------------------------------------------------

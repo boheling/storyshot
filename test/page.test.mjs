@@ -39,3 +39,48 @@ test('scrollTo works below a sticky form with an <input name=id>', { skip: !brow
   const out = await after(['scrollTo: { css: "#target" }']);
   assert.doesNotMatch(out, /failed|TypeError/, out);
 });
+
+// test/fixtures/targets.html: the cases the 0.7.0 promo and tutorial remakes ran into
+const targets = `file://${path.join(here, 'fixtures', 'targets.html')}`;
+const afterOn = (url, steps) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'storyshot-test-'));
+  const file = path.join(dir, 'board.yaml');
+  fs.writeFileSync(file, `url: ${url}\npurpose: tutorial\nout: t.mp4\nsteps:\n${steps.map((a) => `  - actions: [${a}]\n    duration: 1\n`).join('')}`);
+  return new Promise((done) => execFile('node', [cli, 'inspect', file, '--after', String(steps.length)], { timeout: 120000 }, (err, out, errOut) => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    done(`${out}\n${errOut}${err ? `\n${err.message}` : ''}`);
+  }));
+};
+
+test('inspect: same-named elements get their own nth, and a long page says what it left out', { skip: !browser && 'no Chromium' }, async () => {
+  const out = await afterOn(targets, ['pause: 10']);
+  // a column of buttons all named "button": same x and width, different y
+  const nths = [...out.matchAll(/\{ role: "button", name: "button", exact: true, nth: (\d+) \}/g)].map((m) => Number(m[1]));
+  assert.deepEqual(nths.sort((a, b) => a - b), [...Array(12).keys()], out);
+  const py = [...out.matchAll(/\{ role: "button", name: "Python \(Pyodide\)", exact: true, nth: (\d+) \}/g)].map((m) => Number(m[1]));
+  assert.deepEqual(py, [0, 1], out);
+  assert.match(out, /… and \d+ more not listed/, out);
+});
+
+test('inspect --after: what the step opened comes first and is marked; covered elements say so', { skip: !browser && 'no Chromium' }, async () => {
+  const out = await afterOn(targets, ['click: { role: button, name: "Open dialog" }']);
+  assert.match(out, /★ y=\d+\s+at \(\d+, \d+\)\s+\{ role: "button", name: "Stay here", exact: true \}/, out);
+  assert.match(out, /covered by something on top right now/, out);
+});
+
+test('click: a radio parked off screen is clicked through its label', { skip: !browser && 'no Chromium' }, async () => {
+  const out = await afterOn(targets, ['click: { role: radio, name: blastp }', 'waitFor: { text: "blastp picked", timeout: 3000 }']);
+  assert.doesNotMatch(out, /failed/, out);
+});
+
+test('click: warns when something is on top of the target', { skip: !browser && 'no Chromium' }, async () => {
+  const out = await afterOn(targets, ['click: { role: button, name: Covered }']);
+  assert.match(out, /⚠ step 1: div\.veil is on top of the click target/, out);
+});
+
+test('a failed step in inspect --after lists the page right there; a blocked click names the blocker', { skip: !browser && 'no Chromium' }, async () => {
+  const missing = await afterOn(targets, ['click: { role: button, name: Nope, timeout: 1000 }']);
+  assert.match(missing, /nothing matches[\s\S]*The page at that moment:[\s\S]*## Clickable elements/, missing);
+  const blocked = await afterOn(targets, ['click: { role: button, name: "Open dialog" }', 'dismiss: { role: button, name: "Open dialog" }']);
+  assert.match(blocked, /another element is on top of it and takes the click: <div id="dlg"/, blocked);
+});

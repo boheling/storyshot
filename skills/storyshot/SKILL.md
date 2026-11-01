@@ -130,7 +130,13 @@ frames or stock footage presented as a recording of their app.
 3. For states you can only reach by clicking (an editor after an upload, an
    open menu, a modal), write the steps up to that point, then call
    `inspect_page` with `storyboard` + `after_step: N`. It runs steps 1..N fast
-   (about 10 s) and lists the targets on the page at that moment.
+   (about 10 s) and lists the targets on the page at that moment. What step N
+   opened (a menu, a dialog, a panel) is marked ★ and listed first. If a step
+   fails, the result lists the targets on the page at that moment.
+   - Inspect lists up to 150 targets. When it says "… and N more not listed",
+     open the panel you need with a step and inspect after that step.
+   - `(covered by something on top right now)` means a dialog or banner sits over
+     that element: a click lands on the cover. Close or `hide` it first.
 4. Copy targets exactly as printed: `{ role: "button", name: "Convert", exact: true }`.
    - `name` is the accessible name. It can differ from the label on screen;
      inspect shows `(on screen: "Export Image")` when it does. Never write a
@@ -164,6 +170,12 @@ small controls are readable. Your job is the structure:
   its own `say:` explaining **what** it does and **why this value**. Never
   "fill in the form and submit" in one line. `check` warns when a tutorial
   step does more than two things.
+- **Say it when it happens.** A line starts with its step, so the viewer hears
+  "now the line is flat" before the drag has flattened it. When a line is about
+  what the step's actions produce, give that step `sayAt: after`: its line and
+  caption start once the actions are done (needs `duration: auto`, the default
+  for tutorials and lessons). Lines that say what you're about to do ("click
+  Send") stay as they are.
 - **Show, then explain the result.** After an action that produces output
   (a results table, a number, a plot, a status), add a step that only looks:
   `mark` the value or row you're talking about (`mark: "E value"`,

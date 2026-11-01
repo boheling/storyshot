@@ -211,7 +211,7 @@ Everything the agent does is also a command:
 | `storyshot init <url> [--purpose tutorial] [--topic export-pdf] [--storage videos/<site>-login.json]` | Write `videos/<site>-<kind>[-<topic>].yaml` with verified targets; the video gets the same name. |
 | `storyshot login <url> [--save videos/<site>-login.json]` | Log in once in a browser window and save the session. |
 | `storyshot inspect <url> [--storage auth.json]` | List verified targets and save screenshots. |
-| `storyshot inspect videos/acme-promo.yaml --after 3` | The same, for the page after steps 1–3. |
+| `storyshot inspect videos/acme-promo.yaml --after 3` | The same, for the page after steps 1–3. What step 3 opened is marked ★ and listed first. |
 | `storyshot check videos/acme-promo.yaml` | Validate without opening a browser. |
 | `storyshot render videos/acme-promo.yaml [--draft]` | Record, then compose the video and soundtrack. |
 | `storyshot compose videos/acme-promo.yaml [--draft]` | Rebuild from the last recording, in seconds. |
@@ -326,7 +326,7 @@ You can add `exact: true`, `last: true` or `nth: 2` to any of them.
 | `move` / `hover` | `move: { text: "$0" }` or `move: { x: 0.5, y: 0.4, ms: 1200 }` |
 | `type` | `type: { target: { label: Email }, text: hi@acme.com, delay: 60 }`, or `type: hello` to type into whatever has focus. `clear: true` empties a pre-filled field first |
 | `drag` | `drag: { from: { css: ".slider" }, by: [{ x: -300 }, { x: 450 }] }` (several moves while held), or `to: <target or point>` |
-| `press` | `press: Enter`, `press: "^"`, `press: { key: Meta+K, show: true }`. When highlighting, shortcuts and special keys show an on-screen badge; plain characters don't. `show: false` hides it. |
+| `press` | `press: Enter`, `press: "^"`, `press: { key: Meta+K, show: true }`. When highlighting, shortcuts and special keys show an on-screen badge next to the cursor; plain characters don't. `show: false` hides it. |
 | `pause` | `pause: 700` (ms) |
 | `waitFor` | `waitFor: { role: button, name: Done, timeout: 120000 }` |
 | `waitForUrl` | `waitForUrl: "**/dashboard"` |
@@ -338,7 +338,7 @@ You can add `exact: true`, `last: true` or `nth: 2` to any of them.
 | `hide` | `hide: '[id*="QSI"], .chat-widget'` hides pop-ups, survey prompts, feedback tabs and chat widgets for the whole video, including ones that appear late (use it in `setup`) |
 | `mark` | `mark: "automatic zoom, captions"` sweeps a highlighter over that phrase, even inside a paragraph (scrolling to it only if it's off screen, and below a sticky header). `mark: { css: "table tr:nth-child(3)" }` marks any target with a box. Options: `ms` (sweep time, default 700), `color` (default: theme accent), `box: true/false`. Marks stay until the step ends. |
 | `unmark` | `unmark: true` clears the marks (and notes) earlier |
-| `note` | `note: { target: { label: Database }, text: Curated proteins only }` puts a short label with an arrow next to the element, on the side with the most room (or `side: left/right/top/bottom`). It stays until the step ends and gets reading time (about 3 words a second, or `ms`). |
+| `note` | `note: { target: { label: Database }, text: Curated proteins only }` puts a short label with an arrow next to the element, on the side with the most room (or `side: left/right/top/bottom`). It stays until the step ends and gets reading time (about 3 words or 5 Chinese/Japanese/Korean characters a second, or `ms`). |
 | `paste` | `paste: { target: { label: JSON }, text: '{"a": 1}' }` pastes text in one go through the real clipboard (with a ⌘V badge), so editors react as to a real paste; `paste: "..."` pastes into whatever has focus |
 | `slide` | `slide: { target: { label: Quality }, to: 0.2 }` drags a slider to a position along its track (0 = start, 1 = end), found from the element, not pixels. `value: 3` drags it to that value instead, when the slider reports its range (an `<input type=range>`, or an ARIA slider such as Desmos's; `inspect` shows the range). The target can be the slider or its knob |
 | `select` | `select: { target: { label: Database }, option: "UniProtKB/Swiss-Prot" }` picks an option in a dropdown (by its visible text, or part of it). `inspect` lists each dropdown's options. |
@@ -386,8 +386,10 @@ rather than cut off.
 ### Voiceover
 
 Add a `voice` block, then give steps a `say:` line (and optionally
-`end_card.say`). Each line starts as its step begins (`sayAt` shifts it) and may
-run until the next line. A line that is up to 20% too long is sped up slightly.
+`end_card.say`). Each line starts as its step begins (`sayAt: 0.5` starts it
+half a second in; `sayAt: after` starts it, and the step's caption, once the
+step's actions are done, for a line about their result) and may run until the
+next line. A line that is up to 20% too long is sped up slightly.
 A line longer than that is queued after the previous line, and you get a
 warning telling you to shorten it. Music ducks under the voice, and the final
 mix is normalized to -14 LUFS.
@@ -455,7 +457,7 @@ usually shouldn't.
 
 | field | meaning |
 |---|---|
-| `logo` | A target on the page (captured as an image, e.g. `{ alt: Acme logo }`) or a path to an image file. If the logo image already contains the wordmark, leave out `title`. |
+| `logo` | A target on the page (captured as an image, e.g. `{ alt: Acme logo }`; an inline SVG logo is `{ css: "header a svg" }` or similar) or a path to a PNG, JPG or SVG file. With a `title` too, the title shows under the logo; if the logo already contains the wordmark, leave out `title`. |
 | `title` | Large product name next to the logo. |
 | `kicker` | Small label above the title, e.g. `Part 2`. |
 | `subtitle` | One line; `**bold**` gets an accent highlight. |

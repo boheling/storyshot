@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Targets • Storyshot test page</title>
+<style>
+  body { font: 16px sans-serif; margin: 0; }
+  /* a column of controls that all have the same accessible name (Hoppscotch's language list) */
+  .col { position: absolute; left: 40px; top: 20px; width: 160px; }
+  .col button { display: block; width: 160px; height: 28px; margin: 2px 0; }
+  /* two launchers with the same name, one above the other (JupyterLite's Notebook and Console) */
+  .cards { position: absolute; left: 260px; top: 20px; width: 200px; }
+  .cards section { height: 120px; }
+  .cards button { width: 180px; height: 40px; }
+  /* radios parked far off screen, drawn as their labels (NCBI BLAST's program choice) */
+  .radios { position: absolute; left: 520px; top: 20px; }
+  .radios input { position: absolute; left: -13986px; }
+  .radios label { display: inline-block; padding: 6px 14px; border: 1px solid #888; margin-right: 8px; cursor: pointer; }
+  /* a button under an invisible layer */
+  #covered { position: absolute; left: 520px; top: 120px; width: 200px; height: 60px; }
+  #covered button { width: 200px; height: 60px; }
+  #covered .veil { position: absolute; inset: 0; background: rgba(255, 255, 255, .01); }
+  #open { position: absolute; left: 520px; top: 220px; }
+  .filler { position: absolute; left: 800px; top: 20px; width: 700px; }
+  .filler button { width: 60px; height: 24px; margin: 1px; }
+  /* a sign-up pop-up over everything (mermaid.live) */
+  #dlg { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, .4); align-items: center; justify-content: center; }
+  #dlg.open { display: flex; }
+  #dlg > div { background: #fff; padding: 30px; }
+</style>
+</head>
+<body>
+<div class="col"></div>
+<div class="cards">
+  <section><h3>Notebook</h3><button>Python (Pyodide)</button></section>
+  <section><h3>Console</h3><button>Python (Pyodide)</button></section>
+</div>
+<div class="radios">
+  <input type="radio" name="program" id="r1"><label for="r1">blastn</label>
+  <input type="radio" name="program" id="r2"><label for="r2">blastp</label>
+  <p id="picked"></p>
+</div>
+<div id="covered"><button>Covered</button><div class="veil"></div></div>
+<button id="open">Open dialog</button>
+<div class="filler"></div>
+<div id="dlg" role="dialog" aria-modal="true"><div><p>Try the full experience</p><button>Stay here</button></div></div>
+<script>
+  const col = document.querySelector('.col');
+  for (const lang of ['English', 'Deutsch', 'Español', 'Français', 'Italiano', '日本語', '한국어', 'Polski', 'Português', 'Русский', 'Türkçe', '简体中文']) {
+    col.insertAdjacentHTML('beforeend', `<button aria-label="button">${lang}</button>`);
+  }
+  const filler = document.querySelector('.filler');
+  for (let i = 1; i <= 145; i++) filler.insertAdjacentHTML('beforeend', `<button>Item ${i}</button>`);
+  for (const r of document.querySelectorAll('.radios input')) {
+    r.addEventListener('change', () => { document.getElementById('picked').textContent = `${r.labels[0].textContent} picked`; });
+  }
+  document.getElementById('open').onclick = () => document.getElementById('dlg').classList.add('open');
+</script>
+</body>
+</html>

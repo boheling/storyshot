@@ -98,6 +98,8 @@ export function check(file, { draft = false } = {}) {
       else target(s.zoom.target, `${where} zoom.target`);
     }
     if (s.hidden && (s.caption || s.say)) warnings.push(`${where}: hidden steps are cut from the video, so caption/say are ignored`);
+    if (s.sayAt != null && s.sayAt !== 'after' && !(typeof s.sayAt === 'number' && s.sayAt >= 0)) errors.push(`${where}: sayAt must be seconds into the step (e.g. 0.5) or "after" (once the step's actions are done)`);
+    if (s.sayAt === 'after' && typeof (s.duration ?? raw.duration) === 'number') warnings.push(`${where}: sayAt: after needs duration: auto (a fixed-length step has no time after its actions)`);
     if (!Array.isArray(s.actions ?? [])) errors.push(`${where}: actions must be a list`);
     for (const [j, a] of (s.actions ?? []).entries()) checkAction(a, `${where} action ${j + 1}`);
     if (s.card) unknown(s.card, END, `${where} card`);
@@ -181,7 +183,7 @@ export function check(file, { draft = false } = {}) {
         const nextK = vis.findIndex((v, j) => j > k && v.s.say);
         const span = vis.slice(k, nextK < 0 ? undefined : nextK).map((v) => v.s.duration);
         if (!span.every((d) => typeof d === 'number')) continue;
-        const room = span.reduce((a, d) => a + d, 0) - (s.sayAt ?? 0.15) + (nextK < 0 && cfg.endCard ? 2.5 : 0);
+        const room = span.reduce((a, d) => a + d, 0) - (typeof s.sayAt === 'number' ? s.sayAt : 0.15) + (nextK < 0 && cfg.endCard ? 2.5 : 0);
         const need = secs(s.say);
         if (need > room * 1.4 && need - room > 1) warnings.push(`step ${i + 1}: the say: line takes about ${need.toFixed(1)}s to speak but has ${room.toFixed(1)}s before ${nextK < 0 ? 'the video ends' : 'the next line'} — shorten it or raise duration (the lines after it would play late)`);
       }

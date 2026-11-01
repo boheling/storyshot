@@ -39,7 +39,19 @@ function collect() {
   const pos = (el) => {
     const r = el.getBoundingClientRect();
     return { x: Math.round(r.x + scrollX), y: Math.round(r.y + scrollTop), w: Math.round(r.width), h: Math.round(r.height),
-      cx: Math.round(r.x + r.width / 2), cy: Math.round(r.y + r.height / 2), css: cssOf(el) };
+      vx: Math.round(r.x), vy: Math.round(r.y), cx: Math.round(r.x + r.width / 2), cy: Math.round(r.y + r.height / 2), css: cssOf(el) };
+  };
+  // what to list first when there are more than inspect shows: an open dialog, menu or popover (0), what
+  // is on screen and not covered by something else (1), below the fold (2), covered (3)
+  const LAYER = 'dialog[open], [role=dialog], [role=alertdialog], [aria-modal=true], [role=menu], [role=listbox], [popover], [role=tooltip]';
+  const rank = (el) => {
+    if (el.closest(LAYER)) return 0;
+    const r = el.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2;
+    if (y < 0 || y > innerHeight || x < 0 || x > innerWidth) return 2;
+    const hit = document.elementFromPoint(x, y), label = el.closest('label');
+    // (inside a shadow root the hit is its host; storyshot's own cursor and highlights don't count)
+    const clear = !hit || el.contains(hit) || hit.contains(el) || (label && hit.closest('label') === label) || el.getRootNode() !== document || hit.closest('[id^=__demo]');
+    return clear ? 1 : 3;
   };
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
   // a short CSS selector (tag + classes, or #id) — the last-resort target when names don't resolve
@@ -80,15 +92,15 @@ function collect() {
     .filter((el) => (vis(el) || shownBy(el)) && el.tagName !== 'LABEL' && !isAd(el) && !(el.isContentEditable && el.parentElement?.isContentEditable))
     .map((el) => ({ kind: 'role', role: roleOf(el), name: (el.isContentEditable || el.tagName === 'TEXTAREA' ? editorName(el) : nameOf(el)).slice(0, 80), shows: clean(el.innerText).slice(0, 60), alt: clean(el.querySelector('img[alt]')?.alt) || null, href: el.getAttribute('href'), label: labelText(el.labels?.[0]),
       range: roleOf(el) === 'slider' ? sliderRange(el) : null,
-      options: el.tagName === 'SELECT' ? [...el.options].map((o) => ({ text: clean(o.text), on: o.selected })).filter((o) => o.text).slice(0, 12) : null, ...pos(shownBy(el) ?? el) }));
+      options: el.tagName === 'SELECT' ? [...el.options].map((o) => ({ text: clean(o.text), on: o.selected })).filter((o) => o.text).slice(0, 12) : null, rank: rank(shownBy(el) ?? el), ...pos(shownBy(el) ?? el) }));
   // custom clickables: outermost cursor:pointer elements that aren't native controls
   const pointer = [];
   for (const el of document.querySelectorAll('body *')) {
-    if (pointer.length >= 40) break;
+    if (pointer.length >= 60) break;
     if (el.closest(NATIVE) || el.querySelector(NATIVE) || !vis(el) || isAd(el)) continue;
     if (getComputedStyle(el).cursor !== 'pointer' || (el.parentElement && getComputedStyle(el.parentElement).cursor === 'pointer')) continue;
     const img = el.tagName === 'IMG' ? el : el.querySelector('img[alt]');
-    pointer.push({ kind: 'pointer', alt: img?.alt ? clean(img.alt).slice(0, 80) : null, name: clean(el.innerText).slice(0, 80), ...pos(el) });
+    pointer.push({ kind: 'pointer', alt: img?.alt ? clean(img.alt).slice(0, 80) : null, name: clean(el.innerText).slice(0, 80), rank: rank(el), ...pos(el) });
   }
   return {
     title: document.title,
@@ -105,24 +117,38 @@ function collect() {
 
 const yaml = (t) => (typeof t === 'string' ? JSON.stringify(t) : `{ ${Object.entries(t).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ')} }`);
 
+// What can be clicked right now, without verifying targets: `inspect --after N` compares the page before and
+// after step N, to list what the step opened first.
+const keyOf = (el) => `${el.kind}|${el.role ?? ''}|${el.name}|${el.css ?? ''}`;
+export async function clickableKeys(page) {
+  const info = await page.evaluate(collect).catch(() => null);
+  return info && new Set(info.interactive.map(keyOf));
+}
+
 // Describe the page as it is right now. Shared by `inspect` and failure diagnostics.
-export async function describePage(page, viewport, { maxElements = 80 } = {}) {
+// before: clickableKeys() of an earlier state; what is new since then is listed first and marked.
+export async function describePage(page, viewport, { maxElements = 150, before = null } = {}) {
   const info = await page.evaluate(collect);
-  const seen = new Set(), elements = [];
+  const seen = new Set(), targets = new Set(), elements = [];
   const verify = async (locator, spec, el) => {
     const visible = locator.filter({ visible: true });
     const n = await visible.count().catch(() => 0);
     if (n === 1) return spec;
     if (n > 1) {
-      // pick the match whose box is where we saw the element
-      const xs = await visible.evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y), Math.round(r.width)]; })).catch(() => []);
-      const k = xs.findIndex(([x, , w]) => Math.abs(x - el.x) <= 2 && Math.abs(w - el.w) <= 2);
-      if (k >= 0) return { ...spec, nth: k };
+      // pick the match whose box is where we saw the element (all four sides: a column of same-named
+      // buttons shares x and width)
+      const xs = await visible.evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); })).catch(() => []);
+      const at = xs.map(([x, y, w, h], k) => [k, Math.abs(x - el.vx) + Math.abs(y - el.vy) + Math.abs(w - el.w) + Math.abs(h - el.h)]).filter(([, d]) => d <= 4);
+      if (at.length === 1) return { ...spec, nth: at[0][0] };
     }
     return null;
   };
-  for (const el of info.interactive) {
-    if (elements.length >= maxElements) break;
+  const fresh = (el) => !!before && !before.has(keyOf(el));
+  // the most useful first (new since `before`, open dialogs and menus, on screen), then the page's order
+  const order = info.interactive.map((el, k) => ({ el, k })).sort((a, b) => (fresh(b.el) - fresh(a.el)) || (a.el.rank - b.el.rank) || (a.k - b.k));
+  let left = 0;
+  for (const { el, k } of order) {
+    if (elements.length >= maxElements) { left++; continue; }
     const key = `${el.role ?? el.alt}|${el.name}|${el.x}|${el.y}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -143,8 +169,15 @@ export async function describePage(page, viewport, { maxElements = 80 } = {}) {
       if (!target && el.name) target = await verify(page.getByText(el.name, { exact: true }), { text: el.name, exact: true }, el);
     }
     if (!target && el.css) target = await verify(page.locator(el.css), { css: el.css }, el);
-    if (target) elements.push({ ...el, target });
+    // two elements given the same target would both click the first: list neither as verified
+    if (target && targets.has(JSON.stringify(target))) {
+      const dup = elements.findIndex((e) => JSON.stringify(e.target) === JSON.stringify(target));
+      if (dup >= 0) elements.splice(dup, 1);
+      continue;
+    }
+    if (target) { targets.add(JSON.stringify(target)); elements.push({ ...el, k, fresh: fresh(el), target }); }
   }
+  elements.sort((a, b) => a.k - b.k);
 
   const url = page.url(), origin = new URL(url).origin;
   const internal = [...new Set(info.interactive.filter((e) => e.href && !e.href.startsWith('#'))
@@ -168,7 +201,10 @@ export async function describePage(page, viewport, { maxElements = 80 } = {}) {
     '',
     '## Clickable elements — verified targets (each matches exactly one visible element) for click/move/zoom',
     '   Copy targets exactly; `name` is the accessible name, which may differ from the on-screen label.',
-    ...elements.map((e) => `${fold(e.y)} y=${e.y}\tat (${e.cx}, ${e.cy})\t${yaml(e.target)}${e.role === 'textbox' ? `  (text input ${e.w}×${e.h} — click it, then \`type: …\`)` : e.role === 'slider' ? (e.range ? `  (slider ${e.range.lo}…${e.range.hi}, now ${e.range.now} — \`slide: { target: …, value: ${e.range.now} }\`)` : '  (slider — `slide: { target: …, to: 0..1 }`)') : e.options ? `  (dropdown — \`select: { target: …, option: "…" }\`; options: ${e.options.map((o) => `"${o.text}"${o.on ? ' (selected)' : ''}`).join(', ')})` : shows(e)}${e.href ? `  → ${e.href}` : ''}${e.kind === 'pointer' ? '  (custom clickable)' : ''}`),
+    ...(before && elements.some((e) => e.fresh) ? ['   ★ = new since the step before (what this step opened)'] : []),
+    ...elements.map((e) => `${e.fresh ? '★' : fold(e.y)} y=${e.y}\tat (${e.cx}, ${e.cy})\t${yaml(e.target)}${e.role === 'textbox' ? `  (text input ${e.w}×${e.h} — click it, then \`type: …\`)` : e.role === 'slider' ? (e.range ? `  (slider ${e.range.lo}…${e.range.hi}, now ${e.range.now} — \`slide: { target: …, value: ${e.range.now} }\`)` : '  (slider — `slide: { target: …, to: 0..1 }`)') : e.options ? `  (dropdown — \`select: { target: …, option: "…" }\`; options: ${e.options.map((o) => `"${o.text}"${o.on ? ' (selected)' : ''}`).join(', ')})` : shows(e)}${e.href ? `  → ${e.href}` : ''}${e.kind === 'pointer' ? '  (custom clickable)' : ''}${e.rank === 3 ? '  (covered by something on top right now)' : ''}`),
+    ...(left ? [`… and ${left} more not listed (the first ${maxElements} are: ${before ? 'new ones, ' : ''}open dialogs and menus, then what's on screen). ` +
+      'For a panel or menu, open it with a step and run `inspect <storyboard> --after <that step>`; its elements are listed first.'] : []),
     '',
     '## Images with alt text (target: { alt: "..." })',
     ...(info.images.length ? info.images.map((i) => `${fold(i.y)} y=${i.y}\t"${i.alt}"`) : ['(none)']),
@@ -179,7 +215,7 @@ export async function describePage(page, viewport, { maxElements = 80 } = {}) {
   return { text: lines.join('\n'), height: info.height, title: info.title, url, headings: info.headings, anchors: info.anchors, elements };
 }
 
-export async function inspect(url, { viewport = { width: 1600, height: 900 }, storageState, ignoreHTTPSErrors = false, outDir = '.storyshot/inspect', maxElements = 80 } = {}) {
+export async function inspect(url, { viewport = { width: 1600, height: 900 }, storageState, ignoreHTTPSErrors = false, outDir = '.storyshot/inspect', maxElements = 150 } = {}) {
   const browser = await chromium.launch();
   const context = await sessionContext(browser, { viewport, storageState, ignoreHTTPSErrors });
   const page = await context.newPage();

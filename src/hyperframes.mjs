@@ -419,8 +419,10 @@ async function launch(job, ctx) {
     const T = job.logoTarget; // where the app shows the same logo in its first frame, if it does
     const L = job.logoSize; // the logo picture's size in output px
     const hasLogo = !!(job.logo && L);
-    const big = hasLogo ? Math.min((W * 0.42) / L.w, (H * 0.17) / L.h, 3.2) : 1;
-    const cy = H * (c.subtitle ? 0.41 : 0.47);
+    // a logo and a title: the boxed logo, the title under it (leave out title when the logo spells the name)
+    const named = hasLogo && !!c.title, nameSize = (String(c.title ?? '').length > 24 ? 64 : 84) * u;
+    const big = hasLogo ? Math.min((W * 0.42) / L.w, (H * (named ? 0.15 : 0.17)) / L.h, 3.2) : 1;
+    const cy = H * (named ? (c.subtitle ? 0.355 : 0.4) : c.subtitle ? 0.41 : 0.47);
     const bw = hasLogo ? L.w * big : 0, bh = hasLogo ? L.h * big : 0, bx = (W - bw) / 2, by = cy - bh / 2;
     const exitAt = Math.max(1.4, D - 1.0), shrink = 0.68;
     const box = hasLogo ? strokes(g.rectangle(bx - 70 * u, by - 56 * u, bw + 140 * u, bh + 112 * u, R({ seed: 7, strokeWidth: 3.5 * u })), 'bx') : '';
@@ -431,7 +433,8 @@ async function launch(job, ctx) {
 #pageimg{object-fit:fill;opacity:0}
 .tbox{position:absolute;left:0;right:0;top:${cy - 80 * u}px;display:flex;justify-content:center}
 .tbox span.t{position:relative;display:inline-block;padding:${24 * u}px ${60 * u}px;font-size:${(String(c.title ?? '').length > 18 ? 96 : 128) * u}px}
-.tbox svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}`;
+.tbox svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+#name{font-size:${nameSize}px}`;
     const tbox = !hasLogo && c.title ? `<div class="tbox" id="tbox"><span class="t title">${words(c.title)}<svg viewBox="0 0 1000 300" preserveAspectRatio="none">${strokes(g.rectangle(6, 8, 988, 284, R({ seed: 7 })), 'bx', 'vector-effect="non-scaling-stroke"')}</svg></span></div>` : '';
     const body = `
 ${F.frameBg ? `<img class="full" src="assets/frame-bg.png">` : `<div class="full" style="background:#0b1020"></div>`}
@@ -439,18 +442,20 @@ ${F.chrome ? `<img id="chrome" class="full" src="assets/frame-chrome.png" style=
 ${F.url ? `<img id="url" class="full" src="assets/frame-url.png" style="opacity:0">` : ''}
 <div id="paper" class="full paper"><div id="grid" class="full grid"></div>${job.page ? `<img id="pageimg" class="full" src="assets/page.jpg">` : ''}</div>
 ${hasLogo ? `<svg id="box" class="full" viewBox="0 0 ${W} ${H}">${box}</svg><img id="logo" src="assets/logo${path.extname(job.logo)}">` : tbox}
-${c.subtitle ? `<div id="sub" class="line" style="top:${(hasLogo ? by + bh + 120 * u : cy + 190 * u)}px;font-family:${handFont};font-size:${(opts.hand ? 78 : 64) * u}px">${words(c.subtitle, { underline: underline(11) })}</div>` : ''}`;
+${named ? `<div id="name" class="line title" style="top:${by + bh + 92 * u}px">${words(c.title)}</div>` : ''}
+${c.subtitle ? `<div id="sub" class="line" style="top:${(named ? by + bh + 92 * u + nameSize * 1.45 : hasLogo ? by + bh + 120 * u : cy + 190 * u)}px;font-family:${handFont};font-size:${(opts.hand ? 78 : 64) * u}px">${words(c.subtitle, { underline: underline(11) })}</div>` : ''}`;
     const sx = F.FW / W, sy = F.FH / H, framed = F.FX > 0 || F.FY > 0;
     const js = `
 ${hasLogo ? `draw('.bx', 0.0, 0.5, 0.18);
 tl.fromTo('#logo', { x: ${n(bx - logoBox.x)}, y: ${n(by - logoBox.y)}, scale: ${n(T ? (bw / T.w) * 0.92 : 0.92)}, opacity: 0, filter: 'blur(8px)' },
-  { x: ${n(bx - logoBox.x)}, y: ${n(by - logoBox.y)}, scale: ${n(T ? bw / T.w : 1)}, opacity: 1, filter: 'blur(0px)', duration: 0.45, ease: 'back.out(1.5)' }, 0.12);`
+  { x: ${n(bx - logoBox.x)}, y: ${n(by - logoBox.y)}, scale: ${n(T ? bw / T.w : 1)}, opacity: 1, filter: 'blur(0px)', duration: 0.45, ease: 'back.out(1.5)' }, 0.12);
+${named ? "blurIn('#name .w', 0.35, { d: 0.16, stagger: 0.07 });" : ''}`
     : `draw('.bx', 0.0, 0.5, 0.18);
 blurIn('#tbox .w', 0.12, { d: 0.16, stagger: 0.07 });`}
 blurIn('#sub .w', 0.5, { d: 0.16, stagger: 0.07 });
 draw('#sub .ulp', 1.0, 0.4, 0);
 // the paper turns into the app window; the logo lands where the app shows its own
-tl.to('#box, #sub, #grid, #tbox', { opacity: 0, filter: 'blur(6px)', duration: 0.22, ease: 'power2.in' }, ${n(exitAt)});
+tl.to('#box, #sub, #grid, #tbox${named ? ', #name' : ''}', { opacity: 0, filter: 'blur(6px)', duration: 0.22, ease: 'power2.in' }, ${n(exitAt)});
 ${framed ? `tl.to('#paper', { x: ${F.FX}, y: ${F.FY}, scaleX: ${sx.toFixed(5)}, scaleY: ${sy.toFixed(5)}, duration: ${shrink}, ease: 'power3.inOut' }, ${n(exitAt + 0.08)});` : ''}
 ${job.page ? `tl.fromTo('#pageimg', { opacity: 0 }, { opacity: 1, duration: 0.4, ease: 'power2.inOut' }, ${n(exitAt + 0.25)});` : ''}
 ${hasLogo ? (T ? `tl.to('#logo', { x: 0, y: 0, scale: 1, duration: ${shrink}, ease: 'power3.inOut' }, ${n(exitAt + 0.08)});`
