@@ -538,7 +538,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   // doesn't render) the built-in ones. A launch outro is drawn with transparency over the last frame,
   // which the ffmpeg pass below zooms into the page.
   const hf = cfg.hyperframes ? await renderHyperframesCards(hfJobs(), {
-    W, H, FPS, dark: darkCards, accent, ink, font, lang: cfg.lang, labels: cfg.labels, opts: cfg.hyperframes, work: cfg.work,
+    W, H, FPS, dark: darkCards, accent, ink, font, lang: cfg.lang, labels: cfg.labels, opts: cfg.hyperframes, work: cfg.work, subs: cfg.subtitles === 'burn',
     frame: { FX, FY, FW, FH, ...Object.fromEntries([['frameBg', 'frame-bg.png'], ['chrome', 'frame-chrome.png'], ['url', 'frame-url0.png']]
       .map(([k, f]) => [k, cfg.frame && fs.existsSync(path.join(cfg.work, f)) ? path.join(cfg.work, f) : null])) },
   }, { log, warn }) : {};

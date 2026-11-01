@@ -90,7 +90,11 @@ export async function burnSubtitles(cfg, narration, { log = console.log, rendere
   // Chinese, Japanese, Korean: no spaces between words, so lines are cut by characters (one line of
   // at most ~18), in a lighter weight and a font that has the glyphs
   const cjk = cfg.lang === 'zh' || narration.some((l) => /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(l.text));
-  const size = Math.round(H * (cjk ? 0.042 : 0.048)), edge = Math.max(2, Math.round(size * (cjk ? 0.07 : 0.09)));
+  // portrait (9:16): size by the width, and keep the lines above the bottom fifth, which short-video
+  // apps cover with the title, the account name and their buttons
+  const portrait = H > W;
+  const size = Math.round(portrait ? W * (cjk ? 0.068 : 0.062) : H * (cjk ? 0.042 : 0.048)), edge = Math.max(2, Math.round(size * (cjk ? 0.07 : 0.09)));
+  const lift = Math.round(H * (portrait ? 0.2 : 0.06)), most = portrait ? Math.floor((W * 0.84) / size) : 18;
   const fontName = cjk && cfg.theme.font === 'Inter' ? (process.platform === 'darwin' ? 'PingFang SC' : 'Noto Sans CJK SC') : cfg.theme.font;
   const cues = []; // { words: [{ w, start, d }] }: one on-screen line each
   for (const line of narration) {
@@ -102,7 +106,7 @@ export async function burnSubtitles(cfg, narration, { log = console.log, rendere
     const total = words.reduce((a, w) => a + weight(w), 0), span = line.end - line.start;
     let at = line.start;
     const timed = words.map((w) => { const d = (span * weight(w)) / total; const r = { w, start: at, d }; at += d; return r; });
-    // chunks of up to 7 words, broken after sentence punctuation
+    // chunks of up to 7 words (5 in portrait), broken after sentence punctuation
     let chunk = [];
     const flush = () => {
       if (!chunk.length) return;
@@ -111,10 +115,10 @@ export async function burnSubtitles(cfg, narration, { log = console.log, rendere
     };
     const len = () => chunk.reduce((a, x) => a + x.w.length, 0);
     for (const x of timed) {
-      // a CJK line ends at a sentence break, or at a comma once it is half full, or at 18 characters
-      if (cjk && chunk.length && len() + x.w.length > 18) flush();
+      // a CJK line ends at a sentence break, or at a comma once it is half full, or when full (18 characters; about 12 in portrait)
+      if (cjk && chunk.length && len() + x.w.length > most) flush();
       chunk.push(x);
-      if (cjk ? /[。！？；!?;]$/.test(x.w) || (/[，、：,:]$/.test(x.w) && len() >= 9) : chunk.length >= 7 || /[.!?;:]$/.test(x.w)) flush();
+      if (cjk ? /[。！？；!?;]$/.test(x.w) || (/[，、：,:]$/.test(x.w) && len() >= most / 2) : chunk.length >= (portrait ? 5 : 7) || /[.!?;:]$/.test(x.w)) flush();
     }
     flush();
   }
@@ -157,7 +161,7 @@ export async function burnSubtitles(cfg, narration, { log = console.log, rendere
       for (const [j, x] of cue.words.entries()) {
         const file = `s${String(n++).padStart(5, '0')}.png`;
         const text = cue.words.map((y, k) => `<span style="color:${k <= j ? sweep : '#fff'}">${esc(y.w)}</span>`).join(cjk ? '' : ' ');
-        await shot(`<div style="position:absolute;left:${Math.round(W * 0.08)}px;right:${Math.round(W * 0.08)}px;bottom:${Math.round(H * 0.06)}px;text-align:center;
+        await shot(`<div style="position:absolute;left:${Math.round(W * 0.08)}px;right:${Math.round(W * 0.08)}px;bottom:${lift}px;text-align:center;
           font-family:${font};font-size:${px}px;font-weight:${cjk ? 400 : 700};line-height:1.2;
           -webkit-text-stroke:${edge * 2}px ${edgeCol};paint-order:stroke fill;text-shadow:${Math.round(edge * 0.8)}px ${Math.round(edge * 0.8)}px 0 rgba(0,0,0,.5)">${text}</div>`, path.join(dir, file));
         push(file, j + 1 < cue.words.length ? cue.words[j + 1].start : end);
@@ -184,7 +188,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Sub,${fontName},${size},${bgr(sweep)},&H00FFFFFF,${bgr(edgeCol)},&H80000000,${cjk ? 0 : 1},0,0,0,100,100,0,0,1,${edge},${Math.round(edge * 0.8)},2,${Math.round(W * 0.08)},${Math.round(W * 0.08)},${Math.round(H * 0.06)},1
+Style: Sub,${fontName},${size},${bgr(sweep)},&H00FFFFFF,${bgr(edgeCol)},&H80000000,${cjk ? 0 : 1},0,0,0,100,100,0,0,1,${edge},${Math.round(edge * 0.8)},2,${Math.round(W * 0.08)},${Math.round(W * 0.08)},${lift},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

@@ -263,7 +263,7 @@ captions: true                                  # false keeps caption pills off 
 purpose: pitch                                  # pitch | tutorial | course | docs (sets the defaults below)
 highlight: false                                # spotlight targets before click/type (per step or per action too)
 stepNumbers: false                              # numbered caption badges
-subtitles: false                                # write <out>.srt (narration, else captions); `burn` also burns the narration into the video, each word lighting up as it is spoken (captions move to the top); uses ffmpeg's libass when it has it, else draws the words itself
+subtitles: false                                # write <out>.srt (narration, else captions); `burn` also burns the narration into the video, each word lighting up as it is spoken (captions move to the top; in a vertical video the lines sit above the bottom fifth, which short-video apps cover, and the cards keep above them); uses ffmpeg's libass when it has it, else draws the words itself
 pace: slow                                      # fast (pitch) | normal (docs) | slow (tutorial, course): cursor and typing speed, a beat after each click, hold after narration, voice speed, how much of a wait is shown
 follow: true                                    # tutorial/course default: the camera zooms in on what each step touches and pans between steps (a step's own zoom wins; follow: false on a step skips it); or { scale: 1.8 }
 article: { title: Export a drawing, intro: … }  # docs: heading and first paragraph of <out>-steps/README.md

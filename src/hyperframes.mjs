@@ -233,7 +233,7 @@ function pageTimeline(D) {
   return { fromTo: (sel, from, to, at = 0) => add(sel, from, to, at), to: (sel, to, at = 0) => add(sel, null, to, at), build };
 }
 
-const doc = ({ W, H, D, css, body, js, bg = 'transparent' }) => `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=${W}, height=${H}">
+const doc = ({ W, H, D, css, body, js, bg = 'transparent', floor = H * 0.97 }) => `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=${W}, height=${H}">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:${W}px;height:${H}px;overflow:hidden;background:${bg}}
@@ -267,7 +267,7 @@ const refit = () => {
   const box = document.querySelector('[data-fit-box]');
   for (let k = 0; box && fits.length && k < 30; k++) {
     const kids = [...box.querySelectorAll(':scope > *, :scope > .right > *')].filter((c) => c.offsetHeight && !c.classList.contains('right'));
-    if (!kids.length || (Math.min(...kids.map((c) => c.offsetTop)) >= ${H * 0.03} && Math.max(...kids.map((c) => c.offsetTop + c.offsetHeight)) <= ${H * 0.97})) break;
+    if (!kids.length || (Math.min(...kids.map((c) => c.offsetTop)) >= ${H * 0.03} && Math.max(...kids.map((c) => c.offsetTop + c.offsetHeight)) <= ${floor})) break;
     fits.forEach(shrink);
   }
 };
@@ -279,7 +279,10 @@ tl.build();
 
 // --- lesson: tutorials, courses, docs ---------------------------------------------------------------
 function lesson(job, ctx) {
-  const { W, H, dark, font, opts } = ctx, u = H / 1080, D = job.seconds, c = job.card, accent = ctx.accent, ink = ctx.ink;
+  // sizes are designed for 1920x1080; a portrait frame (1080x1920) sizes them by its width instead
+  const { W, H, dark, font, opts } = ctx, u = Math.min(H, W * 1.15) / 1080, D = job.seconds, c = job.card, accent = ctx.accent, ink = ctx.ink;
+  // portrait with burned-in subtitles: the subtitles sit above the bottom fifth, so the card keeps above them
+  const lift = ctx.subs && H > W ? H * 0.22 : 0;
   const P = dark
     ? { ground: '#0c1222', ground2: '#070b16', glow: '#1b2744', text: '#eef2f8', muted: '#9aa8bd', line: '#2a3550', chip: '#131c31', chipLine: '#26324d', band: 0.14, shadow: 'rgba(0,0,0,.35)' }
     : { ground: '#eef2f7', ground2: '#dfe6ef', glow: '#ffffff', text: ink, muted: '#56667d', line: '#c6d0dc', chip: '#ffffff', chipLine: '#d6dee8', band: 0.17, shadow: 'rgba(13,27,46,.08)' };
@@ -293,9 +296,11 @@ function lesson(job, ctx) {
   const em = job.kind === 'end' ? null : c.emblem === false ? null : [].concat(c.emblem ?? opts.emblem ?? []).filter(Boolean).slice(0, 3).map(String);
   const emblem = !em?.length ? '' : (() => {
     const a = em[0], z = em.at(-1);
-    const diff = (i) => em.length > 1 && a[i] !== z[i];
-    const row = (s, k) => `<div class="row r${k === 0 ? 'q' : k === em.length - 1 ? 's' : 'm'}">${[...s].map((ch, i) =>
-      `<i class="${(k === 1 && em.length === 3 ? ch !== '|' && ch !== ' ' : diff(i)) ? 'df' : ''}">${ch === ' ' ? '&nbsp;' : esc(ch)}</i>`).join('')}</div>`;
+    // (only lines of the same length line up like an alignment; lines of code differ everywhere)
+    const aligned = em.length > 1 && em.every((x) => x.length === a.length);
+    const diff = (i) => aligned && a[i] !== z[i];
+    const row = (s, k) => `<div class="row r${k === 0 || !aligned ? 'q' : k === em.length - 1 ? 's' : 'm'}">${[...s].map((ch, i) =>
+      `<i class="${aligned && (k === 1 && em.length === 3 ? ch !== '|' && ch !== ' ' : diff(i)) ? 'df' : ''}">${ch === ' ' ? '&nbsp;' : esc(ch)}</i>`).join('')}</div>`;
     return `<div id="aln" class="aln" data-layout-ignore>${em.map(row).join('')}</div>`;
   })();
   const kicker = c.kicker ?? (job.kind === 'end' && c.subtitle && c.bullets?.length && String(c.subtitle).length <= 14 ? c.subtitle : null);
@@ -328,7 +333,7 @@ function lesson(job, ctx) {
 .band-wrap{position:absolute;left:0;right:0;height:${80 * u}px;overflow:hidden;opacity:${P.band};-webkit-mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent)}
 .band{position:absolute;left:0;top:0;white-space:nowrap;font:500 ${54 * u}px 'IBM Plex Mono',monospace;letter-spacing:.3em}
 .band i,.aln i{font-style:normal}
-.col{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 ${W * 0.06}px}
+.col{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 ${W * 0.06}px ${lift}px}
 .aln{font:500 ${30 * u}px 'IBM Plex Mono',monospace;letter-spacing:.34em;line-height:1.12;margin-bottom:${44 * u}px;color:${P.muted}}
 .aln .row{white-space:nowrap}.aln i{display:inline-block}
 .aln .rm{color:${strong};opacity:.8}.aln i.df{color:${dark ? accent : P.text};background:${dark ? 'transparent' : accent};font-weight:700}
@@ -364,7 +369,7 @@ h1{font-weight:600;letter-spacing:-.03em;line-height:1.08;max-width:${W * 0.82}p
 .cta.cmd{font:500 ${36 * u}px 'IBM Plex Mono',monospace;background:${dark ? '#1a2238' : ink};color:#e2e8f0;text-align:left}
 .cta.cmd b{color:${accent}}
 #type{display:inline-block;white-space:nowrap}
-.think{position:absolute;left:50%;bottom:${H * 0.1}px;width:${W * 0.3}px;margin-left:${-W * 0.15}px;text-align:center;font-size:${26 * u}px;color:${P.muted}}
+.think{position:absolute;left:50%;bottom:${lift ? H * 0.2 : H * 0.1}px;width:${W * 0.3}px;margin-left:${-W * 0.15}px;text-align:center;font-size:${26 * u}px;color:${P.muted}}
 .tlabel{margin-bottom:${12 * u}px}
 .track{height:${8 * u}px;border-radius:99px;background:${P.line};overflow:hidden}
 .drain{height:100%;background:${accent};transform-origin:0 50%}`;
@@ -427,7 +432,7 @@ ${isCmd(c.cta) ? `tl.fromTo('#type', { clipPath: 'inset(0 100% 0 0)' }, { clipPa
 ${think ? `blurIn('#think', ${n(job.thinkAt)});
 tl.fromTo('#drain', { scaleX: 1 }, { scaleX: 0, duration: ${c.think}, ease: 'none' }, ${n(job.thinkAt)});` : ''}
 `;
-  return doc({ W, H, D, css, body, js, bg: P.ground });
+  return doc({ W, H, D, css, body, js, bg: P.ground, floor: H * 0.97 - lift });
 }
 
 // --- launch: promos ----------------------------------------------------------------------------------
@@ -575,7 +580,7 @@ const hashOf = (...parts) => {
 
 // jobs: [{ name, kind: intro|section|end, seconds, card, voice: {text, start, len}?, index, of, thinkAt,
 //          backdrop?, page?, logo?, logoSize?, logoTarget?, image?, alpha? }]
-// ctx: { W, H, FPS, dark, accent, ink, font, lang, labels, opts, frame: {FX,FY,FW,FH,frameBg,chrome,url}, work }
+// ctx: { W, H, FPS, dark, accent, ink, font, lang, labels, opts, frame: {FX,FY,FW,FH,frameBg,chrome,url}, work, subs (burned-in subtitles) }
 // Returns { [name]: { dir, ext, alpha } } for the cards that rendered; the rest fall back.
 export async function renderHyperframesCards(jobs, ctx, { log = console.log, warn = log } = {}) {
   if (!jobs.length) return {};
