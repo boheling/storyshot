@@ -235,6 +235,11 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       g.zoomBox = null;
     } else if (z && !g.zoomBox) warn(`step ${g.i + 1}: zoom target not found on the page, zoom skipped`);
     if (!z || !g.zoomBox) continue;
+    {
+      // measured off screen (e.g. before the step scrolled to it): the camera can only frame what's in the window
+      const b = g.zoomBox, cx = b.x + b.width / 2, cy = b.y + b.height / 2, { width: VW, height: VH } = cfg.viewport;
+      if (cx < 0 || cx > VW || cy < 0 || cy > VH) warn(`step ${g.i + 1}: the zoom target was off screen when it was measured (${cy > VH ? `${Math.round(cy - VH)}px below` : cy < 0 ? `${Math.round(-cy)}px above` : 'beside'} the window), so the zoom frames the edge of the page instead — zoom on something an action in this step moves to, or use a point target`);
+    }
     g.zoomPeak = g.o0 + (z.start ?? 0) + (Array.isArray(z.ramp) ? z.ramp[0] : z.ramp ?? 0.5) + 0.1;
     const b = g.zoomBox, off = z.offset ?? {};
     const c = [(b.x + b.width / 2 + (off.x ?? 0)) * K, (b.y + b.height / 2 + (off.y ?? 0)) * K];

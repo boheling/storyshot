@@ -507,6 +507,9 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
       case 'scrollTo': {
         const h = await locate(page, spec).elementHandle({ timeout: opt.timeout ?? 15000 });
         await page.evaluate(([el, ms]) => window.__demoScrollTo(el, ms), [h, opt.ms ?? 1200]);
+        // where it landed: a zoom on the same target frames it there, not where it was before the scroll
+        const b = await h.boundingBox().catch(() => null);
+        if (b) boxes.set(keyOf(spec), b);
         break;
       }
       case 'scroll': await page.evaluate(([dy, ms]) => window.__demoScrollBy(dy, ms), [value.y ?? value, value.ms ?? 1000]); break;

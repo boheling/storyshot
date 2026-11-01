@@ -7,6 +7,14 @@ import { PURPOSES, defaultStoryboard } from './config.mjs';
 import { loginAdvice } from './auth.mjs';
 
 const q = (s) => JSON.stringify(String(s));
+// The product's name from the page title: its first part ("Squoosh | Image compressor" → "Squoosh"),
+// or the repo on a code host ("GitHub - boheling/storyshot: Ask…" → "storyshot"). Only spaced
+// separators split, so a hyphenated name (Tic-Tac-Toe) stays whole.
+export function productName(title, host) {
+  const segs = String(title ?? '').split(/\s+[|—–·-]\s+|:\s+/).map((s) => s.trim()).filter(Boolean);
+  const repo = segs.find((s) => /^[\w.-]+ ?\/ ?[\w.-]+$/.test(s));
+  return repo ? repo.split('/')[1].trim() : segs[0] ?? host;
+}
 const tgt = (t) => (typeof t === 'string' ? q(t) : `{ ${Object.entries(t).map(([k, v]) => `${k}: ${typeof v === 'string' ? q(v) : v}`).join(', ')} }`);
 
 export async function initStoryboard(url, { purpose = 'pitch', topic, file, storageState, ignoreHTTPSErrors = false, viewport = { width: 1600, height: 900 } } = {}) {
@@ -41,7 +49,7 @@ out: ${name}.mp4
 ${storageState ? `storageState: ${path.relative(path.dirname(path.resolve(file)), path.resolve(storageState)).split(path.sep).join('/')}   # saved login (never commit it)\n` : ''}${ignoreHTTPSErrors ? 'ignoreHTTPSErrors: true   # internal site with a self-signed certificate\n' : ''}${narrated ? 'voice: { provider: kokoro }        # free, local, English. For the final: { provider: elevenlabs, voice: <voice id> } + ELEVENLABS_API_KEY' : '# voice: { provider: kokoro }      # optional voiceover; add `say:` lines to steps'}
 
 ${purpose === 'pitch' ? `intro:                             # title card before the recording (promos; optional for tutorials/lessons)
-  title: ${q(page.title.split(/[|—–-]/)[0].trim() || host)}
+  title: ${q(productName(page.title, host))}
   subtitle: TODO the one-line promise, with the **key words** in bold
 ${PURPOSES[purpose]?.frame ? '# frame: false                     # the recording sits in a browser window on a backdrop; false = full frame\n' : ''}
 ` : purpose === 'tutorial' || purpose === 'course' ? `# intro: { title: TODO, subtitle: TODO }   # optional title card (e.g. "How to export a report")
@@ -65,7 +73,7 @@ steps:
   # run \`storyshot inspect ${file} --after <step>\` to list verified targets at that point.
 
 end_card:
-  title: ${q(page.title.split(/[|—–-]/)[0].trim() || host)}
+  title: ${q(productName(page.title, host))}
   cta: ${q(`Try it at ${host}`)}${narrated ? `\n  say: ${q(`Try it at ${host}.`)}` : ''}
 
 # ── Verified targets on ${page.url} (each matches exactly one visible element) ──
