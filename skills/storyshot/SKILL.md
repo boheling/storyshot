@@ -206,6 +206,59 @@ small controls are readable. Your job is the structure:
   don't pad: if a part is long, split it into more parts rather than
   speeding it up.
 
+### Writing the narration
+
+Viewers notice three things first: lines that run together, phrasing nobody
+says out loud, and an explanation that jumps around. Write the `say:` lines as
+a script before the steps around them, then read them in order on their own.
+They should sound like one person talking a friend through it.
+
+**Say it like a person.**
+- Short sentences, one idea each: about 15 words at most in English, 25
+  characters in Chinese. If you would run out of breath, split it.
+- Spoken words: contractions ("you'll", "it's"), "you", present tense, active
+  voice. In Chinese, 口语 rather than 书面语: "点一下这里", not "进行点击操作".
+- Use the exact labels on screen, and the same term every time (no synonyms
+  for variety).
+- Each sentence gets a breath after it: Storyshot widens the pause between
+  sentences to at least `voice.pause` (0.3 s for `pitch`, 0.6 s for tutorials
+  and lessons). Commas get no extra pause, so split long lines into sentences
+  rather than chaining clauses with commas.
+- For fixed durations, budget about 2.5 words a second in English and 4
+  characters a second in Chinese, and leave silence while the screen is busy.
+
+**Cut the phrases that mark text as machine-written** (`check` flags the
+common ones):
+- Contrasts that only add weight: "not just X, but Y", "it's not X, it's Y".
+- Inflated words: seamless, effortless, powerful, robust, unlock, elevate,
+  supercharge, revolutionize, leverage, cutting-edge, game-changer, delve;
+  "in today's fast-paced world". In Chinese: 赋能, 助力, 一站式, 全方位, 极致,
+  无缝, 轻松搞定, 不仅……更……, 让我们一起.
+- Openers and closers that say nothing: "Let's dive in", "Ever wondered…?",
+  "And that's it!", "Simple as that."
+- Three adjectives in a row, line after line ("fast, simple and powerful").
+- Filler that talks down to a stuck viewer: basically, simply, just, easily.
+- Dashes (—) in `say:` lines. Voices read them as a run-on; use a period.
+
+**Explain in an order the viewer can follow** (tutorials and lessons):
+1. The question or the goal ("How does b move the line?").
+2. A concrete case on screen first: change the value, show the result.
+3. Then name the idea, in plain words, the first time it appears.
+4. Why it works, in one or two sentences, with a concept card if it isn't on
+   screen.
+5. A check: a question card, then the step that reveals the answer.
+6. The recap, in the same words as before.
+
+Every step answers the question the step before it raised. Link them out loud:
+"Now that b has moved the line up, let's see what m does." When the camera
+has to go somewhere else on the page, say why first ("The results are further
+down, in the table."). If a line only makes sense with the video, or the
+script reads as a list of disconnected facts, reorder the steps before you
+render.
+
+(These rules borrow from [humanizer](https://github.com/blader/humanizer) and
+[stop-slop](https://github.com/hardikpandya/stop-slop), both MIT.)
+
 Rules of thumb from real renders (promos and tutorials):
 
 - **One idea per step.**

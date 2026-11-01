@@ -118,8 +118,29 @@ function cached(cfg, line) {
   return { text, file: path.join(dir, `${hash}.${ext}`), zh, qwen };
 }
 
-// Returns stereo Float32 PCM at 48 kHz with leading/trailing silence trimmed.
-export async function speak(cfg, line, { log = console.log } = {}) {
+// A line's sentences, so each is spoken on its own with a pause after it (TTS engines run the
+// sentences of one line together with barely a breath). Latin text breaks after . ! ? when a capital,
+// digit or quote follows, but not after e.g., Dr., a lone initial (N. P. X.), 2.5 or myapp.com;
+// Chinese and Japanese after 。！？.
+const ABBREV = /^(e\.g|i\.e|etc|vs|approx|incl|cf|Mr|Mrs|Ms|Dr|Prof|St|No|Fig)\.$/i;
+export function sentences(text) {
+  const s = String(text).replace(/\s+/g, ' ').trim(), out = [];
+  const re = /([.!?…]+["'”’)\]]*) +(?=["'“‘(\[]?[\p{Lu}\p{N}\p{Lo}])|([。！？]+[”’」』)）]*) */gu;
+  let from = 0;
+  for (let m; (m = re.exec(s));) {
+    if (m[1]) {
+      const word = s.slice(from, m.index + 1).match(/(\S+)$/)?.[1] ?? '';
+      if (ABBREV.test(word) || /^\p{Lu}\.$/u.test(word)) continue;
+    }
+    const piece = s.slice(from, m.index + (m[1] ?? m[2]).length).trim();
+    if (piece) out.push(piece);
+    from = re.lastIndex;
+  }
+  if (s.slice(from).trim()) out.push(s.slice(from).trim());
+  return out;
+}
+// One line as stereo Float32 PCM at 48 kHz, leading and trailing silence trimmed.
+async function speakLine(cfg, line, log) {
   const v = cfg.voice;
   const { text, file, zh, qwen } = cached(cfg, line);
   if (!fs.existsSync(file)) {
@@ -135,6 +156,80 @@ export async function speak(cfg, line, { log = console.log } = {}) {
   return new Float32Array(pcm.buffer, pcm.byteOffset, pcm.length / 4);
 }
 
+// Where a line's sentences meet in its audio. Every break in the text (sentence ends, and commas,
+// which voices pause at too) gets an expected time from the letters spoken before it; each quiet
+// stretch belongs to the break it is nearest, and a sentence end takes the longest stretch that is
+// its own, so a long pause at a comma is never mistaken for it. [start, end] in samples per channel,
+// or null when the voice runs straight on (no quiet there to widen).
+const WIN = SR / 100; // 10 ms
+const letters = (s) => (s.match(/[\p{L}\p{N}]/gu) ?? []).length;
+export function sentenceGaps(pcm, sents) {
+  const n = Math.floor(pcm.length / 2 / WIN), env = new Float32Array(n);
+  let peak = 0;
+  for (let w = 0; w < n; w++) {
+    let e = 0;
+    for (let i = w * WIN; i < (w + 1) * WIN; i++) e = Math.max(e, Math.abs(pcm[2 * i]), Math.abs(pcm[2 * i + 1]));
+    env[w] = e; peak = Math.max(peak, e);
+  }
+  const quiet = [], thr = peak * 0.02;
+  for (let w = 0; w < n;) {
+    if (env[w] >= thr) { w++; continue; }
+    const a = w;
+    while (w < n && env[w] < thr) w++;
+    if (w - a >= 4 && a > 0 && w < n) quiet.push([a, w]); // ≥ 40 ms, not the trimmed ends
+  }
+  // breaks in the text, at the share of letters spoken before them: { at, end: k } for the end of sentence k
+  const total = letters(sents.join(' ')) || 1, breaks = [];
+  let before = 0;
+  for (const [k, s] of sents.entries()) {
+    for (const m of s.matchAll(/[,;:，、；：]/g)) breaks.push({ at: (before + letters(s.slice(0, m.index))) / total });
+    before += letters(s);
+    if (k < sents.length - 1) breaks.push({ at: before / total, end: k });
+  }
+  const mine = sents.slice(0, -1).map(() => []);
+  for (const q of quiet) {
+    const mid = (q[0] + q[1]) / 2 / n;
+    const b = breaks.reduce((x, y) => (Math.abs(y.at - mid) < Math.abs(x.at - mid) ? y : x));
+    if (b.end != null && Math.abs(b.at - mid) < 0.25) mine[b.end].push(q);
+  }
+  let after = 0;
+  return mine.map((qs) => {
+    const best = qs.filter((q) => q[0] >= after).reduce((x, q) => (!x || q[1] - q[0] > x[1] - x[0] ? q : x), null);
+    if (!best) return null;
+    after = best[1];
+    return [best[0] * WIN, best[1] * WIN];
+  });
+}
+
+// A line as stereo Float32 PCM at 48 kHz, spoken in one go (so the voice keeps its flow from sentence
+// to sentence), with each pause between sentences widened to at least `voice.pause` seconds: voices
+// often run sentences together with barely a breath. parts: where each sentence is, in seconds (for
+// subtitles).
+export async function speak(cfg, line, { log = console.log } = {}) {
+  const raw = await speakLine(cfg, line, log), pause = cfg.voice.pause ?? 0;
+  const sents = pause > 0 ? sentences(line) : [];
+  if (sents.length < 2) return { pcm: raw, parts: [{ text: line, start: 0, end: raw.length / 2 / SR }] };
+  const gaps = sentenceGaps(raw, sents), want = Math.round(pause * SR);
+  const add = gaps.map((g) => (g ? Math.max(0, want - (g[1] - g[0])) : 0));
+  const pcm = new Float32Array(raw.length + 2 * add.reduce((a, b) => a + b, 0));
+  const parts = [];
+  let from = 0, to = 0, startAt = 0;
+  for (const [k, g] of gaps.entries()) {
+    if (!g) continue; // no quiet stretch: this sentence runs on into the next
+    const mid = Math.round((g[0] + g[1]) / 2);
+    pcm.set(raw.subarray(2 * from, 2 * mid), 2 * to);
+    to += mid - from; from = mid;
+    const end = to - (mid - g[0]);
+    to += add[k]; // silence: the array is zero-filled
+    parts.push({ text: sents.slice(parts.length ? parts.at(-1).next : 0, k + 1).join(' '), start: startAt / SR, end: end / SR, next: k + 1 });
+    startAt = to + (g[1] - mid);
+  }
+  pcm.set(raw.subarray(2 * from), 2 * to);
+  const last = parts.length ? parts.at(-1).next : 0;
+  parts.push({ text: sents.slice(last).join(' '), start: startAt / SR, end: pcm.length / 2 / SR, next: sents.length });
+  return { pcm, parts: parts.map(({ next, ...p }) => p) };
+}
+
 // Speed a clip up (factor > 1) with ffmpeg's pitch-preserving atempo.
 export function tempo(pcm, factor) {
   if (!(factor >= 0.5 && factor <= 100)) throw new Error(`internal: speed factor ${factor} is outside what ffmpeg's atempo accepts (0.5–100)`);
@@ -146,6 +241,7 @@ export function tempo(pcm, factor) {
 // Synthesize every narration line up front and return their lengths (seconds),
 // so `duration: auto` steps can be timed to the voice.
 export async function measureVoice(cfg, { log = console.log } = {}) {
+  const seconds = ({ pcm }) => pcm.length / 2 / SR;
   const lens = { steps: {}, endCard: null, intro: null, cards: {} };
   if (!cfg.voice) return lens;
   if (cfg.voice.fallback) log(`note: ${cfg.voice.fallback}`);
@@ -157,10 +253,10 @@ export async function measureVoice(cfg, { log = console.log } = {}) {
     await (zh ? synthZh : synthQwen)(cfg.voice, [...todo.values()], { log });
   }
   for (const [i, s] of cfg.steps.entries()) {
-    if (s.say && !s.hidden) lens.steps[i] = (await speak(cfg, s.say, { log })).length / 2 / SR;
-    if (s.card?.say && !s.hidden) lens.cards[i] = (await speak(cfg, s.card.say, { log })).length / 2 / SR;
+    if (s.say && !s.hidden) lens.steps[i] = seconds(await speak(cfg, s.say, { log }));
+    if (s.card?.say && !s.hidden) lens.cards[i] = seconds(await speak(cfg, s.card.say, { log }));
   }
-  if (cfg.intro?.say) lens.intro = (await speak(cfg, cfg.intro.say, { log })).length / 2 / SR;
-  if (cfg.endCard?.say) lens.endCard = (await speak(cfg, cfg.endCard.say, { log })).length / 2 / SR;
+  if (cfg.intro?.say) lens.intro = seconds(await speak(cfg, cfg.intro.say, { log }));
+  if (cfg.endCard?.say) lens.endCard = seconds(await speak(cfg, cfg.endCard.say, { log }));
   return lens;
 }

@@ -191,7 +191,7 @@ from `storyshot guide`.
 | `inspect_page` | Verified click targets and a screenshot, for a URL or for the state after step N of a storyboard. Reports login walls. |
 | `login` | Opens a browser window where the **user** logs in, and saves the session. |
 | `init_storyboard` | Writes a starter storyboard with verified targets. |
-| `check_storyboard` | Validates in about a second: typos with "did you mean", action and target shapes, `TODO`s, keys, the session file. |
+| `check_storyboard` | Validates in about a second: typos with "did you mean", action and target shapes, `TODO`s, keys, the session file, and narration that sounds machine-written ("not just X, but Y", "seamless", 赋能…) or runs on without a breath. |
 | `render_video` / `render_status` | Renders in the background and returns the MP4 path, warnings, a per-step speed log and the preview image. If the render isn't done within 45 s, it returns a `job_id`, so client tool timeouts never kill a render. |
 
 Any other MCP client: run `npx -y storyshot mcp` (stdio), and point the agent at the playbook (`storyshot guide`). When run from a git
@@ -425,8 +425,10 @@ one still looks off. A scientific number like `2e-105` is spelled out in Chinese
 model babbling. On other machines the same storyboard renders with `kokoro` (`zf_001`, or `draftVoice`),
 with a note.
 
-Other fields: `speed` (default 1), `volume` (default 1), and `pronounce`, a
-map of word → spoken form used only for TTS, e.g.
+Other fields: `speed` (default 1), `volume` (default 1), `pause` (the shortest pause between the
+sentences of a line, in seconds: 0.3 for promos, 0.6 for tutorials and lessons; a voice's own longer pause
+stays, and `0` leaves the voice as it is),
+and `pronounce`, a map of word → spoken form used only for TTS, e.g.
 `pronounce: { pxGenius: P X Genius, PPTX: P P T X }`. Subtitles keep the real
 spelling. Synthesized lines
 are cached in `.storyshot/tts-cache/`, so `compose` only pays for lines you

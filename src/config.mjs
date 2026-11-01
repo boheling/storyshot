@@ -43,9 +43,10 @@ export const PURPOSES = {
 // follow each action and to read its result before the next one starts.
 export const PACES = {
   //        cursor ms  typing ms/char  beat after a click (ms)  hold after narration (s)  waits shown up to (s)  voice speed
-  fast:   { cursor: 700,  type: 55,  beat: 0,   tail: 0.4, maxWait: 1.0, voiceSpeed: 1 },
-  normal: { cursor: 900,  type: 70,  beat: 350, tail: 0.8, maxWait: 1.5, voiceSpeed: 1 },
-  slow:   { cursor: 1200, type: 95,  beat: 800, tail: 1.6, maxWait: 3.0, voiceSpeed: 0.92 },
+  //        shortest pause between the sentences of one line (s)
+  fast:   { cursor: 700,  type: 55,  beat: 0,   tail: 0.4, maxWait: 1.0, voiceSpeed: 1,    sentencePause: 0.3 },
+  normal: { cursor: 900,  type: 70,  beat: 350, tail: 0.8, maxWait: 1.5, voiceSpeed: 1,    sentencePause: 0.45 },
+  slow:   { cursor: 1200, type: 95,  beat: 800, tail: 1.6, maxWait: 3.0, voiceSpeed: 0.92, sentencePause: 0.6 },
 };
 
 export const FRAME_STYLES = ['aurora', 'studio', 'dark', 'pastel', 'blur'];
@@ -152,7 +153,8 @@ export function loadConfig(file, { draft = false } = {}) {
     // kokoro's and qwen's default voices follow the narration's language (zf_001 / serena for Chinese)
     const kokoroVoice = kokoroVoiceFor(raw);
     const byLang = { kokoro: kokoroVoice, qwen: qwenVoiceFor(raw) }[provider];
-    voice = { speed: pace0.voiceSpeed, volume: 1, ...VOICE_DEFAULTS[provider], ...(byLang ? { voice: byLang } : {}), ...raw.voice, provider };
+    voice = { speed: pace0.voiceSpeed, volume: 1, pause: pace0.sentencePause, ...VOICE_DEFAULTS[provider], ...(byLang ? { voice: byLang } : {}), ...raw.voice, provider };
+    if (!(typeof voice.pause === 'number' && voice.pause >= 0 && voice.pause <= 3)) throw new Error('voice.pause is the shortest pause between the sentences of a line, in seconds, 0–3 (0 leaves the voice as it is)');
     if (provider === 'qwen') {
       const v = qwenVoice(voice.voice);
       if (!v) throw new Error(`voice: qwen has no voice "${voice.voice}" (one of ${QWEN_VOICES.join(', ')})`);

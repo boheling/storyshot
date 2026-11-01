@@ -133,12 +133,15 @@ export async function soundtrack(cfg, events, silentVideo, { log = console.log }
   if (cfg.voice && events.voice?.length) {
     let prevEnd = 0;
     for (const line of events.voice) {
-      let pcm = await speak(cfg, line.text, { log });
+      let { pcm, parts } = await speak(cfg, line.text, { log });
       let dur = pcm.length / 2 / SR;
       const start = Math.max(line.start, prevEnd + 0.12), room = line.until - start - 0.1;
       let sped = 1;
       // a line pushed past its window by the one before has no room left (room <= 0): it plays late, at normal speed
-      if (dur > room && room > 0 && dur / room <= 1.2) { sped = dur / room; pcm = tempo(pcm, sped); dur = pcm.length / 2 / SR; }
+      if (dur > room && room > 0 && dur / room <= 1.2) {
+        sped = dur / room; pcm = tempo(pcm, sped); dur = pcm.length / 2 / SR;
+        parts = parts.map((p) => ({ ...p, start: p.start / sped, end: p.end / sped }));
+      }
       else if (dur > room) warn(room > 0
         ? `${line.where}: narration is ${dur.toFixed(1)}s but only ${room.toFixed(1)}s until ${line === events.voice.at(-1) ? 'the video ends' : 'the next line'} — shorten "${line.text}" or give the step more duration`
         : `${line.where}: the narration before it runs ${(start - line.start).toFixed(1)}s past where this line should start, so "${line.text}" plays late — shorten the earlier lines or give their steps more duration`);
@@ -154,7 +157,8 @@ export async function soundtrack(cfg, events, silentVideo, { log = console.log }
         voiceOn[s0 + i] = 1;
       }
       prevEnd = start + dur;
-      narration.push({ start, end: start + dur, text: line.text });
+      // subtitles per sentence, so the pauses between them don't throw off the word timing
+      for (const p of parts) narration.push({ start: start + p.start, end: Math.min(start + p.end, start + dur), text: p.text });
     }
   }
 

@@ -5,6 +5,34 @@ import { loadConfig } from './config.mjs';
 import { gitIgnored } from './auth.mjs';
 import { isZhVoice, zhVoiceStatus } from './kokoro-zh.mjs';
 import { qwenStatus } from './qwen-tts.mjs';
+import { sentences } from './voice.mjs';
+
+// Phrases that mark narration as machine-written, and sentences too long to say in one breath.
+const TELLS = [
+  /\bnot (?:just|only|merely) [^.,;!?]{1,40}?,? but(?: also)?\b/i, // "not just X, but Y"
+  /\bit'?s not (?:about )?[^.,;!?]{1,30}[,;—–-]+ it'?s\b/i, // "it's not X, it's Y"
+  /\b(?:seamless(?:ly)?|effortless(?:ly)?|supercharg\w*|revolutioni[sz]\w*|game[- ]chang\w*|cutting[- ]edge|elevat(?:e|es|ed|ing)|leverag(?:e|es|ed|ing)|delv(?:e|es|ing))\b/i,
+  /\bin today'?s (?:fast-paced|digital|modern)\b/i,
+  /\blet'?s dive in\b|\bever wondered\b|\bsimple as that\b|\band that'?s it\b/i,
+  /\b(?:basically|simply)\b/i, // ("easily" is too often literal: "binds more easily")
+  /[—–]/,
+  /赋能|助力|一站式|全方位|极致|无缝|轻松搞定|让我们一起|不仅[^。！？]{1,20}更/,
+];
+export function narrationLint(text) {
+  const t = String(text).replace(/\*\*/g, ''), tells = [];
+  for (const re of TELLS) {
+    const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+    for (const m of t.matchAll(g)) if (!tells.includes(m[0].trim())) tells.push(m[0].trim());
+  }
+  let long = null;
+  for (const s of sentences(t)) {
+    const cjk = (s.match(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g) ?? []).length;
+    const words = s.replace(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g, ' ').split(/\s+/).filter((w) => /\w/.test(w)).length;
+    if (cjk > 40 && !long) long = `${cjk}-character`;
+    else if (!cjk && words > 25 && !long) long = `${words}-word`;
+  }
+  return { tells, long };
+}
 
 const TOP = ['name', 'url', 'out', 'purpose', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'intro', 'frame', 'pace', 'follow', 'article', 'cards', 'lang', 'colorScheme',
   'scrollOffset', 'captionPosition', 'captions', 'highlight', 'stepNumbers', 'subtitles', 'chapters', 'clips', 'maxWait', 'setup', 'steps', 'end_card', 'hyperframes'];
@@ -146,7 +174,7 @@ export function check(file, { draft = false } = {}) {
     // estimate from its length; the render measures the real voice)
     if (cfg.voice) {
       const words = (t) => { const x = String(t).replace(/\*\*/g, ''); const c = (x.match(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g) ?? []).length; return { c, w: x.replace(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g, ' ').split(/\s+/).filter(Boolean).length }; };
-      const secs = (t) => { const { c, w } = words(t); return (c / 4.5 + w / 2.8) / (cfg.voice.speed ?? 1); };
+      const secs = (t) => { const { c, w } = words(t); return (c / 4.5 + w / 2.8) / (cfg.voice.speed ?? 1) + (sentences(t).length - 1) * (cfg.voice.pause ?? 0); };
       const vis = visible.map((s) => ({ s, i: cfg.steps.indexOf(s) }));
       for (const [k, { s, i }] of vis.entries()) {
         if (!s.say) continue;
@@ -156,6 +184,16 @@ export function check(file, { draft = false } = {}) {
         const room = span.reduce((a, d) => a + d, 0) - (s.sayAt ?? 0.15) + (nextK < 0 && cfg.endCard ? 2.5 : 0);
         const need = secs(s.say);
         if (need > room * 1.4 && need - room > 1) warnings.push(`step ${i + 1}: the say: line takes about ${need.toFixed(1)}s to speak but has ${room.toFixed(1)}s before ${nextK < 0 ? 'the video ends' : 'the next line'} — shorten it or raise duration (the lines after it would play late)`);
+      }
+    }
+    // spoken lines that read as machine-written, or run on without a breath (the skill's "Writing the narration")
+    if (cfg.voice) {
+      const lines = [...visible.flatMap((s) => [[s.say, `step ${cfg.steps.indexOf(s) + 1}`], [s.card?.say, `step ${cfg.steps.indexOf(s) + 1} card`]]),
+        [cfg.intro?.say, 'intro'], [cfg.endCard?.say, 'end card']].filter(([t]) => t);
+      for (const [text, where] of lines) {
+        const { tells, long } = narrationLint(text);
+        if (tells.length) warnings.push(`${where}: the narration sounds machine-written (${tells.map((x) => `"${x}"`).join(', ')}) — say it plainly, as you would out loud`);
+        if (long) warnings.push(`${where}: a ${long} sentence — split it, so the voice gets a breath between the parts`);
       }
     }
     // the Chinese Kokoro voice needs a Python for its G2P: say so now, not after the recording
