@@ -2,7 +2,8 @@
 # storyshot's own venv (qwen-tts.mjs), one process per render: the model loads once for all lines.
 #
 # stdin:  {"repo", "revision", "temperature", "asr": {"repo", "revision"} | null,
-#          "lines": [{"text", "file", "voice", "lang", "seed"}]}
+#          "lines": [{"text", "written", "file", "voice", "lang", "seed"}]}
+#         (text: what the model reads; written: the line as the storyboard has it, before `pronounce`)
 # stderr: "line i/n <seconds>s [<tries> tries]" per line, plus whatever the libraries log
 # stdout: {"results": [{"seconds", "tries", "suspect", "heard", "mismatch"}], "asr": null | "why it didn't load"}
 #
@@ -15,6 +16,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 
 os.environ.setdefault('HF_HUB_DISABLE_TELEMETRY', '1')
 os.environ.setdefault('TRANSFORMERS_VERBOSITY', 'error')
@@ -72,8 +74,9 @@ def cn_number(m):
 
 
 def units(text, chinese, pinyin):
-    """The line as a list of sounds: pinyin syllables, digits, and Latin words as '#word' (m x and mx as '#m', '#x')."""
-    t = text.lower().replace('−', '-')
+    """The line as a list of sounds: pinyin syllables, digits, and Latin words as '#word' without accents
+    (m x and mx as '#m', '#x')."""
+    t = ''.join(c for c in unicodedata.normalize('NFD', text.lower().replace('−', '-')) if unicodedata.category(c) != 'Mn')
     if chinese:
         t = re.sub(r'\d+(?:\.\d+)?', cn_number, t)
     out = []
@@ -92,6 +95,7 @@ def mismatch(text, heard, chinese, pinyin):
     text. A garbled take has a run of several; a homophone or a misheard letter is one on its own."""
     a, b = units(text, chinese, pinyin), units(heard, chinese, pinyin)
     letter = lambda u: len(u) == 2 and u[0] == '#'
+    glue = lambda us: ''.join(u.lstrip('#') for u in us)
     d = {(0, 0): (0, None)}
     for i in range(len(a) + 1):
         for j in range(len(b) + 1):
@@ -111,6 +115,11 @@ def mismatch(text, heard, chinese, pinyin):
                 # a name in Latin letters in a Chinese line (Desmos) can come back as a few syllables: one mistake
                 if chinese and len(x) > 3 and x[0] == '#':
                     ways += [(d[i - 1, j - k][0] + 1, (i - 1, j - k, 1)) for k in range(2, min(5, j) + 1)]
+                # one word written as two or three (escribámosla / escribamos la): no mistake
+                if len(x) > 3 and x[0] == '#':
+                    ways += [(d[i - 1, j - k][0], (i - 1, j - k, 0)) for k in range(2, min(4, j) + 1) if glue(b[j - k:j]) == x[1:]]
+                if len(y) > 3 and y[0] == '#':
+                    ways += [(d[i - k, j - 1][0], (i - k, j - 1, 0)) for k in range(2, min(4, i) + 1) if glue(a[i - k:i]) == y[1:]]
             d[i, j] = min(ways, key=lambda w: w[0])
     i, j, run, worst = len(a), len(b), 0, 0
     while (i, j) != (0, 0):
@@ -155,7 +164,10 @@ def main():
                 heard = asr.generate(tmp, language='Chinese' if chinese else latin).text.strip()
             finally:
                 os.remove(tmp)
-            return heard, mismatch(line['text'], heard, chinese, pinyin)
+            # against the line as written too: `pronounce` respells words for the voice (y → ye), and the
+            # recognizer writes what it hears the usual way
+            ms = [mismatch(t, heard, chinese, pinyin) for t in dict.fromkeys([line['text'], line.get('written') or line['text']])]
+            return heard, min(ms, key=lambda m: max(m[0] / RETRY_AT, m[1] / RETRY_RUN))
 
         results, n = [], len(job['lines'])
         for i, line in enumerate(job['lines']):

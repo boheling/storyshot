@@ -84,3 +84,31 @@ test('a failed step in inspect --after lists the page right there; a blocked cli
   const blocked = await afterOn(targets, ['click: { role: button, name: "Open dialog" }', 'dismiss: { role: button, name: "Open dialog" }']);
   assert.match(blocked, /another element is on top of it and takes the click: <div id="dlg"/, blocked);
 });
+
+// test/fixtures/marks.html: `mark` on text the viewer can't see, and marks on text that scrolls away
+test('mark: picks the copy the viewer can see, and a mark leaves with its text', { skip: !browser && 'no Chromium' }, async () => {
+  const { pageScript } = await import('../src/record.mjs');
+  const b = await chromium.launch();
+  try {
+    const ctx = await b.newContext({ viewport: { width: 1280, height: 720 } });
+    await ctx.addInitScript(pageScript, { scrollOffset: 120 });
+    const page = await ctx.newPage();
+    await page.goto(`file://${path.join(here, 'fixtures', 'marks.html')}`);
+    const found = (t) => page.evaluate((t) => {
+      const f = window.__demoFind(t);
+      return f && { ...f, id: window.__demoFound.startContainer.parentElement.id || window.__demoFound.startContainer.parentElement.parentElement.id };
+    }, t);
+    // an invisible copy on screen loses to the real one further down (which needs a scroll)
+    assert.deepEqual(await found('Total: 42 rows'), { inView: false, count: 1, id: 'total' });
+    // text in a collapsed section loses to the copy that shows
+    assert.equal((await found('Hidden detail inside a collapsed section'))?.id, 'panel');
+    // a mark on text that then scrolls out of its panel (under the header) is no longer drawn
+    await found('Alpha result');
+    await page.evaluate(() => window.__demoMark('found', { ms: 0, color: '#ffe066' }));
+    const shown = () => page.evaluate(() => [...document.querySelectorAll('#__demo_marks > div')].map((d) => d.style.display !== 'none'));
+    assert.deepEqual(await shown(), [true]);
+    await page.evaluate(() => { document.getElementById('panel').scrollTop = 500; });
+    await page.waitForTimeout(100);
+    assert.deepEqual(await shown(), [false]);
+  } finally { await b.close(); }
+});

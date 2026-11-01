@@ -336,7 +336,7 @@ You can add `exact: true`, `last: true` or `nth: 2` to any of them.
 | `scroll` | `scroll: 600` |
 | `dismiss` | `dismiss: { role: button, name: Close }` (clicks only if visible) |
 | `hide` | `hide: '[id*="QSI"], .chat-widget'` hides pop-ups, survey prompts, feedback tabs and chat widgets for the whole video, including ones that appear late (use it in `setup`) |
-| `mark` | `mark: "automatic zoom, captions"` sweeps a highlighter over that phrase, even inside a paragraph (scrolling to it only if it's off screen, and below a sticky header). `mark: { css: "table tr:nth-child(3)" }` marks any target with a box. Options: `ms` (sweep time, default 700), `color` (default: theme accent), `box: true/false`. Marks stay until the step ends. |
+| `mark` | `mark: "automatic zoom, captions"` sweeps a highlighter over that phrase, even inside a paragraph (scrolling to it only if it's off screen, and below a sticky header). `mark: { css: "table tr:nth-child(3)" }` marks any target with a box. Options: `ms` (sweep time, default 700), `color` (default: theme accent), `box: true/false`. Only text the viewer can see counts: a copy that is hidden, transparent, collapsed or covered is skipped. Marks stay until the step ends, and a mark whose text scrolls out of view (out of its panel, under a header) disappears with it. |
 | `unmark` | `unmark: true` clears the marks (and notes) earlier |
 | `note` | `note: { target: { label: Database }, text: Curated proteins only }` puts a short label with an arrow next to the element, on the side with the most room (or `side: left/right/top/bottom`). It stays until the step ends and gets reading time (about 3 words or 5 Chinese/Japanese/Korean characters a second, or `ms`). |
 | `paste` | `paste: { target: { label: JSON }, text: '{"a": 1}' }` pastes text in one go through the real clipboard (with a ⌘V badge), so editors react as to a real paste; `paste: "..."` pastes into whatever has focus |
@@ -467,7 +467,7 @@ usually shouldn't.
 | `cta` | Dark call-to-action pill, e.g. `Start free at acme.com`. |
 | `duration` | Seconds. Default: fits the `say` line, else 1.0 (end card) or 2.2 (intro). |
 | `say` | Voiceover line played over the end card. |
-| `emblem` | With `hyperframes`: one to three short monospace lines over the title (an alignment, a formula, a line of code); `false` for none. |
+| `emblem` | With `hyperframes`: one to three short monospace lines over the title (an alignment, a formula, a line of code); `false` for none. On HyperFrames cards, text too long for the frame (a title, subtitle, emblem or call to action) wraps and then shrinks until it fits. |
 
 ### HyperFrames cards
 

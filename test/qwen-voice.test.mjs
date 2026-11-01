@@ -67,6 +67,9 @@ test('the take check: garbles and wrong numbers fail, homophones and misheard le
       'Ahora arrastra el deslizador de B hacia la derecha hasta 3. Toda la recta sube. Ahora cruza el eje y en 3.', false],
     ['Fíjate que la inclinación no cambió.', 'Fíjate que la inclinación no cambió.', false],
     ['Ahora la recta cruza por debajo del origen, en menos dos.', 'Ahora la recta cruza para el bajo del orden de mundo, en menos dos.', true],
+    // a word heard as two, without its accent; a run of letters heard as one word
+    ['Toda recta se puede escribir como y igual a m x más b. Escribámosla en la primera línea de Desmos.',
+      'Toda recta se puede escribir como y igual a mx más b, escribamos la en la primera línea de Desmos.', false],
   ];
   const helper = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src');
   const out = execFileSync(path.join(QWEN_VENV, 'bin', 'python'), ['-I', '-B', '-c', `

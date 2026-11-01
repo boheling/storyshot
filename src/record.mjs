@@ -8,7 +8,7 @@ import { detectLogin, loginAdvice, sessionContext } from './auth.mjs';
 import { certError } from './config.mjs';
 
 // Injected into every page: fake cursor, click ripple, smooth in-page anchor scrolling.
-function pageScript({ scrollOffset }) {
+export function pageScript({ scrollOffset }) {
   const install = () => {
     if (document.getElementById('__demo_cursor')) return;
     const c = document.createElement('div');
@@ -153,6 +153,38 @@ function pageScript({ scrollOffset }) {
   };
   // `mark`: a highlighter sweeps over a phrase (a text Range, even across inline elements) or an
   // element, line by line. Marks follow scrolling (positions are re-read every frame).
+  // What of a rect is really on screen: cut to the viewport and to every ancestor of `from` that clips
+  // its overflow (a panel scrolled past it, a collapsed section). scrollable: false cuts only to the
+  // clippers that can't scroll (what scrolling could never bring into view). null when nothing is left.
+  window.__demoClip = (q, from, { scrollable = true } = {}) => {
+    let { left, top, right, bottom } = q;
+    for (let a = from; a && a !== document.documentElement && a !== document.body; a = a.parentElement) {
+      const s = getComputedStyle(a);
+      const clips = s.overflowX !== 'visible' || s.overflowY !== 'visible', scrolls = /auto|scroll/.test(s.overflowX + s.overflowY);
+      if (clips && (scrollable || !scrolls)) {
+        const b = a.getBoundingClientRect();
+        left = Math.max(left, b.left); top = Math.max(top, b.top); right = Math.min(right, b.right); bottom = Math.min(bottom, b.bottom);
+      }
+      if (s.position === 'fixed') break; // a fixed element isn't clipped by what's around it
+    }
+    if (scrollable) { left = Math.max(left, 0); top = Math.max(top, 0); right = Math.min(right, innerWidth); bottom = Math.min(bottom, innerHeight); }
+    return right - left > 1 && bottom - top > 1 ? { left, top, right, bottom } : null;
+  };
+  // how a text range or element shows: 'shown' (on screen, nothing over it), 'away' (scrolling brings it
+  // into view), 'covered' (on screen, under something else) or 'hidden' (invisible, clipped, collapsed)
+  window.__demoShows = (src) => {
+    const el = src instanceof Range ? (src.commonAncestorContainer.nodeType === 1 ? src.commonAncestorContainer : src.commonAncestorContainer.parentElement) : src;
+    if (!el || getComputedStyle(el).visibility !== 'visible') return 'hidden';
+    for (let a = el; a; a = a.parentElement) if (+getComputedStyle(a).opacity < 0.05) return 'hidden';
+    const rects = [...(src instanceof Range ? src.getClientRects() : [src.getBoundingClientRect()])].filter((q) => q.width > 1 && q.height > 1);
+    const from = src instanceof Range ? el : el.parentElement;
+    if (!rects.some((q) => window.__demoClip(q, from, { scrollable: false }))) return 'hidden';
+    const seen = rects.map((q) => window.__demoClip(q, from)).filter(Boolean);
+    if (!seen.length) return 'away';
+    const q = seen.sort((a, b) => (b.right - b.left) * (b.bottom - b.top) - (a.right - a.left) * (a.bottom - a.top))[0];
+    const hit = document.elementFromPoint((q.left + q.right) / 2, (q.top + q.bottom) / 2);
+    return !hit || el.contains(hit) || hit.contains(el) && getComputedStyle(el).pointerEvents === 'none' || (!(src instanceof Range) && hit.contains(el)) ? 'shown' : 'covered';
+  };
   window.__demoFind = (phrase) => {
     const norm = (s) => s.replace(/\s+/g, ' ');
     const want = norm(phrase).trim();
@@ -175,27 +207,29 @@ function pageScript({ scrollOffset }) {
         const r = document.createRange();
         const [sn, so] = map[at], [en, eo] = map[at + needle.length - 1];
         r.setStart(sn, so); r.setEnd(en, eo + 1);
-        const rects = [...r.getClientRects()].filter((q) => q.width > 1 && q.height > 1);
-        if (rects.length) ranges.push(r);
+        // text the viewer can't see (hidden, clipped, collapsed, or a page's old view kept in the DOM) doesn't count
+        const shows = window.__demoShows(r);
+        if (shows !== 'hidden') ranges.push({ r, shows });
       }
       if (ranges.length) break;
     }
-    const inView = (r) => { const q = r.getBoundingClientRect(); return q.top >= 0 && q.bottom <= innerHeight; };
-    const r = ranges.find(inView) ?? ranges[0];
-    if (!r) return null;
-    window.__demoFound = r;
-    return { inView: inView(r), count: ranges.length };
+    // on screen first, then what a scroll brings into view, then what something covers right now
+    const found = ['shown', 'away', 'covered'].map((s) => ranges.find((x) => x.shows === s)).find(Boolean);
+    if (!found) return null;
+    window.__demoFound = found.r;
+    return { inView: found.shows === 'shown', count: ranges.length };
   };
   window.__demoMark = (what, { ms = 700, color, box = false }) => {
     const layer = document.getElementById('__demo_marks') ?? document.documentElement.appendChild(Object.assign(document.createElement('div'), { id: '__demo_marks' }));
     // multiply on the layer itself (its children are isolated inside it), so text under a mark stays readable
     Object.assign(layer.style, { position: 'fixed', inset: '0', zIndex: '2147483644', pointerEvents: 'none', transition: 'opacity .3s ease', mixBlendMode: 'multiply' });
     const src = what === 'found' ? window.__demoFound : window.__demoMarkEl;
+    const clipFrom = what === 'found' ? (src.commonAncestorContainer.nodeType === 1 ? src.commonAncestorContainer : src.commonAncestorContainer.parentElement) : src.parentElement;
     const rectsOf = () => {
-      const all = what === 'found' ? [...src.getClientRects()] : [src.getBoundingClientRect()];
+      const all = (what === 'found' ? [...src.getClientRects()] : [src.getBoundingClientRect()]).filter((q) => q.width > 1 && q.height > 1);
       // one rect per line: merge the pieces of inline elements that sit on the same line
       const lines = [];
-      for (const q of all.filter((q) => q.width > 1 && q.height > 1)) {
+      for (const q of all) {
         const l = lines.find((l) => Math.abs(l.top - q.top) < q.height * 0.5);
         if (l) { l.left = Math.min(l.left, q.left); l.right = Math.max(l.right, q.right); l.top = Math.min(l.top, q.top); l.bottom = Math.max(l.bottom, q.bottom); }
         else lines.push({ left: q.left, right: q.right, top: q.top, bottom: q.bottom });
@@ -216,17 +250,21 @@ function pageScript({ scrollOffset }) {
       delay += d;
       return el;
     });
+    // each line drawn only where it's on screen: text scrolled out of its panel (or out from under a
+    // header) loses its mark there instead of leaving it floating over whatever is now in that place
     const place = () => {
       if (!els[0]?.isConnected) return;
-      rectsOf().forEach((q, i) => {
-        const el = els[i]; if (!el) return;
-        const pad = box ? 6 : 2;
-        Object.assign(el.style, { left: `${q.left - pad}px`, top: `${q.top - (box ? pad : 0)}px`, width: `${q.right - q.left + 2 * pad}px`, height: `${q.bottom - q.top + (box ? 2 * pad : 0)}px` });
+      const now = rectsOf();
+      els.forEach((el, i) => {
+        const q = now[i] && window.__demoClip(now[i], clipFrom), pad = box ? 6 : 2;
+        if (!q) { el.style.display = 'none'; return; }
+        Object.assign(el.style, { display: '', left: `${q.left - pad}px`, top: `${q.top - (box ? pad : 0)}px`, width: `${q.right - q.left + 2 * pad}px`, height: `${q.bottom - q.top + (box ? 2 * pad : 0)}px` });
       });
       requestAnimationFrame(place);
     };
     place();
-    const u = first.reduce((a, q) => ({ x: Math.min(a.x, q.left), y: Math.min(a.y, q.top), r: Math.max(a.r, q.right), b: Math.max(a.b, q.bottom) }), { x: 1e9, y: 1e9, r: -1e9, b: -1e9 });
+    const shown = first.map((q) => window.__demoClip(q, clipFrom)).filter(Boolean);
+    const u = (shown.length ? shown : first).reduce((a, q) => ({ x: Math.min(a.x, q.left), y: Math.min(a.y, q.top), r: Math.max(a.r, q.right), b: Math.max(a.b, q.bottom) }), { x: 1e9, y: 1e9, r: -1e9, b: -1e9 });
     return { x: u.x, y: u.y, width: u.r - u.x, height: u.b - u.y };
   };
   // `note`: a short label with an arrow pointing at an element, placed on the side with the most room.

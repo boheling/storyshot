@@ -111,13 +111,24 @@ export function cueTimes(items, say, start, len) {
 
 // --- shared bits -----------------------------------------------------------------------------------
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-// "**word** rest" -> one span per word (per character in CJK), highlighted words inside a .hl span
-const words = (text, { cls = 'w', underline = '' } = {}) => String(text ?? '').split(/(\*\*.+?\*\*)/).filter(Boolean).map((seg) => {
-  const hl = /^\*\*.+\*\*$/.test(seg);
-  const inner = seg.replace(/^\*\*|\*\*$/g, '').split(/(\s+)/).filter(Boolean).map((w) => (/^\s+$/.test(w) ? ' '
-    : CJK.test(w) ? [...w].map((ch) => `<span class="${cls}">${esc(ch)}</span>`).join('') : `<span class="${cls}">${esc(w)}</span>`)).join('');
-  return hl ? `<span class="hl">${inner}${underline}</span>` : inner;
-}).join('');
+// "**word** rest" -> one span per word (per character in CJK), highlighted words inside a .hl span.
+// Punctuation stays with its neighbour, so a wrapped line never starts with "，" or ends with "（".
+const CLOSE = '，。、；：！？）」』》〉】”’,.;:!?)…', OPEN = '（「『《〈【“‘(';
+const words = (text, { cls = 'w', underline = '' } = {}) => {
+  const span = (t) => `<span class="${cls}">${esc(t)}</span>`;
+  const chars = (w) => [...w].reduce((out, ch) => (out.length && (CLOSE.includes(ch) || OPEN.includes(out.at(-1).at(-1))) ? [...out.slice(0, -1), out.at(-1) + ch] : [...out, ch]), []);
+  const parts = [];
+  for (const seg of String(text ?? '').split(/(\*\*.+?\*\*)/).filter(Boolean)) {
+    const hl = /^\*\*.+\*\*$/.test(seg);
+    let body = seg.replace(/^\*\*|\*\*$/g, ''), lead = '';
+    while (!hl && parts.at(-1)?.hl && CLOSE.includes(body[lead.length] ?? '\0')) lead += body[lead.length];
+    body = body.slice(lead.length);
+    if (lead) parts.at(-1).html = `<span style="white-space:nowrap">${parts.at(-1).html}${span(lead)}</span>`; // "**实时预览**，"
+    const inner = body.split(/(\s+)/).filter(Boolean).map((w) => (/^\s+$/.test(w) ? ' ' : CJK.test(w) ? chars(w).map(span).join('') : span(w))).join('');
+    parts.push({ hl, html: hl ? `<span class="hl">${inner}${underline}</span>` : inner });
+  }
+  return parts.map((x) => x.html).join('');
+};
 const md = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
 const isCmd = (cta) => /^\$?\s*(npx|npm|pnpm|yarn|bun|pip|pipx|uv|brew|curl|git|docker|cargo|go)\b/.test(String(cta ?? ''));
 const lum = (hex) => { const m = /^#?([0-9a-f]{6})$/i.exec(hex ?? ''); if (!m) return 0.5; const n = parseInt(m[1], 16); return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; };
@@ -239,7 +250,30 @@ ${body}
 const tl = (${pageTimeline})(${D.toFixed(3)});
 const blurIn = (sel, at, o = {}) => { if (document.querySelector(sel)) tl.fromTo(sel, { opacity: 0, filter: 'blur(8px)', ...o.from }, { opacity: 1, filter: 'blur(0px)', duration: o.d ?? 0.18, ease: 'power4.out', stagger: o.stagger ?? 0, ...o.to }, at); };
 const draw = (sel, at, d = 0.35, stagger = 0.12) => { if (document.querySelector(sel)) tl.fromTo(sel, { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: d, ease: 'power1.inOut', stagger }, at); };
+// text that would run out of the frame shrinks until it fits: w px wide and at most that many lines (0: a
+// row that doesn't wrap, only its width counts); then what's in [data-fit-box] shrinks together until it
+// fits top to bottom. Layout sizes only (offset*, scroll*): the animations' transforms don't count.
+const fits = [];
+const fit = (sel, w, lines = 2) => document.querySelectorAll(sel).forEach((el) => fits.push({ el, w, lines, size: parseFloat(getComputedStyle(el).fontSize) }));
+const over = ({ el, w, lines }) => {
+  const cs = getComputedStyle(el), lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.25;
+  // (a row that doesn't wrap overflows its own box: its scrollWidth, not its parent's, says so)
+  return Math.max(el.scrollWidth, el.offsetWidth, ...[...el.children].map((c) => c.scrollWidth)) > w + 1 || (lines > 0 && el.offsetHeight > lh * lines + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + 4);
+};
+const shrink = (f) => { f.el.style.fontSize = parseFloat(f.el.style.fontSize) * 0.95 + 'px'; };
+const refit = () => {
+  for (const f of fits) { f.el.style.fontSize = f.size + 'px'; f.el.style.maxWidth = f.w + 'px'; }
+  for (const f of fits) for (let k = 0; k < 40 && over(f); k++) shrink(f);
+  const box = document.querySelector('[data-fit-box]');
+  for (let k = 0; box && fits.length && k < 30; k++) {
+    const kids = [...box.querySelectorAll(':scope > *, :scope > .right > *')].filter((c) => c.offsetHeight && !c.classList.contains('right'));
+    if (!kids.length || (Math.min(...kids.map((c) => c.offsetTop)) >= ${H * 0.03} && Math.max(...kids.map((c) => c.offsetTop + c.offsetHeight)) <= ${H * 0.97})) break;
+    fits.forEach(shrink);
+  }
+};
 ${js}
+refit();
+document.fonts?.ready.then(refit);
 tl.build();
 </script></body></html>`;
 
@@ -301,7 +335,7 @@ function lesson(job, ctx) {
 .kick{font:600 ${30 * u}px 'IBM Plex Mono','StoryshotCJK',monospace;letter-spacing:.24em;text-transform:uppercase;color:${P.muted};margin-bottom:${22 * u}px}
 h1{font-weight:600;letter-spacing:-.03em;line-height:1.08;max-width:${W * 0.82}px;text-wrap:balance;font-size:${titleSize}px}
 .hl{position:relative;${dark ? `color:${accent}` : `background-image:linear-gradient(${accent},${accent});background-repeat:no-repeat;background-position:0 88%;background-size:0% 36%;padding:0 .06em`}}
-.sub{font-size:${44 * u}px;color:${P.muted};margin-top:${22 * u}px;letter-spacing:-.01em;max-width:${W * 0.8}px}
+.sub{font-size:${44 * u}px;line-height:1.3;text-wrap:balance;color:${P.muted};margin-top:${22 * u}px;letter-spacing:-.01em;max-width:${W * 0.8}px}
 .logo{height:${H * 0.09}px;margin-bottom:${36 * u}px;${dark ? `background:#fff;padding:${10 * u}px ${16 * u}px;border-radius:${14 * u}px` : ''}}
 .cimg{max-width:${W * 0.6}px;max-height:${H * 0.4}px;margin-top:${34 * u}px;border-radius:${12 * u}px;box-shadow:0 ${12 * u}px ${36 * u}px ${P.shadow}}
 .split{flex-direction:row;gap:${72 * u}px;text-align:left}
@@ -326,7 +360,7 @@ h1{font-weight:600;letter-spacing:-.03em;line-height:1.08;max-width:${W * 0.82}p
 .tx{font-size:${31 * u}px;line-height:1.24;font-weight:500}
 .tx b{color:${dark ? accent : P.text}}
 .tx code,.li code{font:500 .9em 'IBM Plex Mono',monospace}
-.cta{margin-top:${50 * u}px;font-size:${38 * u}px;font-weight:600;padding:${20 * u}px ${44 * u}px;border-radius:${16 * u}px;background:${dark ? accent : ink};color:${dark ? ink : '#fff'}}
+.cta{margin-top:${50 * u}px;font-size:${38 * u}px;line-height:1.3;font-weight:600;padding:${20 * u}px ${44 * u}px;border-radius:${16 * u}px;background:${dark ? accent : ink};color:${dark ? ink : '#fff'}}
 .cta.cmd{font:500 ${36 * u}px 'IBM Plex Mono',monospace;background:${dark ? '#1a2238' : ink};color:#e2e8f0;text-align:left}
 .cta.cmd b{color:${accent}}
 #type{display:inline-block;white-space:nowrap}
@@ -338,7 +372,7 @@ h1{font-weight:600;letter-spacing:-.03em;line-height:1.08;max-width:${W * 0.82}p
   const body = `<div class="full bg"></div>
 ${job.backdrop ? `<img id="backdrop" class="full backdrop" src="assets/backdrop.jpg">` : ''}
 ${bandText ? band('bandA', 96 * u, bandText) + band('bandB', H - 176 * u, [...bandText].reverse().join('')) : ''}
-<div class="col${split ? ' split' : ''}">
+<div class="col${split ? ' split' : ''}" data-fit-box>
   ${split ? `<div class="left">${image}</div><div class="right">` : ''}
   ${logo}${emblem}
   ${kicker ? `<div id="kick" class="kick">${esc(kicker)}</div>` : ''}
@@ -357,6 +391,11 @@ ${think}`;
 
   const n = (x) => x.toFixed(2);
   const js = `
+fit('#title', ${split ? W * 0.44 : W * 0.82}, 3);
+fit('#sub', ${split ? W * 0.44 : W * 0.8}, 3);
+fit('#aln', ${split ? W * 0.44 : W * 0.88}, 0);
+fit('.steps', ${W * 0.88}, 0);
+fit('#cta', ${split ? W * 0.44 : W * 0.8}, ${isCmd(c.cta) ? 0 : 2});
 ${bandText ? `tl.fromTo('#bandA', { x: 0 }, { x: ${-92 * D * u}, duration: ${D}, ease: 'none' }, 0);
 tl.fromTo('#bandB', { x: ${-900 * u} }, { x: ${-900 * u + 92 * D * u}, duration: ${D}, ease: 'none' }, 0);` : ''}
 ${job.backdrop ? `tl.fromTo('#backdrop', { x: 0 }, { x: ${-14 * D * u}, duration: ${D}, ease: 'none' }, 0);` : ''}
@@ -407,7 +446,7 @@ async function launch(job, ctx) {
 #stage{font-family:'${font}','StoryshotCJK',sans-serif;color:${INK}}
 .paper{background:#fff}
 .grid{background-image:radial-gradient(#d4d4dc ${1.6 * u}px,transparent ${1.8 * u}px);background-size:${36 * u}px ${36 * u}px;background-position:${18 * u}px ${18 * u}px}
-.line{position:absolute;left:0;right:0;text-align:center;white-space:nowrap}
+.line{position:absolute;left:0;right:0;margin:0 auto;text-align:center;line-height:1.3;text-wrap:balance}
 .hl{position:relative;display:inline-block;color:${STROKE}}
 .ul{position:absolute;left:-4%;width:108%;bottom:-0.42em;height:0.5em;overflow:visible}
 .ulp{stroke-width:${6 * u}px}
@@ -432,7 +471,7 @@ async function launch(job, ctx) {
 #logo{position:absolute;left:${logoBox.x}px;top:${logoBox.y}px;width:${T ? T.w : bw}px;height:${T ? T.h : bh}px;transform-origin:0 0}
 #pageimg{object-fit:fill;opacity:0}
 .tbox{position:absolute;left:0;right:0;top:${cy - 80 * u}px;display:flex;justify-content:center}
-.tbox span.t{position:relative;display:inline-block;padding:${24 * u}px ${60 * u}px;font-size:${(String(c.title ?? '').length > 18 ? 96 : 128) * u}px}
+.tbox span.t{position:relative;display:inline-block;line-height:1.2;white-space:nowrap;padding:${24 * u}px ${60 * u}px;font-size:${(String(c.title ?? '').length > 18 ? 96 : 128) * u}px}
 .tbox svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 #name{font-size:${nameSize}px}`;
     const tbox = !hasLogo && c.title ? `<div class="tbox" id="tbox"><span class="t title">${words(c.title)}<svg viewBox="0 0 1000 300" preserveAspectRatio="none">${strokes(g.rectangle(6, 8, 988, 284, R({ seed: 7 })), 'bx', 'vector-effect="non-scaling-stroke"')}</svg></span></div>` : '';
@@ -446,6 +485,9 @@ ${named ? `<div id="name" class="line title" style="top:${by + bh + 92 * u}px">$
 ${c.subtitle ? `<div id="sub" class="line" style="top:${(named ? by + bh + 92 * u + nameSize * 1.45 : hasLogo ? by + bh + 120 * u : cy + 190 * u)}px;font-family:${handFont};font-size:${(opts.hand ? 78 : 64) * u}px">${words(c.subtitle, { underline: underline(11) })}</div>` : ''}`;
     const sx = F.FW / W, sy = F.FH / H, framed = F.FX > 0 || F.FY > 0;
     const js = `
+fit('#tbox .t', ${W * 0.86}, 0);
+fit('#name', ${W * 0.86}, 1);
+fit('#sub', ${W * 0.84}, 2);
 ${hasLogo ? `draw('.bx', 0.0, 0.5, 0.18);
 tl.fromTo('#logo', { x: ${n(bx - logoBox.x)}, y: ${n(by - logoBox.y)}, scale: ${n(T ? (bw / T.w) * 0.92 : 0.92)}, opacity: 0, filter: 'blur(8px)' },
   { x: ${n(bx - logoBox.x)}, y: ${n(by - logoBox.y)}, scale: ${n(T ? bw / T.w : 1)}, opacity: 1, filter: 'blur(0px)', duration: 0.45, ease: 'back.out(1.5)' }, 0.12);
@@ -479,12 +521,12 @@ ${F.chrome ? `tl.to('#chrome, #url', { opacity: 1, duration: 0.3, ease: 'power2.
   const css = `${css0}
 .stack{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:${30 * u}px}
 #logo{height:${lh}px;width:${lw}px}
-.etitle{font-size:${(String(c.title ?? '').length > 24 ? 80 : 104) * u}px}
-.esub{font-family:${handFont};font-size:${(opts.hand ? 66 : 54) * u}px}
+.etitle{font-size:${(String(c.title ?? '').length > 24 ? 80 : 104) * u}px;line-height:1.2;text-wrap:balance}
+.esub{font-family:${handFont};font-size:${(opts.hand ? 66 : 54) * u}px;line-height:1.3;text-wrap:balance}
 .blist{display:flex;flex-direction:column;gap:${12 * u}px;font-size:${36 * u}px;text-align:left}
 .blist .bi{display:flex;align-items:center;gap:${16 * u}px}
 .blist svg{width:${40 * u}px;height:${40 * u}px;overflow:visible}
-.cta{position:relative;margin-top:${26 * u}px;padding:${22 * u}px ${54 * u}px;font-family:${cmd ? "'IBM Plex Mono',monospace" : handFont};font-size:${(cmd ? 46 : opts.hand ? 84 : 64) * u}px;color:${STROKE};font-weight:${cmd ? 500 : 600}}
+.cta{position:relative;line-height:1.2;margin-top:${26 * u}px;padding:${22 * u}px ${54 * u}px;font-family:${cmd ? "'IBM Plex Mono',monospace" : handFont};font-size:${(cmd ? 46 : opts.hand ? 84 : 64) * u}px;color:${STROKE};font-weight:${cmd ? 500 : 600}}
 .cta .box{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .cta .arrow{position:absolute;left:${-arrowW - 16 * u}px;top:calc(50% - ${24 * u}px);width:${arrowW}px;height:${arrowH}px;overflow:visible}
 .cta .try{position:absolute;right:calc(100% + ${arrowW - 10 * u}px);top:calc(50% + ${arrowH - 30 * u}px);font-family:'Virgil','StoryshotCJK',sans-serif;font-size:${46 * u}px;color:${INK};white-space:nowrap;transform:rotate(-7deg)}
@@ -492,7 +534,7 @@ ${F.chrome ? `tl.to('#chrome, #url', { opacity: 1, duration: 0.3, ease: 'power2.
   const check = (i) => strokes(g.linearPath([[4, 22], [15, 34], [36, 6]], R({ seed: 30 + i, stroke: STROKE, strokeWidth: 4 * u })), `ck${i}`);
   const body = `
 <div id="paper" class="full paper" style="opacity:0"></div>
-<div class="stack">
+<div class="stack" data-fit-box>
   ${hasLogo ? `<img id="logo" src="assets/logo${path.extname(job.logo)}">` : ''}
   ${c.title ? `<div id="etitle" class="etitle title">${words(c.title)}</div>` : ''}
   ${c.subtitle ? `<div id="esub" class="esub">${words(c.subtitle, { underline: underline(13) })}</div>` : ''}
@@ -502,7 +544,11 @@ ${F.chrome ? `tl.to('#chrome, #url', { opacity: 1, duration: 0.3, ease: 'power2.
     <svg class="arrow" viewBox="0 0 280 160" preserveAspectRatio="none">${strokes(g.curve([[18, 150], [60, 72], [150, 30], [270, 24]], R({ seed: 5, strokeWidth: 3.5 })), 'ar', 'vector-effect="non-scaling-stroke"')}${strokes(g.linearPath([[238, 0], [272, 24], [240, 50]], R({ seed: 6, strokeWidth: 3.5 })), 'ah', 'vector-effect="non-scaling-stroke"')}</svg>
     <div id="try" class="try">${esc(tryLabel)}</div></div>` : ''}
 </div>`;
+  // the call to action keeps room on its left for the hand-drawn arrow and its "try it"
   const js = `
+fit('#etitle', ${W * 0.84}, 2);
+fit('#esub', ${W * 0.8}, 2);
+fit('#cta', ${W - 2 * (arrowW + 240 * u)}, ${cmd ? 0 : 2});
 tl.fromTo('#paper', { opacity: 0 }, { opacity: 0.88, duration: 0.45, ease: 'power2.out' }, 0.3);
 ${hasLogo ? `tl.fromTo('#logo', { opacity: 0, y: ${14 * u}, filter: 'blur(8px)' }, { opacity: 1, y: 0, filter: 'blur(0px)', duration: 0.4, ease: 'expo.out' }, 0.5);` : ''}
 blurIn('#etitle .w', 0.5, { d: 0.16, stagger: 0.07 });

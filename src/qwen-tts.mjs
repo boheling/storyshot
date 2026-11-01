@@ -107,7 +107,8 @@ function ensureVenv(log) {
 }
 
 // --- synthesis --------------------------------------------------------------------------------------
-// entries: [{ text, file }] (text already through qwenSpeakText) → a WAV at each `file`.
+// entries: [{ text, written?, file }] (text already through qwenSpeakText; written: the line before
+// `pronounce`, which the take check also accepts) → a WAV at each `file`.
 export async function synthQwen(v, entries, { log = console.log } = {}) {
   if (!entries.length) return;
   if (!qwenSupported()) throw new Error('the Qwen3-TTS voice runs on Apple Silicon Macs only (it uses MLX)');
@@ -115,7 +116,7 @@ export async function synthQwen(v, entries, { log = console.log } = {}) {
   if (!fs.existsSync(MODEL_FILE)) log(`downloading the Qwen3-TTS model (one time, ~2.3 GB) into ${HUB}…`);
   if (!fs.existsSync(ASR_FILE)) log(`downloading the Qwen3-ASR model that listens to each take (one time, ~1 GB) into ${HUB}…`);
   const lines = entries.map((e) => ({
-    text: e.text, file: `${e.file}.raw.wav`, voice: v.voice, lang: qwenLang(e.text, v.lang),
+    text: e.text, written: e.written ?? e.text, file: `${e.file}.raw.wav`, voice: v.voice, lang: qwenLang(e.text, v.lang),
     // the same line gets the same take: a seed from the text
     seed: parseInt(crypto.createHash('sha1').update(e.text).digest('hex').slice(0, 7), 16),
   }));

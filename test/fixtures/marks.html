@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Marks</title>
+<style>
+  body { margin: 0; font: 18px sans-serif; }
+  /* an app layout: a fixed header, the content scrolls inside a panel */
+  header { height: 80px; background: #234; color: #fff; display: flex; align-items: center; padding: 0 20px; }
+  #panel { position: absolute; top: 80px; left: 0; right: 0; bottom: 0; overflow: auto; padding: 20px; }
+  #panel p { margin: 0 0 24px; }
+  .spacer { height: 1600px; }
+  /* the previous view, kept in the DOM but invisible (what a single-page app often does) */
+  #old { position: absolute; top: 120px; left: 600px; opacity: 0; }
+  /* a collapsed section */
+  #closed { height: 0; overflow: hidden; }
+</style>
+</head>
+<body>
+<header>Results</header>
+<div id="old">Total: 42 rows</div>
+<div id="panel">
+  <p id="alpha">Alpha result: the first match</p>
+  <div id="closed"><p>Hidden detail inside a collapsed section</p></div>
+  <div class="spacer"></div>
+  <p id="total">Total: 42 rows</p>
+  <p>Hidden detail inside a collapsed section, shown here too</p>
+</div>
+</body>
+</html>

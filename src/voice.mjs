@@ -115,7 +115,7 @@ function cached(cfg, line) {
   const key = zh ? [v.provider, v.voice, ZH_TTS_ID, v.speed, text] : qwen ? [v.provider, v.voice, QWEN_TTS_ID, v.speed, text, ...(qwenLang(text, v.lang) !== qwenLang(text) ? [qwenLang(text, v.lang)] : [])]
     : [v.provider, v.voice, v.model, v.speed, v.instructions, text];
   const hash = crypto.createHash('sha1').update(JSON.stringify(key)).digest('hex').slice(0, 16);
-  return { text, file: path.join(dir, `${hash}.${ext}`), zh, qwen };
+  return { text, written: line, file: path.join(dir, `${hash}.${ext}`), zh, qwen };
 }
 
 // A line's sentences, so each is spoken on its own with a pause after it (TTS engines run the
@@ -142,10 +142,10 @@ export function sentences(text) {
 // One line as stereo Float32 PCM at 48 kHz, leading and trailing silence trimmed.
 async function speakLine(cfg, line, log) {
   const v = cfg.voice;
-  const { text, file, zh, qwen } = cached(cfg, line);
+  const { text, written, file, zh, qwen } = cached(cfg, line);
   if (!fs.existsSync(file)) {
     if (zh) await synthZh(v, [{ text, file }], { log });
-    else if (qwen) await synthQwen(v, [{ text, file }], { log });
+    else if (qwen) await synthQwen(v, [{ text, written, file }], { log });
     else {
       log(`  tts (${v.provider}): "${text}"`);
       await synth(v, text, file);
