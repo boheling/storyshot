@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
 import { hasFilter } from './ffmpeg.mjs';
+import { filmGround, isDark } from './scenes.mjs';
 
 const plain = (s) => String(s).replace(/\*\*/g, '');
 const srtTime = (t) => {
@@ -124,7 +125,12 @@ export async function burnSubtitles(cfg, narration, { log = console.log, rendere
   }
   const tmp = cfg.out.replace(/(\.[^.]+)$/, '.burn$1');
   const encode = ['-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'copy', '-movflags', '+faststart', tmp];
-  const edgeCol = cfg.theme.ink, sweep = cfg.theme.accent;
+  // The words follow the film's ground (`ground:`, else read from the scenes or the frame): white
+  // letters with an ink outline on a dark film, ink letters with a white outline on a light one, where
+  // white letters would need a dark bar under them. The word being spoken is the accent either way.
+  const light = filmGround(cfg) === 'light' && isDark(cfg.theme.ink);
+  const restCol = light ? cfg.theme.ink : '#ffffff', edgeCol = light ? '#ffffff' : cfg.theme.ink, sweep = cfg.theme.accent;
+  const shade = light ? [255, 255, 255] : [0, 0, 0];
   if (renderer === 'png') {
     // no libass in this ffmpeg: draw each state of each line (the words spoken so far in the accent
     // colour) in Chromium, string them into one transparent track and overlay it
@@ -160,10 +166,10 @@ export async function burnSubtitles(cfg, narration, { log = console.log, rendere
       if (cue.words[0].start > at) push('blank.png', cue.words[0].start);
       for (const [j, x] of cue.words.entries()) {
         const file = `s${String(n++).padStart(5, '0')}.png`;
-        const text = cue.words.map((y, k) => `<span style="color:${k <= j ? sweep : '#fff'}">${esc(y.w)}</span>`).join(cjk ? '' : ' ');
+        const text = cue.words.map((y, k) => `<span style="color:${k <= j ? sweep : restCol}">${esc(y.w)}</span>`).join(cjk ? '' : ' ');
         await shot(`<div style="position:absolute;left:${Math.round(W * 0.08)}px;right:${Math.round(W * 0.08)}px;bottom:${lift}px;text-align:center;
           font-family:${font};font-size:${px}px;font-weight:${cjk ? 400 : 700};line-height:1.2;
-          -webkit-text-stroke:${edge * 2}px ${edgeCol};paint-order:stroke fill;text-shadow:${Math.round(edge * 0.8)}px ${Math.round(edge * 0.8)}px 0 rgba(0,0,0,.5)">${text}</div>`, path.join(dir, file));
+          -webkit-text-stroke:${edge * 2}px ${edgeCol};paint-order:stroke fill;text-shadow:${Math.round(edge * 0.8)}px ${Math.round(edge * 0.8)}px 0 rgba(${shade.join(',')},.5)">${text}</div>`, path.join(dir, file));
         push(file, j + 1 < cue.words.length ? cue.words[j + 1].start : end);
       }
     }
@@ -174,7 +180,7 @@ export async function burnSubtitles(cfg, narration, { log = console.log, rendere
     execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', cfg.out, '-f', 'concat', '-safe', '0', '-i', path.join(dir, 'list.txt'),
       '-filter_complex', '[1:v]format=rgba[s];[0:v][s]overlay=0:0:eof_action=pass,format=yuv420p[v]', '-map', '[v]', '-map', '0:a?', ...encode]);
     fs.renameSync(tmp, cfg.out);
-    return log(`subtitles: burned in ${cues.length} lines with word-by-word highlight (drawn by Storyshot: this ffmpeg has no libass)`);
+    return log(`subtitles: burned in ${cues.length} lines with word-by-word highlight${light ? ', in ink (the film is light)' : ''} (drawn by Storyshot: this ffmpeg has no libass)`);
   }
   const events = cues.map(({ words }) => {
     const s0 = words[0].start, e0 = words.at(-1).start + words.at(-1).d;
@@ -188,7 +194,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Sub,${fontName},${size},${bgr(sweep)},&H00FFFFFF,${bgr(edgeCol)},&H80000000,${cjk ? 0 : 1},0,0,0,100,100,0,0,1,${edge},${Math.round(edge * 0.8)},2,${Math.round(W * 0.08)},${Math.round(W * 0.08)},${lift},1
+Style: Sub,${fontName},${size},${bgr(sweep)},${bgr(restCol)},${bgr(edgeCol)},${bgr(light ? '#ffffff' : '#000000', '80')},${cjk ? 0 : 1},0,0,0,100,100,0,0,1,${edge},${Math.round(edge * 0.8)},2,${Math.round(W * 0.08)},${Math.round(W * 0.08)},${lift},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -200,5 +206,5 @@ ${events.join('\n')}
   const arg = file.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', cfg.out, '-vf', `ass='${arg}'`, ...encode]);
   fs.renameSync(tmp, cfg.out);
-  log(`subtitles: burned in ${events.length} lines with word-by-word highlight`);
+  log(`subtitles: burned in ${events.length} lines with word-by-word highlight${light ? ', in ink (the film is light)' : ''}`);
 }

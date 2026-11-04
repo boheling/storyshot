@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 import { phrases, phraseTimes } from '../src/voice.mjs';
-import { sceneInfo, sceneSeconds, sceneRuntime } from '../src/scenes.mjs';
+import { sceneInfo, sceneSeconds, sceneRuntime, filmGround, contrast } from '../src/scenes.mjs';
 import { loadConfig } from '../src/config.mjs';
 
 const SR = 48000;
@@ -87,6 +87,50 @@ test('an explainer is made of scenes and needs no url', () => {
   assert.throws(() => loadConfig(y), /url` is required/);
   fs.writeFileSync(y, 'url: https://example.com\nsteps:\n  - scene: scenes/a.html\n    say: Hi.\n    actions: [{ pause: 100 }]\n');
   assert.throws(() => loadConfig(y), /has no actions/);
+});
+
+test("the film's ground comes from the scenes, the kit, or the storyboard", () => {
+  const d = tmp(), y = path.join(d, 'x.yaml');
+  fs.mkdirSync(path.join(d, 'scenes'));
+  const scene = (id, style) => SCENE(id).replace(`#${id} { position: absolute; inset: 0; }`, style);
+  const write = (name, html) => fs.writeFileSync(path.join(d, 'scenes', name), html);
+  const board = (extra = '') => fs.writeFileSync(y, `purpose: explainer\nvoice: { provider: kokoro }\n${extra}steps:\n  - scene: scenes/a.html\n    say: One.\n  - scene: scenes/b.html\n    say: Two.\n`);
+
+  // the scenes' own backgrounds, by majority
+  write('a.html', scene('a', '#a { background: #121110; }'));
+  write('b.html', scene('b', '#b { background: #0d1117; }'));
+  board();
+  assert.equal(filmGround(loadConfig(y)), 'dark');
+  write('b.html', scene('b', '#b { background: radial-gradient(circle, #fffaf0 0%, #f6f1e6 70%); }'));
+  board();
+  assert.equal(filmGround(loadConfig(y)), 'light'); // one each: a light film is the safer read
+
+  // a ground painted by the shared kit, which the scenes only join with a class
+  write('a.html', scene('a', '#a { position: absolute; inset: 0; }').replace('<div id="a" ', '<div id="a" class="world" '));
+  write('b.html', scene('b', '#b { position: absolute; inset: 0; }').replace('<div id="b" ', '<div id="b" class="world" '));
+  fs.writeFileSync(path.join(d, 'scenes', 'kit.css'), '.world { position: absolute; inset: 0; background: linear-gradient(#151a23, #0b0e14); }\n');
+  board('scenes: { css: scenes/kit.css }\n');
+  assert.equal(filmGround(loadConfig(y)), 'dark');
+
+  // nothing to read: a variable. And `ground:` always wins
+  fs.writeFileSync(path.join(d, 'scenes', 'kit.css'), '.world { background: var(--ground); }\n');
+  board('scenes: { css: scenes/kit.css }\n');
+  assert.equal(filmGround(loadConfig(y)), null);
+  board('ground: light\nscenes: { css: scenes/kit.css }\n');
+  assert.equal(filmGround(loadConfig(y)), 'light');
+  board('ground: dark\n');
+  assert.equal(filmGround(loadConfig(y)), 'dark');
+  fs.writeFileSync(y, 'url: https://example.com\nframe: aurora\nsteps:\n  - caption: hi\n    duration: auto\n    actions: [{ pause: 100 }]\n');
+  assert.equal(filmGround(loadConfig(y)), 'dark'); // a recording: its frame's backdrop
+  fs.writeFileSync(y, 'url: https://example.com\nframe: false\nsteps:\n  - caption: hi\n    duration: auto\n    actions: [{ pause: 100 }]\n');
+  assert.equal(filmGround(loadConfig(y)), null); // the page's own colours are unknown
+});
+
+test('contrast is the WCAG ratio', () => {
+  assert.equal(contrast('#ffffff', '#000000'), 21);
+  assert.equal(contrast('#d97706', '#ffffff'), 3.2); // amber on paper: just over the 3:1 a large word needs
+  assert.equal(contrast('#f4a62a', '#ffffff'), 2); // a brighter amber does not make it
+  assert.equal(contrast('var(--you)', '#fff'), null);
 });
 
 test('S.at() finds a phrase by number, from the end, or by its text', () => {

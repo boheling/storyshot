@@ -277,7 +277,8 @@ pace: slow                                      # fast (pitch) | normal (docs) |
 follow: true                                    # tutorial/course default: the camera zooms in on what each step touches and pans between steps (a step's own zoom wins; follow: false on a step skips it); or { scale: 1.8 }
 article: { title: Export a drawing, intro: … }  # docs: heading and first paragraph of <out>-steps/README.md
 lang: es                                        # language of built-in labels ("Pause and think", chapter "Introduction", "Downloaded"): en, zh, es, pt, fr, de, ja; default: zh if the steps contain Chinese, else en
-cards: auto                                     # intro/section/end cards: auto follows the frame (dark frames get dark cards), or light | dark
+cards: auto                                     # intro/section/end cards: auto follows the film's ground, or light | dark
+ground: auto                                    # is the film light or dark overall? light | dark; auto reads it from the scenes' backgrounds, else from the frame. It sets the colour of burned-in subtitles (ink letters with a white outline on a light film, white letters with an ink outline on a dark one) and the cards' ground
 frame: aurora                                   # the recording sits in a browser window on a backdrop: aurora (dark, grain; pitch default), studio (light, grain; tutorial and course default), dark, pastel, blur (the page itself, blurred); false = full frame; or { style, background: <css>, window, title, icon }
                                                 # window: app draws an installed app's window (its icon and name in the title bar, no address bar) for a PWA or desktop web app; title and icon come from the page's web app manifest unless given
 chapters: false                                 # write <out>.chapters.txt for YouTube
@@ -513,6 +514,13 @@ Files every scene shares (a palette, drawing helpers) are listed once:
 scene. A scene's narration may be a whole paragraph: it is spoken in chunks of
 whole sentences, and `voice.maxPause` caps the pauses inside a line (0.55 s in
 an explainer).
+
+Every scene of a film shares one look, and the look belongs to the subject and
+the audience: a dark instrument panel suits a mechanism explained to specialists,
+a warm paper poster suits civics explained to nine-year-olds. Say which ground
+you chose with `ground: light | dark`, and the burned-in subtitles and the cards
+follow it. The playbook's "The look follows the subject" has the styles and what
+each ground costs.
 
 `lead` is how long the scene plays before the voice starts (default 0.5 s), and
 `tail` is how long it holds after the voice ends (default 0.8 s). Consecutive

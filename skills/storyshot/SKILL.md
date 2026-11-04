@@ -93,7 +93,13 @@ or stands in for a recording of them.
    | `tutorial` | every step of the workflow, each explained, plus a second example; as long as that takes | yes | soft | step numbers, spotlight, camera follows, part cards, recap, .srt, chapters |
    | `course` | the concepts to teach: each idea, shown in the app, checked with a question | yes | none | spotlight, camera follows, concept and question cards, recap, .srt, chapters |
    | `docs` | one clip per step, each just long enough to see its result | none | none | step numbers, spotlight, cropped GIFs + PNGs, README.md article |
-   | `explainer` | the questions the viewer has about the concept, each answered by one scene; no web app | yes | calm | your scenes, .srt or burned-in subtitles, chapters |
+   | `explainer` | the questions the viewer has about the concept, each answered by one scene; no web app | yes | calm | your scenes in a look chosen for the subject and the audience, .srt or burned-in subtitles, chapters |
+
+   An explainer has no site to look at, so the plan carries one more line: the
+   **look** — who the viewer is, and the style that suits them and the subject
+   ("3rd–5th graders, so a classroom poster: warm paper, dark ink, chunky
+   shapes"). See "The look follows the subject" in step 3. It is much cheaper to
+   agree on it now than to repaint ten finished scenes.
 
    Captions match the site's language. `kokoro` (free, local) speaks English
    and Mandarin Chinese: for Chinese lines use `voice: { provider: kokoro,
@@ -418,11 +424,14 @@ with no `say:` needs a `duration`. A scene has no `actions`, `caption` or
 4. **Cues.** Run `storyshot cues` (MCP `scene_cues`). It synthesizes the voice
    and prints each scene's length and when each phrase is spoken. These are
    the times `S.at(k)` returns inside the scene.
-5. **Scenes.** Write each scene file (contract below). Then preview it with
+5. **Look.** Choose the film's style from its subject and its audience, write
+   it down (ground, palette, type, how objects are drawn), and put it in the
+   scene kit before any scene is written. "The look follows the subject" below.
+6. **Scenes.** Write each scene file (contract below). Then preview it with
    `storyshot scene … --step N` (MCP `preview_scene`), which gives stills a beat
    into each phrase, HyperFrames lint, and a layout check. Look at every still,
    fix the scene, and preview again until it is right.
-6. **Render**, look at `preview.jpg` (one frame per scene), and fix. After
+7. **Render**, look at `preview.jpg` (one frame per scene), and fix. After
    editing only scenes or lines, `compose` re-renders just the scenes that
    changed.
 
@@ -481,6 +490,61 @@ with no `say:` needs a `duration`. A scene has no `actions`, `caption` or
   Time every reveal from `S.at`, never from hard-coded seconds, so the
   animation stays on the words when a line changes.
 
+**The look follows the subject and the audience.** There is no house style, and
+the last explainer's look is not a default. A film for eight-year-olds about
+voting and a film for biologists about pooled screens should not look alike:
+choose the style, say so in the plan, and put it in the scene kit
+(`scenes: { css: …, js: … }`) before the first scene is written, so ten scenes
+can't disagree about it.
+
+Two questions decide it. **Who is watching?** Children and general audiences
+need big friendly drawings, few colours and a light ground; specialists read
+dense instrument-like pictures and are at home on a dark panel. **What is the
+subject made of?** A thing that glows, fluoresces, counts or signals wants a
+dark ground to light up on; a thing that is printed, taught, filled in or voted
+on wants paper. Starting points, not a menu to pick blindly:
+
+| subject, and who it is for | the look | made of |
+|---|---|---|
+| a mechanism, molecule, instrument or pipeline, for people who work on it | instrument panel | near-black ground, one or two signal colours that light up, hairlines, mono labels, counters, glows |
+| anything for children; civics, history and everyday subjects for everyone | classroom poster | warm paper, dark ink, chunky rounded shapes, thick strokes, big plain type, drawings with visible hand |
+| money, policy, a market, a result, for a general adult or professional audience | clean report | white ground, one accent, wide margins, one typeface, real numbers, nothing decorative |
+| a machine, a building, a physical process | blueprint | deep blue or sepia ground, a faint grid, dimension and leader lines, small-caps part labels |
+| a person, a place, a historical event | storybook | a tinted ground that is neither black nor white, illustrated figures, soft shapes, one warm accent |
+
+**Then tell Storyshot which ground you chose**: `ground: light` or
+`ground: dark` in the storyboard. Burned-in subtitles and the intro/section/end
+cards follow it — ink letters with a white outline on a light film, white
+letters with an ink outline on a dark one — so the words read without a bar
+drawn under them. Left out, `auto` reads the ground from the scenes — their own
+background, or the kit rule for a class on their root (`<div id="x"
+class="world">`). When it is a variable or an image, nothing can be read:
+`check` warns, and the subtitles stay white until you say which the film is.
+
+**What a ground costs.** The choice is not only a colour; it changes what works:
+- **On a light ground**, a glow is a smudge: make it a flat tinted panel, a ring
+  or nothing. Keep shadows at `rgba(<ink>, .12)` or less, or they look dirty. A
+  cream card that floated on black becomes a *white* sheet, which needs its own
+  shadow and some real structure inside (rules, a divider) or it reads as a
+  blank rectangle. A saturated accent that sang on black usually fails the
+  contrast check as text on paper (amber `#f4a62a` on white is about 2:1):
+  darken it for text, keep the bright one for fills, or give the words a thin
+  ink outline — and settle that in the kit, once.
+- **On a dark ground**, thin dark lines and dark figures vanish: every object
+  needs a light value of its own, and faint white strokes (`rgba(255,255,255,.06)`)
+  that carry structure there have no quiet equivalent on paper.
+- **Either way**, a colour used as a *fill* can be bright, while the same colour
+  as *text* has to pass the contrast check (the layout check measures it, 3:1
+  for large text and 4.5:1 for normal). Watch a colour sitting inside a panel
+  of its own hue (teal dots on a teal wing): it measures against the panel, not
+  against the ground, and that is where contrast is usually lost.
+
+**Repaint before the scenes exist, not after.** Converting a finished ten-scene
+film to the other ground is an hour or more of work with nothing new to show
+for it: the colour swap is mechanical, but every glow, shadow, faint stroke and
+floating card needs a judgement, and the contrast findings all change. It is
+much cheaper to show one previewed scene in the chosen style and ask.
+
 **Pictures that explain** (what the preview stills should show):
 - **The object is the explanation.** Draw the actual thing, such as the
   molecule, the queue or the circuit, big enough to be the hero: at least 40%
@@ -529,8 +593,9 @@ with no `say:` needs a `duration`. A scene has no `actions`, `caption` or
 - **"The film's last line needs 2 s".** Only the video's last scene must hold
   its final words. Elsewhere, reveal text on an earlier phrase or raise
   `tail:`.
-- **The ground under the cards.** Intro and end cards come out dark when most
-  scenes draw on a dark ground; `cards: light | dark` overrides that. Keep
+- **The ground under the cards.** Intro and end cards follow the film's ground,
+  so they come out dark when the scenes do; `ground: light | dark` settles the
+  whole film and `cards: light | dark` overrides the cards alone. Keep
   end-card bullets short: about 10 Chinese characters or 5 English words each.
 
 Long narration is fine: a scene's `say:` is spoken in chunks of whole
@@ -541,13 +606,19 @@ Explainer defaults:
 - **Music:** `music: { style: calm }`, soft pads with no drums;
   `music: false` for none.
 - **Subtitles:** `subtitles: true` writes an .srt; `burn` puts them on the
-  video, the better choice for social video and Chinese.
+  video, the better choice for social video and Chinese. Burned-in words take
+  their colour from `ground:` (see "The look follows the subject"), so set it.
+- **Ground:** `ground: light | dark`, chosen for the subject and the audience,
+  not inherited from the last film.
 - **Chapters:** come from the scenes' `title`s.
 - **Cards:** an `intro` and an `end_card` work as in lessons.
 
 Long explainers (more than about 6 scenes) build fastest if each scene is
-written by its own sub-agent, all from the same lines, cues, palette and
-scene contract. Review every scene's stills yourself afterwards.
+written by its own sub-agent, all from the same lines, cues, scene contract and
+scene kit — and from the same written description of the look, or they will
+each invent one. Settle anything they disagree about (a colour that fails
+contrast, an object drawn two ways) in the kit, once, not scene by scene.
+Review every scene's stills yourself afterwards.
 
 ## 4. Render, look, fix
 

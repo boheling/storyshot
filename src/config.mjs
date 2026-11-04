@@ -152,6 +152,7 @@ export function loadConfig(file, { draft = false } = {}) {
   const frame = frame0 ? { background: null, window: 'browser', ...(typeof frame0 === 'object' ? frame0 : {}), style: styleOf(frame0) } : null;
   if (frame && !FRAME_STYLES.includes(frame.style)) throw new Error(`frame style must be one of ${FRAME_STYLES.join(', ')}`);
   if (frame && !['browser', 'app'].includes(frame.window)) throw new Error('frame.window must be browser or app');
+  if (!['auto', 'light', 'dark'].includes(raw.ground ?? 'auto')) throw new Error('ground must be light or dark (leave it out and auto reads it from the scenes, or from the frame)');
   if (frame?.icon) frame.iconFile = path.resolve(dir, frame.icon);
 
   // hyperframes: true | { template: lesson | launch, band, bandColors, emblem, hand, backdrop } — cards
@@ -233,6 +234,11 @@ export function loadConfig(file, { draft = false } = {}) {
     // e.g. when burned-in subtitles already carry the words
     captions: raw.captions !== false,
     cards: raw.cards ?? 'auto',
+    // ground: light | dark — is the film light or dark overall? It decides the colour of the burned-in
+    // subtitles (ink letters on a light film, white on a dark one) and the cards' ground. `auto` reads
+    // it from the scenes, or from the frame's backdrop; say it outright when the scenes take their
+    // ground from the shared scene kit, which `auto` cannot always see through.
+    ground: raw.ground ?? 'auto',
     // language of the built-in labels ("Pause and think", "Introduction"): `lang`, else guessed from the captions
     lang: raw.lang ?? (/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(JSON.stringify(raw.steps ?? [])) ? 'zh' : 'en'),
     labels: LABELS[String(raw.lang ?? '').toLowerCase().split(/[-_]/)[0]] ?? (/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(JSON.stringify(raw.steps ?? [])) ? LABELS.zh : LABELS.en),

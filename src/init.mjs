@@ -110,26 +110,31 @@ purpose: explainer
 out: ${name}.mp4
 ${zh ? 'lang: zh\nvoice: { provider: qwen, voice: dylan }      # free, local (Apple Silicon); elsewhere kokoro zf_001' : 'voice: { provider: kokoro }                  # free, local'}
 ${portrait ? `output: { width: ${W}, height: ${H} }\nviewport: { width: 900, height: 1600 }\n` : ''}subtitles: burn                                  # or true for an .srt beside the video
-theme: { accent: "#f4a62a", ink: "#17181b" }
+ground: light                                    # light | dark: the film's ground, chosen for the subject and its audience
+                                                 # (\`storyshot guide\`: "The look follows the subject"). Paper for a subject that
+                                                 # is taught, printed or voted on; dark for a mechanism, an instrument or anything
+                                                 # that glows. Subtitles and cards follow it; paint every scene to match.
+theme: { accent: "#b45309", ink: "#17181b" }     # accent: the one colour that points. It also paints the word being
+                                                 # spoken in the subtitles, so it has to read on the ground above
 
 steps:
 ${scenes.map((sc, k) => `  - scene: ${sc.rel}${k === 0 ? '\n    # scene: { file: …, title: Chapter title, lead: 0.5, tail: 0.8 }   (lead: seconds before the voice starts)' : ''}
     say: ${say[k]}`).join('\n\n')}
 `;
   fs.mkdirSync(path.join(dir, 'scenes', 'assets'), { recursive: true });
-  for (const [k, sc] of scenes.entries()) {
-    fs.writeFileSync(path.join(dir, sc.rel), starterScene(sc.id, W, H, k));
-  }
+  for (const sc of scenes) fs.writeFileSync(path.join(dir, sc.rel), starterScene(sc.id, W, H));
   fs.writeFileSync(file, yaml);
   return { file: path.resolve(file), yaml, scenes: scenes.map((sc) => path.join(dir, sc.rel)) };
 }
 
 // A scene that already works: a ground, a line that lands on the first phrase and a mark that grows on
 // the second. Replace its picture; keep the contract (template, matching ids, timeline registered).
-function starterScene(id, W, H, k) {
+// Every scene of a film shares one ground (here the light one the storyboard declares): for a dark film,
+// repaint all of them together and set `ground: dark`.
+function starterScene(id, W, H) {
   return `<template>
   <style>
-    #${id} { position: absolute; inset: 0; overflow: hidden; background: ${k % 2 ? '#121110' : '#f2f2ee'}; color: ${k % 2 ? '#ece8df' : 'var(--ink)'}; font-family: var(--font); }
+    #${id} { position: absolute; inset: 0; overflow: hidden; background: #f6f2e9; color: var(--ink); font-family: var(--font); }
     #${id}-line { position: absolute; left: ${Math.round(W * 0.083)}px; right: ${Math.round(W * 0.083)}px; top: ${Math.round(H * 0.33)}px; font-size: ${Math.round(Math.min(W, H * 1.15) * 0.074)}px; font-weight: 600; line-height: 1.25; }
     #${id}-bar { position: absolute; left: ${Math.round(W * 0.083)}px; top: ${Math.round(H * 0.68)}px; width: ${Math.round(W * 0.5)}px; height: 14px; border-radius: 7px; background: var(--accent); transform-origin: 0 50%; }
   </style>

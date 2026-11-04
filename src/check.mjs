@@ -6,7 +6,7 @@ import { gitIgnored } from './auth.mjs';
 import { isZhVoice, zhVoiceStatus } from './kokoro-zh.mjs';
 import { qwenStatus } from './qwen-tts.mjs';
 import { sentences } from './voice.mjs';
-import { sceneInfo } from './scenes.mjs';
+import { sceneInfo, filmGround, contrast } from './scenes.mjs';
 import path from 'node:path';
 
 // Phrases that mark narration as machine-written, and sentences too long to say in one breath.
@@ -36,7 +36,7 @@ export function narrationLint(text) {
   return { tells, long };
 }
 
-const TOP = ['name', 'url', 'out', 'purpose', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'intro', 'frame', 'pace', 'follow', 'article', 'cards', 'lang', 'colorScheme',
+const TOP = ['name', 'url', 'out', 'purpose', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'intro', 'frame', 'pace', 'follow', 'article', 'cards', 'ground', 'lang', 'colorScheme',
   'scrollOffset', 'captionPosition', 'captions', 'highlight', 'stepNumbers', 'subtitles', 'chapters', 'clips', 'maxWait', 'setup', 'steps', 'end_card', 'hyperframes', 'scenes'];
 const STEP = ['caption', 'say', 'sayAt', 'duration', 'zoom', 'actions', 'hidden', 'sfx', 'highlight', 'captionPosition', 'card', 'follow', 'doc', 'scene'];
 const SCENE = ['file', 'title', 'lead', 'tail'];
@@ -191,6 +191,19 @@ export function check(file, { draft = false } = {}) {
     const ids = cfg.steps.filter((s) => s.scene && !s.hidden).map((s) => sceneInfo(s.scene.file).id).filter(Boolean);
     for (const id of new Set(ids.filter((x, k) => ids.indexOf(x) !== k))) errors.push(`two scenes share the composition id "${id}" — give each scene its own id (and prefix its element ids with it)`);
     if (cfg.purpose === 'explainer' && !cfg.steps.some((s) => s.scene)) warnings.push('an explainer is made of scenes: give its steps a scene: file');
+    // burned-in subtitles follow the film's ground: ink letters on a light film, white on a dark one,
+    // with the word being spoken in the accent either way, so the accent has to carry a large text's
+    // 3:1 against that ground
+    if (cfg.subtitles === 'burn') {
+      const ground = filmGround(cfg), against = ground === 'light' ? '#ffffff' : '#000000';
+      const ratio = contrast(cfg.theme.accent, against);
+      if (ground && ratio != null && ratio < 3) {
+        warnings.push(`theme.accent (${cfg.theme.accent}) is only ${ratio}:1 against ${ground === 'light' ? 'white' : 'black'}, and the burned-in subtitles paint the word being spoken in the accent: on this ${ground} film it would barely read — ${ground === 'light' ? 'darken' : 'lighten'} the accent (large text needs 3:1)`);
+      }
+      if (ground == null && cfg.steps.some((s) => s.scene && !s.hidden)) {
+        warnings.push("the scenes' ground could not be read (a variable, an image, or a rule this check cannot follow), so the burned-in subtitles stay white, which needs something dark under it — say which the film is with `ground: light` or `ground: dark`");
+      }
+    }
     const visible = cfg.steps.filter((s) => !s.hidden);
     const says = visible.filter((s) => s.say).length + (cfg.endCard?.say ? 1 : 0) + (cfg.intro?.say ? 1 : 0);
     if (cfg.voice && !says) warnings.push('voice is set but no step has a `say:` line');

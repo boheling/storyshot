@@ -175,15 +175,60 @@ export function formatTimings(list) {
   ].join('\n')).join('\n\n');
 }
 
-// Whether a scene draws on a dark ground: the root rule's background (a colour, or the first colour of a
-// gradient). null when it can't tell (a variable, an image).
-export function sceneIsDark(file) {
-  const info = fs.existsSync(file) ? sceneInfo(file) : null;
-  if (!info?.id) return null;
-  const rule = info.html.match(new RegExp(`#${info.id}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
-  const bg = rule.match(/background(?:-color)?\s*:\s*([^;]+)/)?.[1] ?? '';
-  const hex = bg.match(/#([0-9a-f]{6}|[0-9a-f]{3})\b/i)?.[1], rgb = bg.match(/rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i);
+// How light a hex or rgb() colour is, 0 (black) to 1 (white). null for anything else (a variable, an
+// image, a colour function).
+export function luminance(colour) {
+  const hex = String(colour).match(/#([0-9a-f]{6}|[0-9a-f]{3})\b/i)?.[1], rgb = String(colour).match(/rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i);
   const c = hex ? (hex.length === 3 ? [...hex].map((h) => parseInt(h + h, 16)) : [0, 2, 4].map((k) => parseInt(hex.slice(k, k + 2), 16))) : rgb ? rgb.slice(1, 4).map(Number) : null;
   if (!c) return null;
-  return (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255 < 0.45;
+  const lin = c.map((v) => (v / 255 <= 0.03928 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+}
+
+// How much two colours differ to the eye, 1:1 to 21:1 (WCAG: large text wants 3, normal text 4.5).
+export function contrast(a, b) {
+  const [la, lb] = [luminance(a), luminance(b)];
+  return la == null || lb == null ? null : +((Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)).toFixed(1);
+}
+
+// Darker than mid-grey? null for a colour this can't read (a variable, an image, a colour function).
+export function isDark(colour) {
+  const l = luminance(colour);
+  return l == null ? null : l < 0.18;
+}
+
+// Whether a scene draws on a dark ground: the background of the rule for its root (a colour, or the
+// first colour of a gradient). A scene whose ground comes from the shared kit (`<div id="x"
+// class="world">` + `.world { background: … }` in scenes.css) has none of its own, so the root's
+// classes are looked up in the kit's CSS too. null when it can't tell (a variable, an image).
+export function sceneIsDark(file, kitCss = '') {
+  const info = fs.existsSync(file) ? sceneInfo(file) : null;
+  if (!info?.id) return null;
+  const tag = info.html.match(new RegExp(`<[a-z][^>]*data-composition-id\\s*=\\s*["']${info.id}["'][^>]*>`, 'i'))?.[0] ?? '';
+  const selectors = [`#${info.id}`, ...(tag.match(/\sclass\s*=\s*["']([^"']*)["']/)?.[1] ?? '').split(/\s+/).filter(Boolean).map((c) => `.${c}`)];
+  for (const css of [info.html, kitCss]) {
+    for (const sel of selectors) {
+      const rule = css.match(new RegExp(`(?<![\\w#.-])${sel.replace('.', '\\.')}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
+      const bg = rule.match(/background(?:-color|-image)?\s*:\s*([^;]+)/)?.[1];
+      const dark = bg ? isDark(bg) : null; // a rule with no background of its own says nothing: try the next one
+      if (dark != null) return dark;
+    }
+  }
+  return null;
+}
+
+// Is the film light or dark overall? That decides what reads on top of it: the colour of the burned-in
+// subtitles, and the ground of the intro, section and end cards. `ground: light | dark` in the
+// storyboard says so outright; otherwise a film of scenes is read from the scenes themselves (a
+// majority vote) and a recording from its frame's backdrop. null when nothing is sure — a recording of
+// a page whose colours we have not measured — and then the subtitles stay white, which carries an
+// outline and works over most screens.
+export function filmGround(cfg) {
+  if (cfg.ground === 'light' || cfg.ground === 'dark') return cfg.ground;
+  if (!cfg.frame) {
+    const kitCss = (cfg.sceneKit?.css ?? []).filter((f) => fs.existsSync(f)).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+    const grounds = cfg.steps.filter((s) => s.scene && !s.hidden).map((s) => sceneIsDark(s.scene.file, kitCss)).filter((d) => d != null);
+    if (grounds.length) return grounds.filter(Boolean).length * 2 > grounds.length ? 'dark' : 'light';
+  }
+  return ['aurora', 'dark', 'blur'].includes(cfg.frame?.style ?? '') ? 'dark' : null;
 }
