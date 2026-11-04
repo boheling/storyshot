@@ -172,6 +172,9 @@ export function loadConfig(file, { draft = false } = {}) {
     const byLang = { kokoro: kokoroVoice, qwen: qwenVoiceFor(raw) }[provider];
     voice = { speed: pace0.voiceSpeed, volume: 1, pause: pace0.sentencePause, ...VOICE_DEFAULTS[provider], ...(byLang ? { voice: byLang } : {}), ...(raw.lang ? { lang: raw.lang } : {}), ...raw.voice, provider };
     if (!(typeof voice.pause === 'number' && voice.pause >= 0 && voice.pause <= 3)) throw new Error('voice.pause is the shortest pause between the sentences of a line, in seconds, 0–3 (0 leaves the voice as it is)');
+    // explainers: a scene's narration keeps moving (no pause in a line longer than this)
+    if (voice.maxPause === undefined && purpose === 'explainer') voice.maxPause = 0.55;
+    if (voice.maxPause != null && !(typeof voice.maxPause === 'number' && voice.maxPause >= voice.pause)) throw new Error(`voice.maxPause is the longest pause inside a line, in seconds, at least voice.pause (${voice.pause})`);
     if (provider === 'qwen') {
       const v = qwenVoice(voice.voice);
       if (!v) throw new Error(`voice: qwen has no voice "${voice.voice}" (one of ${QWEN_VOICES.join(', ')})`);
@@ -196,9 +199,13 @@ export function loadConfig(file, { draft = false } = {}) {
   if (music?.file) music.file = path.resolve(dir, music.file);
   if (music?.style && !['calm'].includes(music.style)) throw new Error('music.style must be calm (or leave it out for the upbeat synth)');
 
+  // scenes: { css: [files], js: [files] } shared by every scene (a palette, drawing helpers), loaded before each one
+  const sk = raw.scenes ?? {};
+  const sceneKit = { css: [].concat(sk.css ?? []).map((f) => path.resolve(dir, f)), js: [].concat(sk.js ?? []).map((f) => path.resolve(dir, f)) };
   return {
     name,
     purpose,
+    sceneKit,
     highlight: pick('highlight'),
     stepNumbers: pick('stepNumbers'),
     subtitles: pick('subtitles'),

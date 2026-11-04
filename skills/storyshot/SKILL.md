@@ -458,6 +458,11 @@ with no `say:` needs a `duration`. A scene has no `actions`, `caption` or
   `repeat: -1`, or unseeded `Math.random`: frames are rendered by seeking the
   timeline.
 - Media go in `assets/` next to the scene file, referenced as `assets/x.png`.
+- **A look shared by every scene** (a palette, fonts, a helper that draws
+  your recurring objects): put it in files and list them once at the top of
+  the storyboard, `scenes: { css: scenes/kit/kit.css, js: scenes/kit/kit.js }`.
+  They load before each scene's own script, so a scene can call your helpers
+  and use your CSS variables.
 - **`window.__storyshot`** (`S`) gives you:
   - `S.at(k, offset)`: when phrase `k` starts. `k` counts from 0, `-1` is the
     last phrase, and a string means the phrase that contains it.
@@ -527,6 +532,10 @@ with no `say:` needs a `duration`. A scene has no `actions`, `caption` or
 - **The ground under the cards.** Intro and end cards come out dark when most
   scenes draw on a dark ground; `cards: light | dark` overrides that. Keep
   end-card bullets short: about 10 Chinese characters or 5 English words each.
+
+Long narration is fine: a scene's `say:` is spoken in chunks of whole
+sentences, and in an explainer no pause inside a line lasts longer than
+`voice.maxPause` (0.55 s by default), so the voice keeps moving.
 
 Explainer defaults:
 - **Music:** `music: { style: calm }`, soft pads with no drums;

@@ -159,7 +159,7 @@ export async function soundtrack(cfg, events, silentVideo, { log = console.log }
   if (cfg.voice && events.voice?.length) {
     let prevEnd = 0;
     for (const line of events.voice) {
-      let { pcm, parts } = await speak(cfg, line.text, { log });
+      let { pcm, parts } = await speak(cfg, line.text, { log, chunk: !!line.chunk });
       let dur = pcm.length / 2 / SR;
       const start = Math.max(line.start, prevEnd + 0.12), room = line.until - start - 0.1;
       let sped = 1;

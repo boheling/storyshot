@@ -176,7 +176,7 @@ server.registerTool('preview_scene', {
 }, async ({ storyboard, step, at, check: chk = true, draft = false }) => {
   try {
     const r = await previewScene(loadConfig(abs(storyboard), { draft }), step, { at, check: chk, log: () => {} });
-    const pics = r.sheet ? [image(r.sheet)] : r.images.slice(0, 6).map(image);
+    const pics = r.sheets?.length ? r.sheets.map(image) : r.images.slice(0, 6).map(image);
     return { isError: !!r.lint.errors.length, content: [text(formatPreview(r, step)), ...pics] };
   } catch (e) { return fail(`preview_scene failed: ${e.message}`); }
 });

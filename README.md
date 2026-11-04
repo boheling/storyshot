@@ -508,6 +508,12 @@ steps:
     say: The quencher sits right next to the dye, and takes its energy before it can become light.
 ```
 
+Files every scene shares (a palette, drawing helpers) are listed once:
+`scenes: { css: scenes/kit.css, js: scenes/kit.js }` loads them before each
+scene. A scene's narration may be a whole paragraph: it is spoken in chunks of
+whole sentences, and `voice.maxPause` caps the pauses inside a line (0.55 s in
+an explainer).
+
 `lead` is how long the scene plays before the voice starts (default 0.5 s), and
 `tail` is how long it holds after the voice ends (default 0.8 s). Consecutive
 scenes cut into each other. Scenes are cached like cards, so `compose`

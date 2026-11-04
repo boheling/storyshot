@@ -37,7 +37,7 @@ export function narrationLint(text) {
 }
 
 const TOP = ['name', 'url', 'out', 'purpose', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'intro', 'frame', 'pace', 'follow', 'article', 'cards', 'lang', 'colorScheme',
-  'scrollOffset', 'captionPosition', 'captions', 'highlight', 'stepNumbers', 'subtitles', 'chapters', 'clips', 'maxWait', 'setup', 'steps', 'end_card', 'hyperframes'];
+  'scrollOffset', 'captionPosition', 'captions', 'highlight', 'stepNumbers', 'subtitles', 'chapters', 'clips', 'maxWait', 'setup', 'steps', 'end_card', 'hyperframes', 'scenes'];
 const STEP = ['caption', 'say', 'sayAt', 'duration', 'zoom', 'actions', 'hidden', 'sfx', 'highlight', 'captionPosition', 'card', 'follow', 'doc', 'scene'];
 const SCENE = ['file', 'title', 'lead', 'tail'];
 const ZOOM = ['target', 'scale', 'start', 'end', 'ramp', 'offset'];
@@ -184,6 +184,10 @@ export function check(file, { draft = false } = {}) {
       warnings.push(...r.warnings.map((w) => `step ${i + 1}: ${w}`));
       if (!cfg.voice && !(typeof s.duration === 'number')) errors.push(`step ${i + 1}: a scene is as long as its narration, and there is no voice: — add a voice: block, or give the scene a duration`);
     }
+    if (raw.scenes) unknown(raw.scenes, ['css', 'js'], 'scenes');
+    for (const f of [...cfg.sceneKit.css, ...cfg.sceneKit.js]) if (!fs.existsSync(f)) errors.push(`scenes: ${f} does not exist`);
+    for (const f of cfg.sceneKit.css) if (!/\.css$/i.test(f)) errors.push(`scenes.css: ${path.basename(f)} is not a .css file`);
+    for (const f of cfg.sceneKit.js) if (!/\.m?js$/i.test(f)) errors.push(`scenes.js: ${path.basename(f)} is not a .js file`);
     const ids = cfg.steps.filter((s) => s.scene && !s.hidden).map((s) => sceneInfo(s.scene.file).id).filter(Boolean);
     for (const id of new Set(ids.filter((x, k) => ids.indexOf(x) !== k))) errors.push(`two scenes share the composition id "${id}" — give each scene its own id (and prefix its element ids with it)`);
     if (cfg.purpose === 'explainer' && !cfg.steps.some((s) => s.scene)) warnings.push('an explainer is made of scenes: give its steps a scene: file');

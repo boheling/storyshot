@@ -222,7 +222,8 @@ export function phraseTimes(pcm, parts) {
   }
   const thr = peak * 0.02, out = [];
   for (const p of parts) {
-    const ph = p.text.split(PHRASE_BREAK).map((x) => x.trim()).filter(Boolean);
+    // (a part can hold two sentences the voice ran together: they are still two phrases)
+    const ph = phrases(p.text);
     if (ph.length < 2) { out.push({ text: p.text, t: p.start, end: p.end }); continue; }
     const a = Math.max(1, Math.floor(p.start * 100)), b = Math.min(n - 1, Math.ceil(p.end * 100)), qs = [];
     for (let w = a; w < b;) {
@@ -253,8 +254,63 @@ export function phraseTimes(pcm, parts) {
 // to sentence), with each pause between sentences widened to at least `voice.pause` seconds: voices
 // often run sentences together with barely a breath. parts: where each sentence is, in seconds (for
 // subtitles).
-export async function speak(cfg, line, { log = console.log } = {}) {
-  const raw = await speakLine(cfg, line, log), pause = cfg.voice.pause ?? 0;
+// A scene's narration can run to a paragraph, longer than a voice reads well in one take: it is spoken in
+// chunks of whole sentences (up to about 100 Chinese characters or 45 words each), joined with the line's
+// sentence pause. Short lines are one chunk.
+const CHUNK_CJK = 100, CHUNK_WORDS = 45;
+const weight = (t) => { const c = (t.match(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g) ?? []).length; return c / CHUNK_CJK + t.replace(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g, ' ').split(/\s+/).filter((w) => /\w/.test(w)).length / CHUNK_WORDS; };
+export function chunks(line) {
+  const out = [];
+  for (const s of sentences(line)) {
+    const cjk = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]$/.test(out.at(-1) ?? '') || /^[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(s);
+    if (out.length && weight(out.at(-1)) + weight(s) <= 1) out[out.length - 1] += (cjk ? '' : ' ') + s;
+    else out.push(s);
+  }
+  return out.length ? out : [line];
+}
+export async function speak(cfg, line, { log = console.log, chunk = false } = {}) {
+  const pieces = chunk ? chunks(line) : [line];
+  if (pieces.length < 2) return speakOne(cfg, line, { log });
+  const said = [];
+  for (const p of pieces) said.push(await speakOne(cfg, p, { log }));
+  const gap = Math.round(Math.max(cfg.voice.pause ?? 0, 0.3) * SR);
+  const n = said.reduce((a, x) => a + x.pcm.length / 2, 0) + gap * (said.length - 1);
+  const pcm = new Float32Array(2 * n), parts = [];
+  let at = 0;
+  for (const [k, x] of said.entries()) {
+    pcm.set(x.pcm, 2 * at);
+    for (const q of x.parts) parts.push({ text: q.text, start: q.start + at / SR, end: q.end + at / SR });
+    at += x.pcm.length / 2 + (k < said.length - 1 ? gap : 0);
+  }
+  return { pcm, parts };
+}
+// `voice.maxPause` (seconds): no pause inside a line lasts longer than this (some voices stop for a second
+// at every comma); the sentence pauses are then widened to `voice.pause` as usual.
+export function capPauses(pcm, maxPause) {
+  if (!(maxPause > 0)) return pcm;
+  const n = Math.floor(pcm.length / 2 / WIN), env = new Float32Array(n);
+  let peak = 0;
+  for (let w = 0; w < n; w++) {
+    let e = 0;
+    for (let i = w * WIN; i < (w + 1) * WIN; i++) e = Math.max(e, Math.abs(pcm[2 * i]), Math.abs(pcm[2 * i + 1]));
+    env[w] = e; peak = Math.max(peak, e);
+  }
+  const thr = peak * 0.02, keep = Math.round(maxPause * 100), cuts = [];
+  for (let w = 1; w < n;) {
+    if (env[w] >= thr) { w++; continue; }
+    const a = w;
+    while (w < n && env[w] < thr) w++;
+    if (w < n && w - a > keep) cuts.push([(a + Math.floor(keep / 2)) * WIN, (w - Math.ceil(keep / 2)) * WIN]);
+  }
+  if (!cuts.length) return pcm;
+  const out = new Float32Array(pcm.length - 2 * cuts.reduce((x, [a, b]) => x + b - a, 0));
+  let from = 0, to = 0;
+  for (const [a, b] of cuts) { out.set(pcm.subarray(2 * from, 2 * a), 2 * to); to += a - from; from = b; }
+  out.set(pcm.subarray(2 * from), 2 * to);
+  return out;
+}
+async function speakOne(cfg, line, { log = console.log } = {}) {
+  const raw = capPauses(await speakLine(cfg, line, log), cfg.voice.maxPause), pause = cfg.voice.pause ?? 0;
   const sents = pause > 0 ? sentences(line) : [];
   if (sents.length < 2) return { pcm: raw, parts: [{ text: line, start: 0, end: raw.length / 2 / SR }] };
   const gaps = sentenceGaps(raw, sents), want = Math.round(pause * SR);
@@ -296,13 +352,13 @@ export async function measureVoice(cfg, { log = console.log } = {}) {
   const zh = cfg.voice.provider === 'kokoro' && isZhVoice(cfg.voice.voice);
   if (zh || cfg.voice.provider === 'qwen') {
     // synthesize every uncached line in one batch, so Python (the G2P, or the Qwen model) starts once
-    const lines = [...cfg.steps.filter((s) => !s.hidden).flatMap((s) => [s.say, s.card?.say]), cfg.intro?.say, cfg.endCard?.say].filter(Boolean);
+    const lines = [...cfg.steps.filter((s) => !s.hidden).flatMap((s) => [...(s.scene && s.say ? chunks(s.say) : [s.say]), s.card?.say]), cfg.intro?.say, cfg.endCard?.say].filter(Boolean);
     const todo = new Map(lines.map((l) => cached(cfg, l)).filter((c) => !fs.existsSync(c.file)).map((c) => [c.file, c]));
     await (zh ? synthZh : synthQwen)(cfg.voice, [...todo.values()], { log });
   }
   for (const [i, s] of cfg.steps.entries()) {
     if (s.say && !s.hidden) {
-      const sp = await speak(cfg, s.say, { log });
+      const sp = await speak(cfg, s.say, { log, chunk: !!s.scene });
       lens.steps[i] = seconds(sp);
       // a scene animates on the words: when each phrase is spoken
       if (s.scene) lens.cues[i] = phraseTimes(sp.pcm, sp.parts);

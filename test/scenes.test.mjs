@@ -124,3 +124,18 @@ test('a later fromTo on the same property waits for its start instead of renderi
   tl.fromTo(a, { opacity: 0 }, { opacity: 1, immediateRender: true }, 8); // said explicitly: kept
   assert.deepEqual(calls.map((c) => c.to.immediateRender), [undefined, false, undefined, undefined, true]);
 });
+
+test('voice.maxPause shortens long pauses inside a line and leaves short ones', async () => {
+  const { capPauses } = await import('../src/voice.mjs');
+  const pcm = pcmOf([[0.5, true], [1.2, false], [0.5, true], [0.3, false], [0.5, true]]);
+  const out = capPauses(pcm, 0.5);
+  const secs = out.length / 2 / SR;
+  assert.ok(Math.abs(secs - (3.0 - 0.7)) < 0.03, `the 1.2 s pause becomes 0.5 s (${secs})`);
+  assert.equal(capPauses(pcm, null), pcm);
+});
+
+test('two sentences the voice runs together are still two phrases', () => {
+  const pcm = pcmOf([[2.0, true]]);
+  const ph = phraseTimes(pcm, [{ text: '一边往前走。 走到探针那里，切了下来。', start: 0, end: 2.0 }]);
+  assert.deepEqual(ph.map((p) => p.text), ['一边往前走。', '走到探针那里，', '切了下来。']);
+});

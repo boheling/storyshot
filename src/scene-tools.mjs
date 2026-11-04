@@ -27,7 +27,7 @@ export async function previewScene(cfg, stepNo, { at, check = true, log = consol
   if (!s.scene) throw new Error(`step ${stepNo} is not a scene (it records the web app: preview it with render --draft, or inspect after_step)`);
   let len = null, cues = [];
   if (s.say && cfg.voice) {
-    const sp = await speak(cfg, s.say, { log });
+    const sp = await speak(cfg, s.say, { log, chunk: true });
     len = sp.pcm.length / 2 / SR;
     cues = phraseTimes(sp.pcm, sp.parts);
   }
@@ -35,7 +35,7 @@ export async function previewScene(cfg, stepNo, { at, check = true, log = consol
   const { width: W, height: H, fps: FPS } = cfg.output;
   const { accent, ink, font } = cfg.theme;
   const ctx = { W, H, FPS, accent, ink, font, lang: cfg.lang, subs: cfg.subtitles === 'burn', fontFaces: sceneFontFaces(font) };
-  const job = { name: `step${stepNo}`, kind: 'scene', seconds, scene: s.scene, say: s.say, lead: s.scene.lead, cues, step: i, preview: true };
+  const job = { name: `step${stepNo}`, kind: 'scene', seconds, scene: s.scene, say: s.say, lead: s.scene.lead, cues, step: i, preview: true, kit: cfg.sceneKit };
   const dir = path.join(cfg.work, 'scene-preview', `step-${stepNo}`);
   fs.rmSync(dir, { recursive: true, force: true });
   writeSceneProject(job, ctx, dir);
@@ -64,7 +64,7 @@ export async function previewScene(cfg, stepNo, { at, check = true, log = consol
   if (r.code !== 0) throw new Error(`the scene did not load in HyperFrames: ${(r.err || r.out).trim().split('\n').filter(Boolean).slice(-4).join(' | ')}`);
   const files = fs.existsSync(shots) ? fs.readdirSync(shots).sort() : [];
   const images = files.filter((f) => /^frame-.*\.png$/.test(f)).map((f) => path.join(shots, f));
-  const sheet = files.filter((f) => /^contact-sheet/.test(f)).map((f) => path.join(shots, f))[0] ?? null;
+  const sheets = files.filter((f) => /^contact-sheet/.test(f)).map((f) => path.join(shots, f)), sheet = sheets[0] ?? null;
 
   // check: overlaps, text off the frame, contrast, text too small (needs a browser: ~20 s)
   const found = { errors: [], warnings: [] };
@@ -80,14 +80,24 @@ export async function previewScene(cfg, stepNo, { at, check = true, log = consol
           if (f.code === 'first_frame_empty' && visible[0] !== i) continue;
           if (f.code === 'line_unread' && /last line/i.test(f.message ?? '') && (visible.at(-1) !== i || cfg.endCard)) continue;
           if (f.selector && /storyshot-subtitle-band/.test(f.selector)) continue;
+          if (f.code === 'film_silent') continue; // the video's sound comes from Storyshot, not the scene
           const where = [f.selector, f.time != null ? `at ${Number(f.time).toFixed(1)}s` : null].filter(Boolean).join(' ');
           const hint = HINTS[f.code] ? ` → ${HINTS[f.code]}` : '';
           (f.severity === 'error' ? found.errors : found.warnings).push(`${f.code}${where ? ` (${where})` : ''}: ${f.message}${hint}`);
         }
       }
     } catch { found.warnings.push(`the layout check could not run: ${(c.err || c.out).trim().split('\n').slice(-2).join(' | ')}`); }
+    // one line for a finding repeated on siblings (a counter's digits, a row of tiles)
+    for (const k of ['errors', 'warnings']) {
+      const groups = new Map();
+      for (const w of found[k]) {
+        const key = w.replace(/:nth-of-type\(\d+\)/g, '').replace(/ at [\d.]+s/, '').replace(/"[^"]*"/g, '"…"').replace(/[\d.]+ s \(±[\d.]+ s\)/, '').slice(0, 120);
+        groups.set(key, [...(groups.get(key) ?? []), w]);
+      }
+      found[k] = [...groups.values()].map((ws) => (ws.length > 1 ? `${ws[0]} (and ${ws.length - 1} more like it)` : ws[0]));
+    }
   }
-  return { dir, seconds, cues: local, times, images, sheet, lint, check: check ? found : null, subs: ctx.subs };
+  return { dir, seconds, cues: local, times, images, sheet, sheets, lint, check: check ? found : null, subs: ctx.subs };
 }
 
 // What to do about the findings agents meet most in scenes (HyperFrames' own messages point at its docs).
@@ -104,7 +114,7 @@ export function formatPreview(r, stepNo) {
   return [
     `step ${stepNo} scene: ${r.seconds.toFixed(2)}s`,
     ...(r.cues.length ? ['  cues (scene seconds):', ...r.cues.map((c, k) => `    S.at(${k}) = ${c.t.toFixed(2)} → ${c.end.toFixed(2)}  ${c.text}`)] : ['  (no narration: S.at(k) = lead + k seconds)']),
-    `  stills at ${r.times.join(', ')}s:`, ...r.images.map((f) => `    ${f}`), ...(r.sheet ? [`  contact sheet: ${r.sheet}`] : []),
+    `  stills at ${r.times.join(', ')}s:`, ...r.images.map((f) => `    ${f}`), ...(r.sheets ?? []).map((f) => `  contact sheet: ${f}`),
     ...(r.lint.errors.length ? ['  ✖ lint errors:', list(r.lint.errors)] : []), ...(r.lint.warnings.length ? ['  ⚠ lint warnings:', list(r.lint.warnings)] : []),
     ...(r.check ? [r.check.errors.length || r.check.warnings.length ? '  layout check:' : '  ✔ layout check: nothing found', ...r.check.errors.map((e) => `    ✖ ${e}`), ...r.check.warnings.map((w) => `    ⚠ ${w}`)] : []),
     `  look at every still: does each part appear when the voice names it, and does anything overlap, crop or sit under the subtitles${r.subs ? ' (the striped red band)' : ''}?`,

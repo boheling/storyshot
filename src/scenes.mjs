@@ -125,6 +125,8 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#000}
 </style>
 <script>${sceneRuntime(job, ctx)}
 ${GSAP_GUARD}</script>
+${(job.kit?.css ?? []).map((f, k) => `<link rel="stylesheet" href="kit/${k}-${path.basename(f)}">`).join('\n')}
+${(job.kit?.js ?? []).map((f, k) => `<script src="kit/${k}-${path.basename(f)}"></script>`).join('\n')}
 </head><body>
 <div id="root" data-composition-id="main" data-start="0" data-duration="${D}" data-width="${W}" data-height="${H}">
 <div id="${info.id}" class="clip" data-composition-id="${info.id}" data-composition-src="compositions/scene.html" data-start="0" data-duration="${D}" data-track-index="1" data-width="${W}" data-height="${H}"></div>
@@ -143,6 +145,11 @@ export function writeSceneProject(job, ctx, dir) {
   fs.mkdirSync(path.join(dir, 'compositions'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'index.html'), sceneDoc(job, ctx, info));
   fs.writeFileSync(path.join(dir, 'compositions', 'scene.html'), info.html);
+  // the storyboard's scene kit, shared by every scene
+  for (const [kind, list] of Object.entries(job.kit ?? {})) for (const [k, f] of list.entries()) {
+    fs.mkdirSync(path.join(dir, 'kit'), { recursive: true });
+    fs.copyFileSync(f, path.join(dir, 'kit', `${k}-${path.basename(f)}`));
+  }
   for (const [k, f] of Object.entries(sceneAssets(job.scene.file))) {
     fs.mkdirSync(path.dirname(path.join(dir, 'assets', k)), { recursive: true });
     fs.copyFileSync(f, path.join(dir, 'assets', k));

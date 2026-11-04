@@ -553,7 +553,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   }
 
   function sceneJob(c, k) {
-    return { name: `card${k}`, kind: 'scene', seconds: c.t1 - c.t0, scene: c.scene, say: c.say, lead: c.lead, cues: c.cues, step: c.i };
+    return { name: `card${k}`, kind: 'scene', seconds: c.t1 - c.t0, scene: c.scene, say: c.say, lead: c.lead, cues: c.cues, step: c.i, kit: cfg.sceneKit };
   }
   // the cards: HyperFrames compositions when asked for (`hyperframes:`), else (or for any card that
   // doesn't render) the built-in ones. A launch outro is drawn with transparency over the last frame,
@@ -719,7 +719,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     voice: [
       ...(in0?.say ? [{ text: in0.say, start: 0.15, where: 'intro' }] : []),
       ...cards.filter((c) => c.card.say).map((c) => ({ text: c.card.say, start: c.t0 + 0.15, where: `step ${c.i + 1} card` })),
-      ...cards.filter((c) => c.scene && c.say).map((c) => ({ text: c.say, start: c.t0 + c.lead, where: `step ${c.i + 1} scene` })),
+      ...cards.filter((c) => c.scene && c.say).map((c) => ({ text: c.say, start: c.t0 + c.lead, where: `step ${c.i + 1} scene`, chunk: true })),
       ...segs.filter((g) => g.step.say).map((g) => ({ text: g.step.say, start: g.o0 + g.sayAt, where: `step ${g.i + 1}` })),
       ...(ec?.say ? [{ text: ec.say, start: VIDEO + 0.05, where: 'end card' }] : []),
     ],

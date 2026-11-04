@@ -621,7 +621,8 @@ export async function renderHyperframesCards(jobs, ctx, { log = console.log, war
       const sctx = { ...ctx, fontFaces: fontFaces(ctx.font) };
       const files = sceneAssets(job.scene.file);
       const key = hashOf(HF_VERSION, ctx.FPS, job.seconds.toFixed(3), job.lead, job.cues, job.say, ctx.W, ctx.H, ctx.accent, ctx.ink, ctx.font, ctx.lang, ctx.subs,
-        fs.existsSync(job.scene.file) ? fileHash(job.scene.file) : 'missing', ...Object.entries(files).map(([k, f]) => [k, fileHash(f)]));
+        fs.existsSync(job.scene.file) ? fileHash(job.scene.file) : 'missing', ...Object.entries(files).map(([k, f]) => [k, fileHash(f)]),
+        ...[...(job.kit?.css ?? []), ...(job.kit?.js ?? [])].map((f) => [f, fs.existsSync(f) ? fileHash(f) : 'missing']));
       const dir = path.join(root, `${job.name}-${key}`), frames = path.join(dir, 'frames');
       if (fs.existsSync(path.join(dir, 'done'))) { out[job.name] = { dir: frames, ext: 'jpg', alpha: false }; continue; }
       fs.rmSync(dir, { recursive: true, force: true });
