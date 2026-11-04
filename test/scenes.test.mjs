@@ -107,3 +107,20 @@ test('S.at() finds a phrase by number, from the end, or by its text', () => {
   vm.runInNewContext(sceneRuntime({ seconds: 3, lead: 0.5, cues: [] }, ctx), { window: none });
   assert.equal(none.__storyshot.at(2), 2.5); // no narration: lead + k seconds
 });
+
+test('a later fromTo on the same property waits for its start instead of rendering at once', async () => {
+  const { GSAP_GUARD } = await import('../src/scenes.mjs');
+  const calls = [];
+  function Timeline() {}
+  Timeline.prototype.fromTo = function (t, from, to, at) { calls.push({ t, to, at }); return this; };
+  const a = { id: 'a' }, b = { id: 'b' };
+  const gsap = { core: { Timeline }, utils: { toArray: (x) => [].concat(x) } };
+  vm.runInNewContext(GSAP_GUARD, { window: { gsap }, gsap });
+  const tl = new Timeline();
+  tl.fromTo(a, { opacity: 0 }, { opacity: 1, duration: 0.3 }, 1);      // first on a.opacity: renders at once
+  tl.fromTo(a, { opacity: 1 }, { opacity: 0, duration: 0.3 }, 5);      // later on a.opacity: waits
+  tl.fromTo(a, { x: 0 }, { x: 10, duration: 0.3 }, 6);                 // another property: first of its own
+  tl.fromTo(b, { opacity: 0 }, { opacity: 1, duration: 0.3 }, 7);      // another element
+  tl.fromTo(a, { opacity: 0 }, { opacity: 1, immediateRender: true }, 8); // said explicitly: kept
+  assert.deepEqual(calls.map((c) => c.to.immediateRender), [undefined, false, undefined, undefined, true]);
+});

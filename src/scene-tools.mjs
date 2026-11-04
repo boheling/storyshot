@@ -35,7 +35,7 @@ export async function previewScene(cfg, stepNo, { at, check = true, log = consol
   const { width: W, height: H, fps: FPS } = cfg.output;
   const { accent, ink, font } = cfg.theme;
   const ctx = { W, H, FPS, accent, ink, font, lang: cfg.lang, subs: cfg.subtitles === 'burn', fontFaces: sceneFontFaces(font) };
-  const job = { name: `step${stepNo}`, kind: 'scene', seconds, scene: s.scene, say: s.say, lead: s.scene.lead, cues, step: i };
+  const job = { name: `step${stepNo}`, kind: 'scene', seconds, scene: s.scene, say: s.say, lead: s.scene.lead, cues, step: i, preview: true };
   const dir = path.join(cfg.work, 'scene-preview', `step-${stepNo}`);
   fs.rmSync(dir, { recursive: true, force: true });
   writeSceneProject(job, ctx, dir);
@@ -75,16 +75,29 @@ export async function previewScene(cfg, stepNo, { at, check = true, log = consol
       for (const k of ['runtime', 'layout', 'contrast', 'craft']) {
         for (const f of j[k]?.findings ?? []) {
           if (f.severity === 'info') continue;
-          // only the video's own first frame is its thumbnail
-          if (f.code === 'first_frame_empty' && cfg.steps.findIndex((x) => !x.hidden) !== i) continue;
+          // only the video's own first frame is its thumbnail, and only its last line needs the long hold
+          const visible = cfg.steps.map((x, k) => (x.hidden ? -1 : k)).filter((k) => k >= 0);
+          if (f.code === 'first_frame_empty' && visible[0] !== i) continue;
+          if (f.code === 'line_unread' && /last line/i.test(f.message ?? '') && (visible.at(-1) !== i || cfg.endCard)) continue;
+          if (f.selector && /storyshot-subtitle-band/.test(f.selector)) continue;
           const where = [f.selector, f.time != null ? `at ${Number(f.time).toFixed(1)}s` : null].filter(Boolean).join(' ');
-          (f.severity === 'error' ? found.errors : found.warnings).push(`${f.code}${where ? ` (${where})` : ''}: ${f.message}`);
+          const hint = HINTS[f.code] ? ` → ${HINTS[f.code]}` : '';
+          (f.severity === 'error' ? found.errors : found.warnings).push(`${f.code}${where ? ` (${where})` : ''}: ${f.message}${hint}`);
         }
       }
     } catch { found.warnings.push(`the layout check could not run: ${(c.err || c.out).trim().split('\n').slice(-2).join(' | ')}`); }
   }
-  return { dir, seconds, cues: local, times, images, sheet, lint, check: check ? found : null };
+  return { dir, seconds, cues: local, times, images, sheet, lint, check: check ? found : null, subs: ctx.subs };
 }
+
+// What to do about the findings agents meet most in scenes (HyperFrames' own messages point at its docs).
+const HINTS = {
+  text_below_floor: 'text meant to be read: at least 28 px at 1080p; a source credit or a label that is only texture may stay small with data-layout-ignore on it',
+  escaped_container: 'a glow or a part meant to spill out of its box: add data-layout-allow-overflow to the box',
+  content_overlap: 'parts meant to overlap (a label on its object): add data-layout-allow-overlap to their container',
+  line_unread: 'hold the text longer: reveal it on an earlier phrase (S.at), or give the scene more tail: (seconds after the voice)',
+  text_occluded: 'text under another element: move one of them, or add data-layout-allow-occlusion if that is the point',
+};
 
 export function formatPreview(r, stepNo) {
   const list = (xs) => xs.map((x) => `    ${x}`).join('\n');
@@ -94,6 +107,7 @@ export function formatPreview(r, stepNo) {
     `  stills at ${r.times.join(', ')}s:`, ...r.images.map((f) => `    ${f}`), ...(r.sheet ? [`  contact sheet: ${r.sheet}`] : []),
     ...(r.lint.errors.length ? ['  ✖ lint errors:', list(r.lint.errors)] : []), ...(r.lint.warnings.length ? ['  ⚠ lint warnings:', list(r.lint.warnings)] : []),
     ...(r.check ? [r.check.errors.length || r.check.warnings.length ? '  layout check:' : '  ✔ layout check: nothing found', ...r.check.errors.map((e) => `    ✖ ${e}`), ...r.check.warnings.map((w) => `    ⚠ ${w}`)] : []),
-    `  look at every still: does each part appear when the voice names it, and does anything overlap, crop or sit under the subtitles?`,
+    `  look at every still: does each part appear when the voice names it, and does anything overlap, crop or sit under the subtitles${r.subs ? ' (the striped red band)' : ''}?`,
+    ...(r.lint.errors.length || r.lint.warnings.length || r.check?.errors.length || r.check?.warnings.length ? ['  (references/….md in these messages are HyperFrames docs: https://hyperframes.heygen.com)'] : []),
   ].join('\n');
 }

@@ -102,7 +102,7 @@ export function initExplainer({ topic, file, lang = 'en', portrait = false } = {
     ? ['TODO 一个观众会问的问题，一两句话。', 'TODO 用一个具体例子回答，每个短句对应画面上的一个变化。', 'TODO 一句话总结。']
     : ['TODO the question a viewer would ask, in one or two sentences.', 'TODO answer it with one concrete example, one change on screen per phrase.', 'TODO the idea in one line.'];
   const yaml = `# Storyshot storyboard (explainer) — every step is a scene: an animation you write as a HyperFrames
-# composition (scenes/*.html), timed to the step's narration. Reference: \`storyshot guide\` ("Explainers and scenes").
+# composition (scenes/*.html), timed to the step's narration. Reference: \`storyshot guide\` ("Scenes and explainers").
 # Loop: write the say: lines → storyshot cues (when each phrase is spoken) → write the scenes with S.at(k)
 #       → storyshot scene ${path.basename(file)} --step N (stills + checks) → storyshot render → look → fix.
 name: ${name}

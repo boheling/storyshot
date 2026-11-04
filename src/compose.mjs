@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { renderHyperframesCards } from './hyperframes.mjs';
-import { sceneSeconds } from './scenes.mjs';
+import { sceneSeconds, sceneIsDark } from './scenes.mjs';
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const md = (s, accent) => esc(s).replace(/\*\*(.+?)\*\*/g, `<b style="color:${accent};font-weight:700">$1</b>`);
@@ -386,7 +386,10 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   const u = H / 1080;
   // cards follow the frame: dark backdrops (aurora, dark, blur) get dark cards, so a dark app doesn't
   // cut to a white card; `cards: light | dark` overrides
-  const darkCards = cfg.cards === 'dark' || (cfg.cards !== 'light' && ['aurora', 'dark', 'blur'].includes(cfg.frame?.style));
+  // an explainer's cards match its scenes: dark cards when most scenes draw on a dark ground
+  const sceneGrounds = cfg.steps.filter((s) => s.scene && !s.hidden).map((s) => sceneIsDark(s.scene.file)).filter((d) => d != null);
+  const darkScenes = sceneGrounds.length > 0 && sceneGrounds.filter(Boolean).length * 2 > sceneGrounds.length;
+  const darkCards = cfg.cards === 'dark' || (cfg.cards !== 'light' && (['aurora', 'dark', 'blur'].includes(cfg.frame?.style) || (!cfg.frame && darkScenes)));
   const CK = darkCards
     ? { bg: `radial-gradient(${W * 0.62}px ${H * 0.65}px at 50% 40%,#1e2a44 0%,#111830 60%,#0b1020 100%)`, title: '#f1f5f9', sub: '#cbd5e1', muted: '#94a3b8', item: '#e2e8f0', track: '#26314d',
       pillBg: '#1a2238', pillFg: '#e2e8f0', pillLine: '1px solid #33405f', ctaBg: accent, ctaFg: ink, shadow: 'rgba(0,0,0,.45)' }

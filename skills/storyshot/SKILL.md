@@ -16,7 +16,8 @@ check → render → look at the preview → fix → repeat**, then deliver.
 
 A render takes 1–3 minutes and a paid voice costs credits, so a wrong guess
 about what the user wants is the most expensive mistake. Confirm the brief
-once, up front, before writing anything.
+once, up front, before writing anything (unless the user said not to ask:
+then state your choices in the reply).
 
 ## Tools
 
@@ -404,7 +405,8 @@ with no `say:` needs a `duration`. A scene has no `actions`, `caption` or
    you checked: a paper, the official docs, a database. Put the source on
    screen in small type where its number appears, and list the sources in your
    reply. Mark drawings that are schematic ("示意", "illustrative"). A
-   beautiful wrong diagram is worse than none.
+   beautiful wrong diagram is worse than none. (A credit line may be smaller
+   than the 28 px text floor: put `data-layout-ignore` on it.)
 2. **Story.** Start from something the viewer knows: a real case, their own
    question, one concrete example that runs through the whole video (one
    gene, one request, one dataset). Then one question per scene, answered by
@@ -462,9 +464,11 @@ with no `say:` needs a `duration`. A scene has no `actions`, `caption` or
   - `S.end(k)`: when phrase `k` ends.
   - `S.cues`: `[{ text, t, end }]` for every phrase.
   - `S.duration`, `S.width`, `S.height`, `S.lead`.
-  - `S.safeBottom`: the pixels at the bottom that burned-in subtitles take;
-    keep content above it. The same value is available as the CSS variable
-    `var(--safe-bottom)`.
+  - `S.safeBottom`: the pixels at the bottom that burned-in subtitles take
+    (16% of the height, 22% in portrait, 0 without `subtitles: burn`); keep
+    content above it. The same value is available as the CSS variable
+    `var(--safe-bottom)`. `preview_scene` draws this band on its stills as a
+    striped red strip.
   - `S.theme`: `{ accent, ink, font }`, also available as `var(--accent)`,
     `var(--ink)` and `var(--font)`. The font falls back to the machine's CJK
     font for Chinese.
@@ -476,7 +480,9 @@ with no `say:` needs a `duration`. A scene has no `actions`, `caption` or
 - **The object is the explanation.** Draw the actual thing, such as the
   molecule, the queue or the circuit, big enough to be the hero: at least 40%
   of the frame's width or height. Use the real data where it exists: a real
-  sequence, real numbers. Never show a small icon floating in an empty frame.
+  sequence, real numbers. Never show a small icon floating in an empty frame:
+  if a still is mostly empty ground, scale the diagram up until it fills the
+  frame.
 - **One diagram that grows.** Start from the simplest true picture and add one
   part per phrase, each when the voice names it, with its label on it (a
   leader line, not a legend). Never put the finished diagram on screen at
@@ -498,6 +504,29 @@ with no `say:` needs a `duration`. A scene has no `actions`, `caption` or
   would. Is every object recognisable without explanation, does each part
   appear when it is named, and does nothing overlap, crop or sit under the
   subtitles? Fix every ✖ from lint and the layout check.
+
+**Gotchas** (each one cost a real run several previews):
+- **Several tweens on one property.** Several `fromTo`s on the same property
+  of one element (fade a label in, later fade it out) are fine: Storyshot
+  gives every later one `immediateRender: false`, so it does not show its
+  start state from the first frame. With `to()` or `from()`, or a position
+  that is not a number, set `immediateRender: false` yourself.
+- **SVG sizes.** Animate them with `attr: { width: 300 }`. A CSS transform
+  on an SVG `<rect>` (`scaleX` with `transform-origin`) can render nothing.
+- **Lines that draw themselves.** Give the path `pathLength="1"`,
+  `stroke-dasharray: 1`, and tween `strokeDashoffset` from 1 to 0 with
+  `autoRound: false`. Without it, GSAP rounds the offset to whole pixels and
+  the line pops in instead of drawing.
+- **Layout check findings that are intended.**
+  - A glow that spills out of its box: `data-layout-allow-overflow` on the box.
+  - A label sitting on its object: `data-layout-allow-overlap` on the container.
+  - Small credits or texture: `data-layout-ignore`.
+- **"The film's last line needs 2 s".** Only the video's last scene must hold
+  its final words. Elsewhere, reveal text on an earlier phrase or raise
+  `tail:`.
+- **The ground under the cards.** Intro and end cards come out dark when most
+  scenes draw on a dark ground; `cards: light | dark` overrides that. Keep
+  end-card bullets short: about 10 Chinese characters or 5 English words each.
 
 Explainer defaults:
 - **Music:** `music: { style: calm }`, soft pads with no drums;
