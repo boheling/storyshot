@@ -11,6 +11,9 @@ Usage:
   storyshot init <url> [--purpose pitch|tutorial|course|docs] [--topic export-pdf] [--storage <site>-login.json]
                                     write a starter storyboard using verified targets from the page,
                                     named by type: videos/<site>-promo|tutorial|lesson|docs[-<topic>].yaml
+  storyshot init --purpose explainer --topic "how a TaqMan probe works" [--lang zh] [--portrait]
+                                    a concept explained with animated scenes (no web app): a storyboard
+                                    of scene steps + starter scene files in videos/scenes/
   storyshot login <url> [--save videos/<site>-login.json]
                                     open a browser window to log in once; saves the session for
                                     \`storageState:\` (and adds it to .gitignore)
@@ -23,6 +26,11 @@ Usage:
   storyshot compose <storyboard.yaml>     re-compose from the last recording
                                     (after changing captions, durations, zoom, music, voice, end card)
   storyshot record  <storyboard.yaml>     only (re-)record the browser session
+  storyshot cues    <storyboard.yaml>     when each phrase of each scene's narration is spoken
+                                    (the times S.at(k) returns in the scene); synthesizes the voice
+  storyshot scene   <storyboard.yaml> --step N [--at 1.5,4] [--no-check]
+                                    preview one scene: stills as each phrase is spoken (or at --at
+                                    seconds), HyperFrames lint and layout check — without a full render
   storyshot guide                   print the agent playbook + storyboard reference
   storyshot setup <agent>          add the MCP server + playbook to this project for your coding agent:
                                     cursor, claude, codex, gemini, vscode (Copilot), windsurf, cline —
@@ -41,8 +49,10 @@ Options:
 const args = process.argv.slice(2);
 const [cmd, arg] = args;
 const flag = (name) => { const i = args.indexOf(`--${name}`); return i > 0 ? args[i + 1] : undefined; };
-const NEEDS_ARG = ['login', 'init', 'inspect', 'check', 'render', 'compose', 'record', 'setup'];
-if (![...NEEDS_ARG, 'mcp', 'guide', 'doctor'].includes(cmd) || (NEEDS_ARG.includes(cmd) && !arg)) {
+const NEEDS_ARG = ['login', 'init', 'inspect', 'check', 'render', 'compose', 'record', 'setup', 'cues', 'scene'];
+// an explainer has no url to start from: `storyshot init --purpose explainer --topic …`
+const explainerInit = cmd === 'init' && flag('purpose') === 'explainer';
+if (![...NEEDS_ARG, 'mcp', 'guide', 'doctor'].includes(cmd) || (NEEDS_ARG.includes(cmd) && !arg && !explainerInit)) {
   process.stdout.write(USAGE);
   process.exit(['--help', '-h', 'help'].includes(cmd) ? 0 : 1);
 }
@@ -92,6 +102,21 @@ try {
     const r = await login(arg, { file: flag('save') ?? authFileFor(arg), viewport: viewport() });
     console.log(`✔ saved the login session to ${r.file} (${r.how}, ${r.cookies} cookies, ${r.siteCookies} for this site${r.sessionStorage ? `, sessionStorage for ${r.sessionStorage} site(s)` : ''})${r.gitignore ? `\n  added it to ${r.gitignore}` : ''}` +
       `\n  use it: \`storageState: ${r.file.split(/[\\/]/).pop()}\` in the storyboard (path relative to the yaml), or \`--storage ${r.file}\` for inspect/init`);
+  } else if (explainerInit) {
+    const { initExplainer } = await import('../src/init.mjs');
+    const r = initExplainer({ topic: flag('topic'), file: flag('file'), lang: flag('lang'), portrait: args.includes('--portrait') });
+    console.log(`✔ wrote ${r.file}\n${r.scenes.map((f) => `  + ${f}`).join('\n')}\n  next: write the say: lines, then \`storyshot cues ${r.file}\` and the scenes; preview one with \`storyshot scene ${r.file} --step 1\``);
+  } else if (cmd === 'cues') {
+    const { sceneCues } = await import('../src/scene-tools.mjs');
+    const r = await sceneCues(loadConfig(arg, { draft: args.includes('--draft') }));
+    console.log(`${r.text || 'no scene steps in this storyboard'}\n\n✔ ${r.file}`);
+  } else if (cmd === 'scene') {
+    const { previewScene, formatPreview } = await import('../src/scene-tools.mjs');
+    const step = Number(flag('step'));
+    if (!(step >= 1)) throw new Error('which scene? --step N (the step number in the storyboard, from 1)');
+    const at = flag('at') ? flag('at').split(',').map(Number).filter((x) => x >= 0) : null;
+    const r = await previewScene(loadConfig(arg, { draft: args.includes('--draft') }), step, { at, check: !args.includes('--no-check') });
+    console.log(formatPreview(r, step));
   } else if (cmd === 'init') {
     const { initStoryboard } = await import('../src/init.mjs');
     const r = await initStoryboard(arg, { purpose: flag('purpose') ?? 'pitch', topic: flag('topic'), file: flag('file'), storageState: flag('storage'), ignoreHTTPSErrors: args.includes('--insecure'), viewport: viewport() });

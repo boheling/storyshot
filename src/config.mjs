@@ -4,6 +4,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { VOICE_DEFAULTS, kokoroVoiceFor, qwenVoiceFor } from './voice.mjs';
 import { QWEN_VOICES, qwenSupported, qwenVoice } from './qwen-tts.mjs';
+import { SCENE_DEFAULTS } from './scenes.mjs';
 
 // Built-in labels drawn into the video, by `lang` (e.g. es, es-MX); other languages get English
 export const LABELS = {
@@ -35,6 +36,8 @@ export const PURPOSES = {
   tutorial: { duration: 'auto', music: { bpm: 96, volume: 0.35 },  sfx: 'clicks', highlight: true,  stepNumbers: true,  subtitles: true,  chapters: true,  clips: null, frame: 'studio', pace: 'slow', follow: true, hyperframes: true },
   course:   { duration: 'auto', music: false,                     sfx: 'clicks', highlight: true,  stepNumbers: false, subtitles: true,  chapters: true,  clips: null, frame: 'studio', pace: 'slow', follow: true, hyperframes: true },
   docs:     { duration: 'auto', music: false,                     sfx: false, highlight: true,  stepNumbers: true,  subtitles: false, chapters: false, clips: ['gif', 'png'], frame: false, pace: 'normal', follow: false, hyperframes: false },
+  // a concept explained with animated scenes the agent writes (no web app to record)
+  explainer: { duration: 'auto', music: { style: 'calm', bpm: 64, volume: 0.3 }, sfx: false, highlight: false, stepNumbers: false, subtitles: true, chapters: true, clips: null, frame: false, pace: 'normal', follow: false, hyperframes: true },
 };
 
 // Where storyboards and their videos go, and how they're named: <site>-<kind>[-<topic>].yaml →
@@ -52,7 +55,7 @@ export const PACES = {
 export const FRAME_STYLES = ['aurora', 'studio', 'dark', 'pastel', 'blur'];
 
 export const VIDEO_DIR = 'videos';
-export const KINDS = { pitch: 'promo', tutorial: 'tutorial', course: 'lesson', docs: 'docs' };
+export const KINDS = { pitch: 'promo', tutorial: 'tutorial', course: 'lesson', docs: 'docs', explainer: 'explainer' };
 // pxgenius.ai → pxgenius; an IP or a port is kept whole so two internal apps don't share a name
 // (http://10.1.2.3:8080 → 10-1-2-3-8080, http://localhost:3000 → localhost-3000)
 export const siteOf = (url) => {
@@ -70,7 +73,8 @@ export const certError = (e, url) => (/ERR_CERT|ERR_SSL/.test(e?.message ?? '')
 const slug = (s) => String(s).toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 
 export function defaultStoryboard(url, purpose = 'pitch', topic) {
-  const base = [siteOf(url), KINDS[purpose] ?? purpose, topic && slug(topic)].filter(Boolean).join('-');
+  // an explainer has no site: it is named by its topic
+  const base = (url ? [siteOf(url), KINDS[purpose] ?? purpose, topic && slug(topic)] : [topic && slug(topic), KINDS[purpose] ?? purpose]).filter(Boolean).join('-');
   for (let i = 1; ; i++) {
     const file = path.join(VIDEO_DIR, `${base}${i > 1 ? `-${i}` : ''}.yaml`);
     if (!fs.existsSync(file)) return file;
@@ -86,8 +90,9 @@ export function loadConfig(file, { draft = false } = {}) {
   const raw = YAML.parse(fs.readFileSync(abs, 'utf8'));
   const dir = path.dirname(abs);
   const name = raw.name ?? path.basename(abs).replace(/\.ya?ml$/, '');
-  if (!raw.url) throw new Error('demo.yaml: `url` is required');
   if (!Array.isArray(raw.steps) || !raw.steps.length) throw new Error('demo.yaml: `steps` must be a non-empty list');
+  // only a storyboard made entirely of scenes has nothing to record
+  if (!raw.url && !raw.steps.every((s) => s?.scene || s?.hidden)) throw new Error('demo.yaml: `url` is required (only a storyboard whose steps are all scenes can leave it out)');
 
   const viewport = { width: 1600, height: 900, ...raw.viewport };
   const output = { width: 1920, height: 1080, fps: 30, ...raw.output };
@@ -103,6 +108,17 @@ export function loadConfig(file, { draft = false } = {}) {
   if (!PACES[pick('pace')]) throw new Error(`pace must be one of ${Object.keys(PACES).join(', ')}`);
 
   const steps = raw.steps.map((s, i) => {
+    // scene: an animation the agent wrote (see scenes.mjs), timed to the step's narration
+    let scene;
+    if (s.scene) {
+      const sc = typeof s.scene === 'string' ? { file: s.scene } : s.scene;
+      if (!sc.file) throw new Error(`step ${i + 1}: scene needs a file: \`scene: scenes/<name>.html\``);
+      if (s.actions?.length) throw new Error(`step ${i + 1}: a scene plays its own animation instead of the web app, so it has no actions — move them into a step of their own`);
+      if (!s.say && typeof s.duration !== 'number') throw new Error(`step ${i + 1}: a scene without a say: line needs a duration in seconds`);
+      scene = { ...SCENE_DEFAULTS, ...sc, file: path.resolve(dir, sc.file) };
+      const card = s.card ? { ...s.card, ...(s.card.image ? { imageFile: path.resolve(dir, s.card.image) } : {}) } : undefined;
+      return { ...s, actions: [], duration: typeof s.duration === 'number' ? s.duration : 'auto', card, scene };
+    }
     const duration = s.duration ?? P.duration;
     if (!s.hidden && duration !== 'auto' && !(duration > 0)) {
       throw new Error(`step ${i + 1}: visible steps need a positive \`duration\` in seconds, or \`duration: auto\``);
@@ -178,6 +194,7 @@ export function loadConfig(file, { draft = false } = {}) {
   const clips = [].concat(pick('clips') ?? []).filter(Boolean);
   for (const c of clips) if (!['gif', 'webm', 'mp4', 'png'].includes(c)) throw new Error('clips must be gif, webm, mp4 or png (or a list of them)');
   if (music?.file) music.file = path.resolve(dir, music.file);
+  if (music?.style && !['calm'].includes(music.style)) throw new Error('music.style must be calm (or leave it out for the upbeat synth)');
 
   return {
     name,
@@ -189,7 +206,7 @@ export function loadConfig(file, { draft = false } = {}) {
     clips,
     pace: { name: pick('pace'), ...PACES[pick('pace')] },
     maxWait: raw.maxWait ?? PACES[pick('pace')].maxWait,
-    url: raw.url,
+    url: raw.url ?? null,
     viewport,
     output,
     scale,

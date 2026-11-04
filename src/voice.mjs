@@ -201,6 +201,54 @@ export function sentenceGaps(pcm, sents) {
   });
 }
 
+// The phrases of a line, for scenes that animate on the words: its sentences, each split after a
+// comma-like mark (, ; : ， 、 ； ：), which stays with the phrase before it.
+export const PHRASE_BREAK = /(?<=[,;:，、；：])\s*/;
+export function phrases(text) {
+  return sentences(text).flatMap((s) => s.split(PHRASE_BREAK).map((p) => p.trim()).filter(Boolean));
+}
+
+// When each phrase of a spoken line starts and ends, in seconds into the line. parts: speak()'s
+// sentences (exact: their pauses were cut and widened). Inside a sentence each comma's expected time,
+// from the letters spoken before it, takes the nearest quiet stretch of 60 ms or more; a comma the
+// voice runs straight through keeps its estimate.
+export function phraseTimes(pcm, parts) {
+  const n = Math.floor(pcm.length / 2 / WIN), env = new Float32Array(n);
+  let peak = 0;
+  for (let w = 0; w < n; w++) {
+    let e = 0;
+    for (let i = w * WIN; i < (w + 1) * WIN; i++) e = Math.max(e, Math.abs(pcm[2 * i]), Math.abs(pcm[2 * i + 1]));
+    env[w] = e; peak = Math.max(peak, e);
+  }
+  const thr = peak * 0.02, out = [];
+  for (const p of parts) {
+    const ph = p.text.split(PHRASE_BREAK).map((x) => x.trim()).filter(Boolean);
+    if (ph.length < 2) { out.push({ text: p.text, t: p.start, end: p.end }); continue; }
+    const a = Math.max(1, Math.floor(p.start * 100)), b = Math.min(n - 1, Math.ceil(p.end * 100)), qs = [];
+    for (let w = a; w < b;) {
+      if (env[w] >= thr) { w++; continue; }
+      const q0 = w;
+      while (w < b && env[w] < thr) w++;
+      if (w - q0 >= 6) qs.push([q0 / 100, w / 100]);
+    }
+    const total = letters(p.text) || 1;
+    let before = 0, used = -1, t = p.start;
+    for (let k = 0; k < ph.length; k++) {
+      before += letters(ph[k]);
+      if (k === ph.length - 1) { out.push({ text: ph[k], t, end: p.end }); break; }
+      const est = p.start + (before / total) * (p.end - p.start);
+      let best = null;
+      qs.forEach((q, j) => {
+        const mid = (q[0] + q[1]) / 2;
+        if (j > used && Math.abs(mid - est) < 0.6 && (!best || Math.abs(mid - est) < Math.abs(best.mid - est))) best = { j, mid, q };
+      });
+      if (best) { used = best.j; out.push({ text: ph[k], t, end: best.q[0] }); t = best.q[1]; }
+      else { out.push({ text: ph[k], t, end: est }); t = est; }
+    }
+  }
+  return out.map((c) => ({ text: c.text, t: +c.t.toFixed(3), end: +Math.max(c.t, c.end).toFixed(3) }));
+}
+
 // A line as stereo Float32 PCM at 48 kHz, spoken in one go (so the voice keeps its flow from sentence
 // to sentence), with each pause between sentences widened to at least `voice.pause` seconds: voices
 // often run sentences together with barely a breath. parts: where each sentence is, in seconds (for
@@ -242,7 +290,7 @@ export function tempo(pcm, factor) {
 // so `duration: auto` steps can be timed to the voice.
 export async function measureVoice(cfg, { log = console.log } = {}) {
   const seconds = ({ pcm }) => pcm.length / 2 / SR;
-  const lens = { steps: {}, endCard: null, intro: null, cards: {} };
+  const lens = { steps: {}, endCard: null, intro: null, cards: {}, cues: {} };
   if (!cfg.voice) return lens;
   if (cfg.voice.fallback) log(`note: ${cfg.voice.fallback}`);
   const zh = cfg.voice.provider === 'kokoro' && isZhVoice(cfg.voice.voice);
@@ -253,7 +301,12 @@ export async function measureVoice(cfg, { log = console.log } = {}) {
     await (zh ? synthZh : synthQwen)(cfg.voice, [...todo.values()], { log });
   }
   for (const [i, s] of cfg.steps.entries()) {
-    if (s.say && !s.hidden) lens.steps[i] = seconds(await speak(cfg, s.say, { log }));
+    if (s.say && !s.hidden) {
+      const sp = await speak(cfg, s.say, { log });
+      lens.steps[i] = seconds(sp);
+      // a scene animates on the words: when each phrase is spoken
+      if (s.scene) lens.cues[i] = phraseTimes(sp.pcm, sp.parts);
+    }
     if (s.card?.say && !s.hidden) lens.cards[i] = seconds(await speak(cfg, s.card.say, { log }));
   }
   if (cfg.intro?.say) lens.intro = seconds(await speak(cfg, cfg.intro.say, { log }));

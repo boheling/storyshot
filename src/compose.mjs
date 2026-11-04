@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { renderHyperframesCards } from './hyperframes.mjs';
+import { sceneSeconds } from './scenes.mjs';
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const md = (s, accent) => esc(s).replace(/\*\*(.+?)\*\*/g, `<b style="color:${accent};font-weight:700">$1</b>`);
@@ -88,6 +89,16 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       pieces.push({ raw: [r.start, r.start], o0: acc + (prev != null ? 0.25 : 0), o1: acc + C });
       cards.push({ i, t0: acc, t1: acc + C, card: s.card, thinkAt: C - (s.card.think ?? 0) - 0.3 });
       acc += C;
+    }
+    if (s.scene) {
+      // a scene is its own picture (the last frame shown holds under it) for as long as its narration needs
+      const C = sceneSeconds(s, voiceLens.steps[i]);
+      const prev = pieces.at(-1)?.raw[1] ?? r.start;
+      pieces.push({ raw: [prev, prev], o0: acc, o1: acc + C });
+      cards.push({ i, t0: acc, t1: acc + C, card: { title: s.scene.title ?? '' }, scene: s.scene, say: s.say, lead: s.scene.lead, cues: voiceLens.cues?.[i] ?? [] });
+      acc += C;
+      afterHidden = false;
+      continue;
     }
     const g = { i, step: s, o0: acc, o1: acc + D, sayAt, zoomBox: r.zoomBox, afterHidden, hold,
       motionSpeed: M && motionBudget ? M / motionBudget : 1, waitSpeed: Wt && waitBudget ? Wt / waitBudget : 1 };
@@ -185,7 +196,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     const report = (to) => {
       if (from != null && to - from >= 3) {
         const ns = segs.filter((x) => x.o1 > from + 1e-6 && x.o0 < to - 1e-6).map((x) => x.i + 1);
-        warn(`${ns.length > 1 ? `steps ${ns[0]}–${ns.at(-1)}` : `step ${ns[0] ?? segs.at(-1).i + 1}`}: ${(to - from).toFixed(1)}s of dead air at ${from.toFixed(1)}–${to.toFixed(1)}s (nothing moves and nothing is said) — shorten the wait or pause, hide the load, or narrate what is happening`);
+        warn(`${ns.length > 1 ? `steps ${ns[0]}–${ns.at(-1)}` : `step ${ns[0] ?? (segs.at(-1)?.i ?? cfg.steps.length - 1) + 1}`}: ${(to - from).toFixed(1)}s of dead air at ${from.toFixed(1)}–${to.toFixed(1)}s (nothing moves and nothing is said) — shorten the wait or pause, hide the load, or narrate what is happening`);
       }
       from = null;
     };
@@ -485,7 +496,10 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   // what each HyperFrames card is about: its text, when its narration plays (card seconds), and
   // pictures from the recording (the page it leads into, blurred, as a backdrop; for a launch intro, the
   // first page sharp, and where the app shows the intro's logo, so the logo can land there)
+  // scenes: rendered with HyperFrames whatever `hyperframes:` says (they are HyperFrames compositions);
+  // the cards only when it is on
   function hfJobs() {
+    if (!cfg.hyperframes) return cards.flatMap((c, k) => (c.scene ? [sceneJob(c, k)] : []));
     const launch = cfg.hyperframes.template === 'launch';
     const seqAt = (t) => path.join(SEQ, `${String(Math.min(nFrames - 1, Math.max(0, Math.round(t * FPS)))).padStart(5, '0')}.jpg`);
     const blurred = (t, name) => {
@@ -522,6 +536,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
         page: launch && nFrames ? seqAt(INTRO) : null, backdrop: launch ? null : blurred(INTRO + 0.05, 'intro') });
     }
     for (const [k, c] of cards.entries()) {
+      if (c.scene) { jobs.push(sceneJob(c, k)); continue; }
       jobs.push({ name: `card${k}`, kind: 'section', seconds: c.t1 - c.t0, card: c.card, voice: voice(c.card.say, 0.15, voiceLens.cards?.[c.i]),
         index: k, of: cards.length, thinkAt: c.thinkAt, image: c.card.imageFile, backdrop: blurred(c.t1 + 0.05, `card${k}`) });
     }
@@ -534,10 +549,13 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     return jobs;
   }
 
+  function sceneJob(c, k) {
+    return { name: `card${k}`, kind: 'scene', seconds: c.t1 - c.t0, scene: c.scene, say: c.say, lead: c.lead, cues: c.cues, step: c.i };
+  }
   // the cards: HyperFrames compositions when asked for (`hyperframes:`), else (or for any card that
   // doesn't render) the built-in ones. A launch outro is drawn with transparency over the last frame,
   // which the ffmpeg pass below zooms into the page.
-  const hf = cfg.hyperframes ? await renderHyperframesCards(hfJobs(), {
+  const hf = cfg.hyperframes || cards.some((c) => c.scene) ? await renderHyperframesCards(hfJobs(), {
     W, H, FPS, dark: darkCards, accent, ink, font, lang: cfg.lang, labels: cfg.labels, opts: cfg.hyperframes, work: cfg.work, subs: cfg.subtitles === 'burn',
     frame: { FX, FY, FW, FH, ...Object.fromEntries([['frameBg', 'frame-bg.png'], ['chrome', 'frame-chrome.png'], ['url', 'frame-url0.png']]
       .map(([k, f]) => [k, cfg.frame && fs.existsSync(path.join(cfg.work, f)) ? path.join(cfg.work, f) : null])) },
@@ -555,6 +573,10 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   }
   for (const [k, c] of cards.entries()) {
     if (hf[`card${k}`]) place(`card${k}`, c.t1 - c.t0);
+    else if (c.scene) {
+      await browser.close();
+      throw new Error(`step ${c.i + 1}: the scene ${path.relative(process.cwd(), c.scene.file)} did not render${hf._errors?.[`card${k}`] ? `: ${hf._errors[`card${k}`]}` : ''} — preview it with \`storyshot scene <storyboard> --step ${c.i + 1}\` (MCP: preview_scene), fix it, and render again`);
+    }
     else await animate(card(c.card, c.card.logoFile ?? '', { thinkAt: c.thinkAt }), c.t1 - c.t0, path.join(cfg.work, `card${k}`));
   }
   if (in0) {
@@ -607,7 +629,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     const lead = in0 && Math.abs(c.t0 - INTRO) < 0.02 ? Math.min(0.2, INTRO) : 0, s0 = c.t0 - lead;
     inputs.push('-framerate', `${FPS}`, '-i', path.join(cfg.work, `card${k}`, '%04d.jpg'));
     graph += `[${idx}:v]format=rgba,${lead ? `tpad=start_duration=${lead.toFixed(3)}:start_mode=clone,` : ''}setpts=PTS-STARTPTS+${s0.toFixed(3)}/TB,` +
-      `${lead ? '' : `fade=in:st=${c.t0.toFixed(3)}:d=0.15:alpha=1,`}fade=out:st=${Math.max(c.t0, c.t1 - 0.15).toFixed(3)}:d=0.15:alpha=1[sc${k}];\n` +
+      `${lead || c.scene ? '' : `fade=in:st=${c.t0.toFixed(3)}:d=0.15:alpha=1,`}${c.scene ? 'null' : `fade=out:st=${Math.max(c.t0, c.t1 - 0.15).toFixed(3)}:d=0.15:alpha=1`}[sc${k}];\n` +
       `[${last}][sc${k}]overlay=0:0:eof_action=pass:enable='between(t,${s0.toFixed(3)},${c.t1.toFixed(3)})'[v${++idx}];\n`;
     last = `v${idx}`;
   }
@@ -652,7 +674,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   // --- 6. preview contact sheet: one frame per step (at its zoom peak) + end card ------------
   // zoomed steps: at the zoom peak; others: late in the step, where its actions' result is visible
   const shots = segs.map((g) => ({ t: Math.min(g.o1 - 0.05, g.zoomPeak ?? g.o0 + (g.o1 - g.o0) * 0.8), label: `step ${g.i + 1} · ${g.o0.toFixed(1)}–${g.o1.toFixed(1)}s${g.step.zoom ? ' · zoom' : ''}`, caption: g.step.caption ?? '' }));
-  for (const c of cards) shots.push({ t: c.t0 + (c.t1 - c.t0) * 0.85, label: `card · ${c.t0.toFixed(1)}–${c.t1.toFixed(1)}s`, caption: c.card.title ?? '' });
+  for (const c of cards) shots.push({ t: c.t0 + (c.t1 - c.t0) * 0.85, label: `${c.scene ? `step ${c.i + 1} scene` : 'card'} · ${c.t0.toFixed(1)}–${c.t1.toFixed(1)}s`, caption: c.card.title || (c.scene ? path.basename(c.scene.file) : '') });
   shots.sort((a, b) => a.t - b.t);
   if (in0) shots.unshift({ t: INTRO * 0.8, label: `intro · 0.0–${INTRO.toFixed(1)}s`, caption: '' });
   if (ec) shots.push({ t: VIDEO + END / 2, label: `end card · ${VIDEO.toFixed(1)}–${TOTAL.toFixed(1)}s`, caption: '' });
@@ -685,7 +707,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
         .map(toOut).filter((t) => t != null && t > 0.2),
       ...segs.filter((g) => g.afterHidden).map((g) => g.o0),
       ...(in0 ? [INTRO - 0.2] : []),
-      ...cards.flatMap((c) => [c.t0, c.t1 - 0.15]),
+      ...cards.filter((c) => !c.scene).flatMap((c) => [c.t0, c.t1 - 0.15]),
       ...(ec ? [VIDEO - 0.25] : []),
     ]),
     risers: segs.filter((g) => g.step.sfx === 'riser').map((g) => [g.o0, g.o1]),
@@ -694,6 +716,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     voice: [
       ...(in0?.say ? [{ text: in0.say, start: 0.15, where: 'intro' }] : []),
       ...cards.filter((c) => c.card.say).map((c) => ({ text: c.card.say, start: c.t0 + 0.15, where: `step ${c.i + 1} card` })),
+      ...cards.filter((c) => c.scene && c.say).map((c) => ({ text: c.say, start: c.t0 + c.lead, where: `step ${c.i + 1} scene` })),
       ...segs.filter((g) => g.step.say).map((g) => ({ text: g.step.say, start: g.o0 + g.sayAt, where: `step ${g.i + 1}` })),
       ...(ec?.say ? [{ text: ec.say, start: VIDEO + 0.05, where: 'end card' }] : []),
     ],
@@ -716,5 +739,5 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
     let cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
     g.crop = { x: even(Math.max(0, Math.min(W - w, cx - w / 2))), y: even(Math.max(0, Math.min(H - h, cy - h / 2))), w: even(w), h: even(h) };
   }
-  return { silent, clean, events, preview, warnings, captions, cards: cards.map((c) => ({ t: c.t0, title: [c.card.kicker, c.card.title].filter(Boolean).join(' · ') })), segs: segs.map((g) => ({ i: g.i, o0: g.o0, o1: g.o1, caption: g.step.caption, doc: g.step.doc ?? g.step.say, crop: g.crop })) };
+  return { silent, clean, events, preview, warnings, captions, cards: cards.filter((c) => !c.scene || c.card.title).map((c) => ({ t: c.t0, title: [c.card.kicker, c.card.title].filter(Boolean).join(' · ') })), segs: segs.map((g) => ({ i: g.i, o0: g.o0, o1: g.o1, caption: g.step.caption, doc: g.step.doc ?? g.step.say, crop: g.crop })) };
 }

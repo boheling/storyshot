@@ -143,8 +143,12 @@ After your next release, re-render it and you have an up-to-date video.
 |---|---|---|
 | a promo / launch / landing-page clip | `pitch` | short and tightly cut: intro card, the app in a browser frame, music, captions |
 | a how-to or onboarding video | `tutorial` | paced to follow along: one narrated action per step, the camera following each click, part cards, a second example, a recap; `.srt` + chapters |
-| a lesson or explainer | `course` | explains the *why*: concept cards, the idea shown in the app, question cards, a recap, no music; `.srt` + chapters |
+| a lesson | `course` | explains the *why*: concept cards, the idea shown in the app, question cards, a recap, no music; `.srt` + chapters |
 | help-center snippets | `docs` | silent per-step GIFs and PNGs cropped to the action, plus a ready-to-paste Markdown article |
+| an animated explainer of how something works | `explainer` | no web app: every step is a **scene**, an animation the agent writes and times to the narration (a mechanism, a diagram that grows, a number); calm music, subtitles, chapters |
+
+Tutorials and lessons can use scenes too: a `scene:` step between recorded
+steps explains an idea the app can't show, then the video goes back to the app.
 
 Length follows the purpose and the content, not a target: a promo is as short as
 its message, a tutorial as long as the workflow takes to explain.
@@ -199,6 +203,8 @@ from `storyshot guide`.
 | `init_storyboard` | Writes a starter storyboard with verified targets. |
 | `check_storyboard` | Validates in about a second: typos with "did you mean", action and target shapes, `TODO`s, keys, the session file, and narration that sounds machine-written ("not just X, but Y", "seamless", 赋能…) or runs on without a breath. |
 | `render_video` / `render_status` | Renders in the background and returns the MP4 path, warnings, a per-step speed log and the preview image. If the render isn't done within 45 s, it returns a `job_id`, so client tool timeouts never kill a render. |
+| `scene_cues` | For scene steps: synthesizes the narration and returns when each phrase is spoken (the times `S.at(k)` gives the scene). |
+| `preview_scene` | Stills of one scene a beat into each phrase, plus HyperFrames lint and its layout check, in 20–40 s, without rendering the video. |
 
 Any other MCP client: run `npx -y storyshot mcp` (stdio), and point the agent at the playbook (`storyshot guide`). When run from a git
 checkout, `setup` points to `node /path/to/checkout/bin/storyshot.mjs mcp` instead.
@@ -222,6 +228,9 @@ Everything the agent does is also a command:
 | `storyshot render videos/acme-promo.yaml [--draft]` | Record, then compose the video and soundtrack. |
 | `storyshot compose videos/acme-promo.yaml [--draft]` | Rebuild from the last recording, in seconds. |
 | `storyshot record videos/acme-promo.yaml` | Only record. |
+| `storyshot init --purpose explainer --topic "how a TaqMan probe works" [--lang zh] [--portrait]` | Write an explainer storyboard of scene steps and a starter scene file for each (`videos/scenes/`). |
+| `storyshot cues videos/<name>.yaml` | When each phrase of each scene's narration is spoken. |
+| `storyshot scene videos/<name>.yaml --step 2 [--at 1.5,4] [--no-check]` | Preview one scene: stills, lint and layout check. |
 | `storyshot guide` | Print the playbook and the reference. |
 | `storyshot setup <agent>` (`cursor`, `claude`, `codex`, `gemini`, `vscode`, `windsurf`, `cline`) | Set up the MCP server and the skill in this project, and install or check what Storyshot needs. |
 | `storyshot doctor` | Check Node, ffmpeg (and the filters and encoders Storyshot uses), Chromium and voices; install Chromium if it's missing. |
@@ -474,6 +483,39 @@ usually shouldn't.
 | `duration` | Seconds. Default: fits the `say` line, else 1.0 (end card) or 2.2 (intro). |
 | `say` | Voiceover line played over the end card. |
 | `emblem` | With `hyperframes`: one to three short monospace lines over the title (an alignment, a formula, a line of code); `false` for none. On HyperFrames cards, text too long for the frame (a title, subtitle, emblem or call to action) wraps and then shrinks until it fits. |
+
+### Scenes
+
+A `scene:` step plays an animation you write instead of a recording: one
+[HyperFrames](https://hyperframes.heygen.com) composition (a `<template>` with a
+root whose `id` equals its `data-composition-id`, and one paused GSAP timeline
+registered as `window.__timelines['<id>']`). It is as long as the step's `say:`
+line needs, and reads its timing from `window.__storyshot`: `S.at(k)` is when
+phrase `k` of the line is spoken (phrases end at sentence ends and commas),
+`S.end(k)` when it ends, `S.cues` all of them. It also gets `S.duration`, the
+frame size, `S.safeBottom` (the room the burned-in subtitles take) and the theme
+as CSS variables (`--accent`, `--ink`, `--font`). Media go in `assets/` next to
+the scene file.
+
+```yaml
+purpose: explainer          # scenes only: no url, nothing recorded
+voice: { provider: qwen, voice: dylan }
+subtitles: burn
+steps:
+  - scene: scenes/question.html                       # or { file, title, lead: 0.5, tail: 0.8 }
+    say: An intact probe carries a dye. Why doesn't it glow?
+  - scene: { file: scenes/fret.html, title: Quenching }
+    say: The quencher sits right next to the dye, and takes its energy before it can become light.
+```
+
+`lead` is how long the scene plays before the voice starts (default 0.5 s), and
+`tail` is how long it holds after the voice ends (default 0.8 s). Consecutive
+scenes cut into each other. Scenes are cached like cards, so `compose`
+re-renders only the ones that changed. `storyshot check` validates the
+contract, and `storyshot scene` runs the full HyperFrames lint and layout check
+on one scene. The playbook's "Scenes and explainers" says how to write scenes
+that explain. `music: { style: calm }` (the explainer default) is a soft pad
+with no drums.
 
 ### HyperFrames cards
 

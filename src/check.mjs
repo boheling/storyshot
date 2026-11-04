@@ -6,6 +6,8 @@ import { gitIgnored } from './auth.mjs';
 import { isZhVoice, zhVoiceStatus } from './kokoro-zh.mjs';
 import { qwenStatus } from './qwen-tts.mjs';
 import { sentences } from './voice.mjs';
+import { sceneInfo } from './scenes.mjs';
+import path from 'node:path';
 
 // Phrases that mark narration as machine-written, and sentences too long to say in one breath.
 const TELLS = [
@@ -36,7 +38,8 @@ export function narrationLint(text) {
 
 const TOP = ['name', 'url', 'out', 'purpose', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'intro', 'frame', 'pace', 'follow', 'article', 'cards', 'lang', 'colorScheme',
   'scrollOffset', 'captionPosition', 'captions', 'highlight', 'stepNumbers', 'subtitles', 'chapters', 'clips', 'maxWait', 'setup', 'steps', 'end_card', 'hyperframes'];
-const STEP = ['caption', 'say', 'sayAt', 'duration', 'zoom', 'actions', 'hidden', 'sfx', 'highlight', 'captionPosition', 'card', 'follow', 'doc'];
+const STEP = ['caption', 'say', 'sayAt', 'duration', 'zoom', 'actions', 'hidden', 'sfx', 'highlight', 'captionPosition', 'card', 'follow', 'doc', 'scene'];
+const SCENE = ['file', 'title', 'lead', 'tail'];
 const ZOOM = ['target', 'scale', 'start', 'end', 'ramp', 'offset'];
 const END = ['logo', 'title', 'subtitle', 'cta', 'duration', 'say', 'kicker', 'bullets', 'image', 'think', 'emblem'];
 const HYPERFRAMES = ['template', 'band', 'bandColors', 'emblem', 'hand', 'backdrop'];
@@ -103,9 +106,14 @@ export function check(file, { draft = false } = {}) {
     if (!Array.isArray(s.actions ?? [])) errors.push(`${where}: actions must be a list`);
     for (const [j, a] of (s.actions ?? []).entries()) checkAction(a, `${where} action ${j + 1}`);
     if (s.card) unknown(s.card, END, `${where} card`);
+    if (s.scene) {
+      if (typeof s.scene === 'object') unknown(s.scene, SCENE, `${where} scene`);
+      for (const k of ['caption', 'zoom', 'sayAt', 'follow', 'highlight']) if (s[k] != null) warnings.push(`${where}: ${k} does nothing on a scene (a scene draws its own picture and text)`);
+      for (const k of ['lead', 'tail']) if (s.scene?.[k] != null && !(typeof s.scene[k] === 'number' && s.scene[k] >= 0)) errors.push(`${where} scene: ${k} is seconds (≥ 0)`);
+    }
     // tutorials: one thing per step, so the viewer can follow (and the narration can explain it)
     const purpose = raw.purpose ?? 'pitch';
-    if ((purpose === 'tutorial' || purpose === 'course') && !s.hidden) {
+    if ((purpose === 'tutorial' || purpose === 'course') && !s.hidden && !s.scene) {
       const doing = (s.actions ?? []).filter((a) => a && ['click', 'dblclick', 'type', 'drag', 'press', 'goto', 'select', 'slide', 'paste'].includes(Object.keys(a)[0]) && !(Object.keys(a)[0] === 'press' && /^(Enter|Tab)$/.test(String(Object.values(a)[0]))));
       if (doing.length > 2) warnings.push(`${where}: does ${doing.length} things (${doing.map((a) => Object.keys(a)[0]).join(', ')}) in one step — in a ${purpose}, split it so each action gets its own explanation and the viewer can keep up`);
       if (doing.length && !s.say) warnings.push(`${where}: does something but has no say: line — in a ${purpose}, tell the viewer what and why`);
@@ -168,6 +176,17 @@ export function check(file, { draft = false } = {}) {
   }
   let summary = '';
   if (cfg) {
+    // scenes: the file is there and keeps the HyperFrames contract (the full lint runs in `storyshot scene`)
+    for (const [i, s] of cfg.steps.entries()) {
+      if (!s.scene || s.hidden) continue;
+      const r = sceneInfo(s.scene.file, cfg.output);
+      errors.push(...r.errors.map((e) => `step ${i + 1}: ${e}`));
+      warnings.push(...r.warnings.map((w) => `step ${i + 1}: ${w}`));
+      if (!cfg.voice && !(typeof s.duration === 'number')) errors.push(`step ${i + 1}: a scene is as long as its narration, and there is no voice: — add a voice: block, or give the scene a duration`);
+    }
+    const ids = cfg.steps.filter((s) => s.scene && !s.hidden).map((s) => sceneInfo(s.scene.file).id).filter(Boolean);
+    for (const id of new Set(ids.filter((x, k) => ids.indexOf(x) !== k))) errors.push(`two scenes share the composition id "${id}" — give each scene its own id (and prefix its element ids with it)`);
+    if (cfg.purpose === 'explainer' && !cfg.steps.some((s) => s.scene)) warnings.push('an explainer is made of scenes: give its steps a scene: file');
     const visible = cfg.steps.filter((s) => !s.hidden);
     const says = visible.filter((s) => s.say).length + (cfg.endCard?.say ? 1 : 0) + (cfg.intro?.say ? 1 : 0);
     if (cfg.voice && !says) warnings.push('voice is set but no step has a `say:` line');
@@ -230,7 +249,8 @@ export function check(file, { draft = false } = {}) {
     const ec = cfg.endCard ? (cfg.endCard.duration === 'auto' ? null : cfg.endCard.duration) : 0;
     const length = auto ? `${fixed ? `${fixed.toFixed(1)}s fixed + ` : ''}${auto} steps timed to narration${cfg.endCard ? ' + end card' : ''}${cfg.intro ? ' + intro' : ''}`
       : `${fixed.toFixed(1)}s of steps${cfg.endCard ? ` + ${ec ?? 'auto'}s end card` : ''}${ec != null ? ` = ${(fixed + ec).toFixed(1)}s total` : ''}`;
-    summary = `${cfg.name}: purpose ${cfg.purpose}, ${visible.length} visible steps, ${length}` +
+    const nScenes = visible.filter((s) => s.scene).length;
+    summary = `${cfg.name}: purpose ${cfg.purpose}, ${visible.length} visible steps${nScenes ? ` (${nScenes} scene${nScenes > 1 ? 's' : ''})` : ''}, ${length}` +
       (cfg.voice ? `, voice ${cfg.voice.provider}` : '') + ` → ${cfg.out}`;
   }
   return { ok: !errors.length, errors, warnings, summary };

@@ -1,12 +1,16 @@
 ---
 name: storyshot
-description: Make videos of a web app with Storyshot — promo/demo clips, narrated how-to tutorials, teaching walkthroughs, or per-step GIFs for docs (smooth cursor, auto zoom, captions, voiceover, music). Use when the user asks for a demo video, promo or launch clip, product walkthrough, tutorial or onboarding video, course/lesson video, or GIFs of their website or web app.
+description: Make videos of a web app with Storyshot — promo/demo clips, narrated how-to tutorials, teaching walkthroughs, or per-step GIFs for docs (smooth cursor, auto zoom, captions, voiceover, music) — and narrated explainers of a concept told with animated scenes. Use when the user asks for a demo video, promo or launch clip, product walkthrough, tutorial or onboarding video, course/lesson video, GIFs of their website or web app, or an animated explainer video of how something works.
 ---
 
 # Making videos with Storyshot
 
 Storyshot drives a real browser through a site according to a YAML storyboard,
 then retimes, zooms, captions, narrates and scores the recording into an MP4.
+A step can also be a **scene**: an animation you write (a HyperFrames
+composition) that explains an idea, timed to its narration. A storyboard of
+scenes only is an **explainer** (`purpose: explainer`, no url); see
+"Scenes and explainers" below.
 Your job: **look → confirm the brief with the user → write the storyboard →
 check → render → look at the preview → fix → repeat**, then deliver.
 
@@ -30,6 +34,9 @@ Use the `storyshot` MCP tools if they are available. Otherwise use the CLI:
 | record + render (1–3 min) | `render_video` → `render_status` if it returns a `job_id` | `storyshot render videos/<name>.yaml` |
 | re-render without re-recording | `render_video` mode `compose` | `storyshot compose videos/<name>.yaml` |
 | free draft voice | `render_video` `draft: true` | `--draft` |
+| starter explainer (scene steps + starter scene files) | `init_storyboard` `purpose: explainer`, `topic` | `storyshot init --purpose explainer --topic "how X works" [--lang zh]` |
+| when each phrase of each scene's narration is spoken | `scene_cues` | `storyshot cues videos/<name>.yaml` |
+| stills + lint + layout check of one scene (20–40 s) | `preview_scene` (`step`) | `storyshot scene videos/<name>.yaml --step 2` |
 
 Always pass **absolute paths** to MCP tools.
 
@@ -42,7 +49,9 @@ everything.
 the browser can't start (an agent sandbox that blocks it, a missing Chromium),
 or the tools keep failing, stop and tell the user what blocked it and how to
 allow it. Never produce a substitute: no mock-ups, redrawn screens, scripted
-frames or stock footage presented as a recording of their app.
+frames or stock footage presented as a recording of their app. A scene explains
+an idea (a mechanism, a diagram, a number); it never redraws the app's screens
+or stands in for a recording of them.
 
 ## 1. Look, then confirm the brief
 
@@ -83,6 +92,7 @@ frames or stock footage presented as a recording of their app.
    | `tutorial` | every step of the workflow, each explained, plus a second example; as long as that takes | yes | soft | step numbers, spotlight, camera follows, part cards, recap, .srt, chapters |
    | `course` | the concepts to teach: each idea, shown in the app, checked with a question | yes | none | spotlight, camera follows, concept and question cards, recap, .srt, chapters |
    | `docs` | one clip per step, each just long enough to see its result | none | none | step numbers, spotlight, cropped GIFs + PNGs, README.md article |
+   | `explainer` | the questions the viewer has about the concept, each answered by one scene; no web app | yes | calm | your scenes, .srt or burned-in subtitles, chapters |
 
    Captions match the site's language. `kokoro` (free, local) speaks English
    and Mandarin Chinese: for Chinese lines use `voice: { provider: kokoro,
@@ -365,6 +375,142 @@ Notes:
 - `.storyshot/` next to the YAML is a cache of recordings, screenshots and
   voice lines. Add it to `.gitignore`.
 
+### Scenes and explainers
+
+A **scene** is a step whose picture you write instead of recording: an
+animation that shows an idea the app can't, such as how a probe lights up, why an
+algorithm scores a match, or what a number means. It is a HyperFrames
+composition, an HTML file with a GSAP timeline, and it plays as long as the
+step's `say:` line needs. Use it two ways:
+
+- **`purpose: explainer`**: the whole video is scenes, with no `url` and nothing
+  recorded. Use it for "explain how X works" when there is no web app to show.
+- **Inside a tutorial or lesson**: a `scene:` step between recorded steps
+  explains the why ("what does this score mean?"), then the video goes back to
+  the app. Keep these to 10–30 s.
+
+```yaml
+- scene: scenes/fret.html          # or { file: …, title: Chapter title, lead: 0.5, tail: 0.8 }
+  say: The quencher sits right next to the dye. Its energy is passed across before it can become light.
+```
+
+`lead` is how long the scene plays before the voice starts (default 0.5 s).
+`tail` is how long it holds after the voice ends (default 0.8 s). A scene
+with no `say:` needs a `duration`. A scene has no `actions`, `caption` or
+`zoom`, because it draws its own picture and text.
+
+**Workflow.** Write the words first, then the pictures:
+1. **Facts.** Every claim, number and sequence on screen comes from a source
+   you checked: a paper, the official docs, a database. Put the source on
+   screen in small type where its number appears, and list the sources in your
+   reply. Mark drawings that are schematic ("示意", "illustrative"). A
+   beautiful wrong diagram is worse than none.
+2. **Story.** Start from something the viewer knows: a real case, their own
+   question, one concrete example that runs through the whole video (one
+   gene, one request, one dataset). Then one question per scene, answered by
+   one picture. Follow "Writing the narration" above: short spoken sentences;
+   question → concrete case → name the idea → why → recap.
+3. **Lines.** Write the `say:` lines: one idea per scene, usually 2–5
+   sentences (about 60 English words or 120 Chinese characters at most).
+   Commas are cue points: each phrase can trigger one change on screen.
+4. **Cues.** Run `storyshot cues` (MCP `scene_cues`). It synthesizes the voice
+   and prints each scene's length and when each phrase is spoken. These are
+   the times `S.at(k)` returns inside the scene.
+5. **Scenes.** Write each scene file (contract below). Then preview it with
+   `storyshot scene … --step N` (MCP `preview_scene`), which gives stills a beat
+   into each phrase, HyperFrames lint, and a layout check. Look at every still,
+   fix the scene, and preview again until it is right.
+6. **Render**, look at `preview.jpg` (one frame per scene), and fix. After
+   editing only scenes or lines, `compose` re-renders just the scenes that
+   changed.
+
+**The scene file contract** (`storyshot check` and `preview_scene` enforce it):
+
+```html
+<template>
+  <style>
+    #fret { position: absolute; inset: 0; overflow: hidden; background: #121110; font-family: var(--font); }
+    #fret-dye { position: absolute; left: 600px; top: 420px; width: 120px; height: 120px; border-radius: 50%; background: #f4a62a; }
+  </style>
+  <div id="fret" data-composition-id="fret" data-width="1920" data-height="1080">
+    <div id="fret-dye"></div>
+  </div>
+  <script>
+    (function () {
+      const S = window.__storyshot;               // this scene's timing, size and theme
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo('#fret-dye', { scale: 0 }, { scale: 1, duration: 0.6, ease: 'expo.out' }, S.at(0));
+      tl.fromTo('#fret-dye', { opacity: 1 }, { opacity: 0.25, duration: 0.4 }, S.at('passed across'));
+      window.__timelines['fret'] = tl;
+    })();
+  </script>
+</template>
+```
+
+- One `<template>` holds the styles, markup and script. The root element's
+  `id` equals its `data-composition-id`, is unique among the scenes, and
+  prefixes every other id in the file. `data-width`/`data-height` match the
+  video (1920×1080, or 1080×1920 for portrait).
+- One paused GSAP timeline, registered as `window.__timelines['<id>']`. Use
+  `fromTo` (not `from`). No `Date`, timers, `requestAnimationFrame`,
+  `repeat: -1`, or unseeded `Math.random`: frames are rendered by seeking the
+  timeline.
+- Media go in `assets/` next to the scene file, referenced as `assets/x.png`.
+- **`window.__storyshot`** (`S`) gives you:
+  - `S.at(k, offset)`: when phrase `k` starts. `k` counts from 0, `-1` is the
+    last phrase, and a string means the phrase that contains it.
+  - `S.end(k)`: when phrase `k` ends.
+  - `S.cues`: `[{ text, t, end }]` for every phrase.
+  - `S.duration`, `S.width`, `S.height`, `S.lead`.
+  - `S.safeBottom`: the pixels at the bottom that burned-in subtitles take;
+    keep content above it. The same value is available as the CSS variable
+    `var(--safe-bottom)`.
+  - `S.theme`: `{ accent, ink, font }`, also available as `var(--accent)`,
+    `var(--ink)` and `var(--font)`. The font falls back to the machine's CJK
+    font for Chinese.
+
+  Time every reveal from `S.at`, never from hard-coded seconds, so the
+  animation stays on the words when a line changes.
+
+**Pictures that explain** (what the preview stills should show):
+- **The object is the explanation.** Draw the actual thing, such as the
+  molecule, the queue or the circuit, big enough to be the hero: at least 40%
+  of the frame's width or height. Use the real data where it exists: a real
+  sequence, real numbers. Never show a small icon floating in an empty frame.
+- **One diagram that grows.** Start from the simplest true picture and add one
+  part per phrase, each when the voice names it, with its label on it (a
+  leader line, not a legend). Never put the finished diagram on screen at
+  once.
+- **Motion.** One hero move per beat, and something new every 2–4 s.
+  Arrivals ease out (`expo.out`, 0.5–0.7 s) and exits are shorter. Text lands
+  and then stays still while it is read.
+- **Text.** At least 28 px at 1080p, and nothing under `S.safeBottom`. Never
+  repeat the narration word for word on screen (the subtitles do that).
+  Avoid bullet slides and rows of three cards.
+- **Colour.** Rationed: one accent, plus one colour per thing the story
+  tracks (for example, allele G amber and allele A green everywhere: dye,
+  dot, label).
+- **Seams.** Consecutive scenes cut straight into each other. End a scene on
+  a state the next one starts from (the same object in the same place), or
+  on a clean hold. The video's first frame is its thumbnail: show the subject
+  there, never an empty ground.
+- **Look before you move on.** Read `preview_scene`'s stills like a stranger
+  would. Is every object recognisable without explanation, does each part
+  appear when it is named, and does nothing overlap, crop or sit under the
+  subtitles? Fix every ✖ from lint and the layout check.
+
+Explainer defaults:
+- **Music:** `music: { style: calm }`, soft pads with no drums;
+  `music: false` for none.
+- **Subtitles:** `subtitles: true` writes an .srt; `burn` puts them on the
+  video, the better choice for social video and Chinese.
+- **Chapters:** come from the scenes' `title`s.
+- **Cards:** an `intro` and an `end_card` work as in lessons.
+
+Long explainers (more than about 6 scenes) build fastest if each scene is
+written by its own sub-agent, all from the same lines, cues, palette and
+scene contract. Review every scene's stills yourself afterwards.
+
 ## 4. Render, look, fix
 
 1. `render_video` (use `draft: true` while iterating if the voice is
@@ -407,6 +553,9 @@ Notes:
    - Draft looks right: `compose` with `draft: false` for the final voice.
      Only lines not yet synthesized cost credits. `draft` only matters with
      a paid voice; with `kokoro`, it is the same voice either way.
+   - Changed only scenes (their files, lines or assets): `compose`; only the
+     scenes that changed render again. An explainer has nothing to record,
+     so `render` and `compose` do the same.
 
 ## 5. Deliver
 

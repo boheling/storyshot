@@ -86,3 +86,68 @@ ${page.elements.slice(0, 40).map((e) => `#   y=${String(e.y).padEnd(5)} ${tgt(e.
   fs.writeFileSync(file, yaml);
   return { file: path.resolve(file), yaml, screenshot: page.screenshot, inspect: page.text, login: page.login };
 }
+
+// `storyshot init --purpose explainer --topic <topic>`: no web app, so nothing to inspect — a storyboard
+// of three scene steps and a starter scene file for each, timed to its narration with window.__storyshot.
+export function initExplainer({ topic, file, lang = 'en', portrait = false } = {}) {
+  if (!topic) throw new Error('an explainer is named by its topic: --topic "how a TaqMan probe works" (MCP: topic)');
+  file ??= defaultStoryboard(null, 'explainer', topic);
+  if (fs.existsSync(file)) throw new Error(`${file} already exists — edit it, or choose another path`);
+  const name = path.basename(file).replace(/\.ya?ml$/, '');
+  const dir = path.dirname(path.resolve(file));
+  const zh = /^zh/i.test(lang);
+  const [W, H] = portrait ? [1080, 1920] : [1920, 1080];
+  const scenes = [1, 2, 3].map((k) => ({ id: `${name}-s${k}`.replace(/[^a-z0-9-]/gi, '-'), rel: `scenes/${name}-${k}.html` }));
+  const say = zh
+    ? ['TODO 一个观众会问的问题，一两句话。', 'TODO 用一个具体例子回答，每个短句对应画面上的一个变化。', 'TODO 一句话总结。']
+    : ['TODO the question a viewer would ask, in one or two sentences.', 'TODO answer it with one concrete example, one change on screen per phrase.', 'TODO the idea in one line.'];
+  const yaml = `# Storyshot storyboard (explainer) — every step is a scene: an animation you write as a HyperFrames
+# composition (scenes/*.html), timed to the step's narration. Reference: \`storyshot guide\` ("Explainers and scenes").
+# Loop: write the say: lines → storyshot cues (when each phrase is spoken) → write the scenes with S.at(k)
+#       → storyshot scene ${path.basename(file)} --step N (stills + checks) → storyshot render → look → fix.
+name: ${name}
+purpose: explainer
+out: ${name}.mp4
+${zh ? 'lang: zh\nvoice: { provider: qwen, voice: dylan }      # free, local (Apple Silicon); elsewhere kokoro zf_001' : 'voice: { provider: kokoro }                  # free, local'}
+${portrait ? `output: { width: ${W}, height: ${H} }\nviewport: { width: 900, height: 1600 }\n` : ''}subtitles: burn                                  # or true for an .srt beside the video
+theme: { accent: "#f4a62a", ink: "#17181b" }
+
+steps:
+${scenes.map((sc, k) => `  - scene: ${sc.rel}${k === 0 ? '\n    # scene: { file: …, title: Chapter title, lead: 0.5, tail: 0.8 }   (lead: seconds before the voice starts)' : ''}
+    say: ${say[k]}`).join('\n\n')}
+`;
+  fs.mkdirSync(path.join(dir, 'scenes', 'assets'), { recursive: true });
+  for (const [k, sc] of scenes.entries()) {
+    fs.writeFileSync(path.join(dir, sc.rel), starterScene(sc.id, W, H, k));
+  }
+  fs.writeFileSync(file, yaml);
+  return { file: path.resolve(file), yaml, scenes: scenes.map((sc) => path.join(dir, sc.rel)) };
+}
+
+// A scene that already works: a ground, a line that lands on the first phrase and a mark that grows on
+// the second. Replace its picture; keep the contract (template, matching ids, timeline registered).
+function starterScene(id, W, H, k) {
+  return `<template>
+  <style>
+    #${id} { position: absolute; inset: 0; overflow: hidden; background: ${k % 2 ? '#121110' : '#f2f2ee'}; color: ${k % 2 ? '#ece8df' : 'var(--ink)'}; font-family: var(--font); }
+    #${id}-line { position: absolute; left: ${Math.round(W * 0.083)}px; right: ${Math.round(W * 0.083)}px; top: ${Math.round(H * 0.33)}px; font-size: ${Math.round(Math.min(W, H * 1.15) * 0.074)}px; font-weight: 600; line-height: 1.25; }
+    #${id}-bar { position: absolute; left: ${Math.round(W * 0.083)}px; top: ${Math.round(H * 0.68)}px; width: ${Math.round(W * 0.5)}px; height: 14px; border-radius: 7px; background: var(--accent); transform-origin: 0 50%; }
+  </style>
+  <div id="${id}" data-composition-id="${id}" data-width="${W}" data-height="${H}">
+    <div id="${id}-line">TODO the picture of this step: the object, diagram or number the voice explains</div>
+    <div id="${id}-bar"></div>
+  </div>
+  <script>
+    (function () {
+      // S.at(k): when phrase k of this step's say: line starts (S.end(k): ends); S.duration, S.width, S.height,
+      // S.safeBottom (px the burned-in subtitles take), S.cues ([{ text, t, end }]). Run \`storyshot cues\` to see them.
+      const S = window.__storyshot;
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo('#${id}-line', { opacity: 0, filter: 'blur(8px)' }, { opacity: 1, filter: 'blur(0px)', duration: 0.4, ease: 'power3.out' }, S.at(0));
+      tl.fromTo('#${id}-bar', { scaleX: 0 }, { scaleX: 1, duration: 0.8, ease: 'expo.out' }, S.at(1));
+      window.__timelines['${id}'] = tl;
+    })();
+  </script>
+</template>
+`;
+}

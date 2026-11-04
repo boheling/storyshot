@@ -42,6 +42,31 @@ export async function soundtrack(cfg, events, silentVideo, { log = console.log }
       '-f', 'f32le', '-ac', '2', '-ar', `${SR}`, 'pipe:1'], { maxBuffer: 1 << 30 });
     const f = new Float32Array(pcm.buffer, pcm.byteOffset, pcm.length / 4);
     for (let i = 0; i < Math.min(N, f.length / 2); i++) { music[0][i] = f[2 * i] * 0.5; music[1][i] = f[2 * i + 1] * 0.5; }
+  } else if (cfg.music?.style === 'calm') {
+    // calm (explainers): slow pad chords vi–IV–I–V in C, two bars each, a soft bass under them and a
+    // sparse bell; no drums, nothing on the beat that would pull at the voice
+    const BEAT = 60 / cfg.music.bpm, LEN = BEAT * 8;
+    const chords = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]];
+    for (let b = 0, t0 = 0; t0 < events.total; b++, t0 = b * LEN) {
+      const ch = chords[b % chords.length], len = Math.min(LEN, events.total - t0) + 1.2; // rings into the next chord
+      for (const [k, note] of [...ch, ch[0] + 12].entries()) {
+        for (const det of [-0.06, 0.06]) {
+          const f = hz(note + det), filt = svf();
+          add(music, t0, len, (t) => {
+            const env = Math.min(1, t / 1.4) * Math.min(1, Math.max(0, len - t) / 1.6);
+            return filt(saw(f * t) * 0.6 + Math.sin(2 * Math.PI * f * t) * 0.4, 650 + 250 * Math.sin(t * 0.4 + k)).lp * env;
+          }, 0.024, (k - 1.5) * 0.35 + det * 2);
+        }
+      }
+      const fb = hz(ch[0] - 12);
+      add(music, t0, len, (t) => Math.sin(2 * Math.PI * fb * t) * Math.min(1, t / 0.6) * Math.min(1, Math.max(0, len - t) / 1.2), 0.09);
+      if (b % 2 === 0) for (const [j, note] of [ch[2] + 12, ch[1] + 24].entries()) {
+        const f = hz(note);
+        add(music, t0 + j * BEAT * 2, 2.5, (t) => (Math.sin(2 * Math.PI * f * t) + 0.15 * Math.sin(4 * Math.PI * f * t)) * Math.exp(-t * 1.8) * Math.min(1, t / 0.01), 0.03, j ? 0.3 : -0.3);
+      }
+    }
+    // fade in over 2 s, out over the last 3 s
+    for (const c of music) for (let i = 0; i < N; i++) c[i] *= Math.min(1, i / SR / 2) * Math.min(1, (N - i) / SR / 3);
   } else if (cfg.music) {
     // I–V–vi–IV in C at `bpm`, resolving on the end card (or fading at the end)
     const BEAT = 60 / cfg.music.bpm, BAR = BEAT * 4;
@@ -198,7 +223,7 @@ export async function soundtrack(cfg, events, silentVideo, { log = console.log }
   // so re-encoding by video sites doesn't clip
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', silentVideo, '-i', wavFile,
     '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-af', `loudnorm=I=-14:TP=-1.5:LRA=11,aresample=${SR},alimiter=limit=0.7:level=false:attack=1:release=50`, '-ar', `${SR}`, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', cfg.out]);
-  log(`soundtrack: ${cfg.music ? (cfg.music.file ? 'music file' : `synth ${cfg.music.bpm} bpm`) : 'no music'}, ${events.clicks.length} clicks, ${cfg.sfx?.transitions ? events.whooshes.length : 0} whooshes` +
+  log(`soundtrack: ${cfg.music ? (cfg.music.file ? 'music file' : `synth${cfg.music.style ? ` ${cfg.music.style}` : ''} ${cfg.music.bpm} bpm`) : 'no music'}, ${events.clicks.length} clicks, ${cfg.sfx?.transitions ? events.whooshes.length : 0} whooshes` +
     (cfg.voice ? `, ${events.voice.length} narration lines (${cfg.voice.provider}/${cfg.voice.voice})` : ''));
   return { out: cfg.out, warnings, narration };
 }

@@ -13,7 +13,8 @@ import { build } from './build.mjs';
 import { record } from './record.mjs';
 import { guide } from './guide.mjs';
 import { check, formatCheck } from './check.mjs';
-import { initStoryboard } from './init.mjs';
+import { initStoryboard, initExplainer } from './init.mjs';
+import { sceneCues, previewScene, formatPreview } from './scene-tools.mjs';
 import { openLoginWindow, finishLogin, authFileFor } from './auth.mjs';
 import { ensureBrowser, ffmpegInstallCommand } from './doctor.mjs';
 import { execFileSync } from 'node:child_process';
@@ -29,7 +30,8 @@ const abs = (p) => path.resolve(p);
 
 const server = new McpServer({ name: 'storyshot', version: pkg.version }, {
   instructions: [
-    'Storyshot makes product demo, tutorial, course and docs videos of web apps from a YAML storyboard.',
+    'Storyshot makes product demo, tutorial, course and docs videos of web apps from a YAML storyboard,',
+    'and explainers: a concept told with animated scenes you write (scene steps; also usable inside tutorials and lessons).',
     'Before writing anything, inspect_page the start url (it reports login walls), then confirm the brief with the user in ONE message:',
     'purpose (pitch/tutorial/course/docs), length, flow, voice, music, subtitles, language, and whether a login is needed (then call login).',
     'Workflow: storyboard_guide (once) → init_storyboard (or inspect_page) → edit the YAML → check_storyboard → render_video',
@@ -49,15 +51,22 @@ server.registerTool('init_storyboard', {
   title: 'Create a starter storyboard',
   description: 'Inspect a URL and write a starter storyboard YAML that already uses verified click targets from that page (listed as comments at the bottom). Start here, then edit the file.',
   inputSchema: {
-    url: z.string().describe('Start page of the web app'),
+    url: z.string().optional().describe('Start page of the web app (not needed for purpose explainer)'),
     path: z.string().optional().describe('Absolute path for the YAML (must not exist yet). Default: <cwd>/videos/<site>-<kind>[-<topic>].yaml, kind = promo/tutorial/lesson/docs from purpose'),
-    purpose: z.enum(['pitch', 'tutorial', 'course', 'docs']).optional().describe('pitch = short promo (default); tutorial = narrated how-to, paced to follow along; course = narrated lesson that explains the why; docs = per-step GIFs/PNGs + a Markdown article'),
+    purpose: z.enum(['pitch', 'tutorial', 'course', 'docs', 'explainer']).optional().describe('pitch = short promo (default); tutorial = narrated how-to, paced to follow along; course = narrated lesson that explains the why; docs = per-step GIFs/PNGs + a Markdown article; explainer = a concept told with animated scenes you write (no url: give topic)'),
+    lang: z.string().optional().describe('explainer: language of the narration, e.g. zh (Mandarin, Qwen3-TTS Dylan) or en'),
+    portrait: z.boolean().optional().describe('explainer: a vertical 1080x1920 video'),
     topic: z.string().optional().describe('Short topic for the file name, e.g. "export-pdf" → videos/<site>-tutorial-export-pdf.yaml. Use it for tutorials/lessons, since a site usually gets several'),
     storage_state: z.string().optional().describe('Absolute path to a saved login (from the login tool) for apps behind a login'),
     ignore_https_errors: z.boolean().optional().describe('Accept a self-signed HTTPS certificate (internal sites only); also writes ignoreHTTPSErrors: true into the storyboard'),
   },
-}, async ({ url, path: file, purpose = 'pitch', topic, storage_state, ignore_https_errors = false }) => {
+}, async ({ url, path: file, purpose = 'pitch', topic, storage_state, ignore_https_errors = false, lang, portrait = false }) => {
   try {
+    if (purpose === 'explainer') {
+      const r = initExplainer({ topic, file: file ? abs(file) : undefined, lang, portrait });
+      return { content: [text(`Wrote ${r.file} and the starter scenes\n${r.scenes.join('\n')}\n\n${r.yaml}\nNext: write the say: lines, call scene_cues, write the scenes with S.at(k), then preview_scene each one.`)] };
+    }
+    if (!url) return fail('give the url of the web app (only purpose: explainer starts without one)');
     await ensureBrowser(() => {});
     const r = await initStoryboard(url, { purpose, topic, file: file ? abs(file) : undefined, storageState: storage_state ? abs(storage_state) : undefined, ignoreHTTPSErrors: ignore_https_errors });
     return { content: [text(`${r.login?.hint ? `ℹ Login: ${r.login.hint}. If the flow needs it, call login first.\n\n` : ''}Wrote ${r.file}:\n\n${r.yaml}`), image(r.screenshot)] };
@@ -141,6 +150,35 @@ server.registerTool('check_storyboard', {
 }, async ({ storyboard }) => {
   const r = check(abs(storyboard));
   return { isError: !r.ok, content: [text(formatCheck(r))] };
+});
+
+server.registerTool('scene_cues', {
+  title: 'Scene cues',
+  description: 'For storyboards with scene steps: synthesizes the narration and returns, for every scene, its length and when each phrase of its say: line is spoken (scene seconds = what S.at(k) returns inside the scene). Call it after writing the say: lines and before timing the animations; again after changing a line.',
+  inputSchema: { storyboard: z.string().describe('Absolute path to the storyboard YAML'), draft: z.boolean().optional().describe('use the free local voice') },
+}, async ({ storyboard, draft = false }) => {
+  try {
+    const r = await sceneCues(loadConfig(abs(storyboard), { draft }), { log: () => {} });
+    return { content: [text(`${r.text || 'no scene steps in this storyboard'}\n\n(also in ${r.file})`)] };
+  } catch (e) { return fail(`scene_cues failed: ${e.message}`); }
+});
+
+server.registerTool('preview_scene', {
+  title: 'Preview a scene',
+  description: 'Render stills of one scene step as HyperFrames will (default: a beat into each phrase of its narration, and the last frame), plus HyperFrames lint and its layout/contrast check, in about 20–40 s — without rendering the video. Returns the contact sheet: look at every still (does each part appear when the voice names it? overlaps, crops, text under the subtitles?), fix the scene, preview again.',
+  inputSchema: {
+    storyboard: z.string().describe('Absolute path to the storyboard YAML'),
+    step: z.number().int().min(1).describe('The scene\'s step number (from 1)'),
+    at: z.array(z.number().min(0)).optional().describe('Scene seconds to capture instead of the defaults'),
+    check: z.boolean().optional().describe('Run the layout/contrast check too (default true; ~20 s)'),
+    draft: z.boolean().optional(),
+  },
+}, async ({ storyboard, step, at, check: chk = true, draft = false }) => {
+  try {
+    const r = await previewScene(loadConfig(abs(storyboard), { draft }), step, { at, check: chk, log: () => {} });
+    const pics = r.sheet ? [image(r.sheet)] : r.images.slice(0, 6).map(image);
+    return { isError: !!r.lint.errors.length, content: [text(formatPreview(r, step)), ...pics] };
+  } catch (e) { return fail(`preview_scene failed: ${e.message}`); }
 });
 
 // --- background render jobs -------------------------------------------------------------------

@@ -16,6 +16,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { writeSceneProject, sceneAssets, fileHash } from './scenes.mjs';
 
 export const HF_VERSION = '0.8.217';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -65,6 +66,22 @@ const run = (cli, args) => new Promise((resolve, reject) => {
   p.on('error', reject);
   p.on('close', (code) => (code === 0 ? resolve(out) : reject(new Error(out.trim().split('\n').filter(Boolean).slice(-3).join(' | ') || `exit ${code}`))));
 });
+
+// Run the HyperFrames CLI (installing the pinned version on first use); resolves with its exit code and output.
+export async function hyperframesRun(args, { log = console.log } = {}) {
+  const c = hyperframesCli();
+  if (c.error) throw new Error(`HyperFrames: ${c.error}`);
+  const cli = await ensureCli(log);
+  return new Promise((resolve, reject) => {
+    const p = spawn(cli.cmd, [...cli.args, ...args], { env: { ...process.env, HYPERFRAMES_NO_TELEMETRY: '1', DO_NOT_TRACK: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '', err = '';
+    p.stdout.on('data', (d) => { out += d; });
+    p.stderr.on('data', (d) => { err += d; });
+    p.on('error', reject);
+    p.on('close', (code) => resolve({ code, out, err }));
+  });
+}
+export const sceneFontFaces = (font) => fontFaces(font);
 
 // --- narration cues --------------------------------------------------------------------------------
 // When the narration names each item (a bullet, the call to action): the item's earliest content word
@@ -582,16 +599,36 @@ const hashOf = (...parts) => {
 //          backdrop?, page?, logo?, logoSize?, logoTarget?, image?, alpha? }]
 // ctx: { W, H, FPS, dark, accent, ink, font, lang, labels, opts, frame: {FX,FY,FW,FH,frameBg,chrome,url}, work, subs (burned-in subtitles) }
 // Returns { [name]: { dir, ext, alpha } } for the cards that rendered; the rest fall back.
+// Scene jobs ({ kind: 'scene', scene, say, lead, cues }) have no fallback: why one failed is in out._errors.
 export async function renderHyperframesCards(jobs, ctx, { log = console.log, warn = log } = {}) {
-  if (!jobs.length) return {};
+  const errors = {};
+  const out = {};
+  Object.defineProperty(out, '_errors', { value: errors, enumerable: false });
+  if (!jobs.length) return out;
   let cli = hyperframesCli();
-  if (cli.error) { warn(`hyperframes: ${cli.error} — using the built-in cards`); return {}; }
-  const template = ctx.opts.template;
+  if (cli.error) {
+    for (const j of jobs) if (j.kind === 'scene') errors[j.name] = cli.error;
+    warn(`hyperframes: ${cli.error} — using the built-in cards`);
+    return out;
+  }
+  const template = ctx.opts?.template;
   const root = path.join(ctx.work, 'hf');
   fs.mkdirSync(root, { recursive: true });
-  const out = {};
   const todo = [];
   for (const job of jobs) {
+    if (job.kind === 'scene') {
+      // the agent's composition, wrapped in a project as long as the scene (see scenes.mjs)
+      const sctx = { ...ctx, fontFaces: fontFaces(ctx.font) };
+      const files = sceneAssets(job.scene.file);
+      const key = hashOf(HF_VERSION, ctx.FPS, job.seconds.toFixed(3), job.lead, job.cues, job.say, ctx.W, ctx.H, ctx.accent, ctx.ink, ctx.font, ctx.lang, ctx.subs,
+        fs.existsSync(job.scene.file) ? fileHash(job.scene.file) : 'missing', ...Object.entries(files).map(([k, f]) => [k, fileHash(f)]));
+      const dir = path.join(root, `${job.name}-${key}`), frames = path.join(dir, 'frames');
+      if (fs.existsSync(path.join(dir, 'done'))) { out[job.name] = { dir: frames, ext: 'jpg', alpha: false }; continue; }
+      fs.rmSync(dir, { recursive: true, force: true });
+      try { writeSceneProject(job, sctx, dir); } catch (e) { errors[job.name] = e.message; continue; }
+      todo.push({ job, dir, frames, ext: 'jpg', alpha: false });
+      continue;
+    }
     const launchCard = template === 'launch' && job.kind !== 'section';
     if (launchCard) {
       try { await import('roughjs'); } catch { warn('hyperframes: the launch template needs the roughjs package (npm i roughjs) — using the built-in cards'); return {}; }
@@ -627,10 +664,12 @@ export async function renderHyperframesCards(jobs, ctx, { log = console.log, war
   if (!todo.length) return out;
 
   try { cli = await ensureCli(log); } catch (e) {
+    for (const t of todo) if (t.job.kind === 'scene') errors[t.job.name] = `could not install the HyperFrames CLI: ${String(e.message).slice(0, 200)}`;
     warn(`hyperframes: could not install the CLI (${String(e.message).slice(0, 200)}) — using the built-in cards`);
     return out;
   }
-  log(`hyperframes: rendering ${todo.length} card${todo.length > 1 ? 's' : ''} (${cli.how})`);
+  const nScenes = todo.filter((t) => t.job.kind === 'scene').length, nCards = todo.length - nScenes;
+  log(`hyperframes: rendering ${[nScenes && `${nScenes} scene${nScenes > 1 ? 's' : ''}`, nCards && `${nCards} card${nCards > 1 ? 's' : ''}`].filter(Boolean).join(' and ')} (${cli.how})`);
   const one = async (t) => {
     const t0 = Date.now();
     try {
@@ -649,9 +688,10 @@ export async function renderHyperframesCards(jobs, ctx, { log = console.log, war
       }
       fs.writeFileSync(path.join(t.dir, 'done'), '');
       out[t.job.name] = { dir: t.frames, ext: t.ext, alpha: t.alpha };
-      log(`  ${t.job.name}: ${t.job.seconds.toFixed(1)}s card in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+      log(`  ${t.job.kind === 'scene' ? `step ${t.job.step + 1} scene` : t.job.name}: ${t.job.seconds.toFixed(1)}s ${t.job.kind === 'scene' ? path.basename(t.job.scene.file) : 'card'} in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
     } catch (e) {
-      warn(`hyperframes: the ${t.job.name} card did not render (${String(e.message).slice(0, 300)}) — using the built-in one`);
+      if (t.job.kind === 'scene') errors[t.job.name] = String(e.message).slice(0, 600);
+      else warn(`hyperframes: the ${t.job.name} card did not render (${String(e.message).slice(0, 300)}) — using the built-in one`);
     }
   };
   // two renders at a time (each one drives its own browser)

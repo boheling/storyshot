@@ -413,6 +413,7 @@ const isPoint = (v) => v && typeof v === 'object' && typeof v.x === 'number' && 
 // inspectAfter: N → don't record; run setup + steps 1..N quickly, then describe the page as
 // it is at that moment (for states only reachable through the flow, e.g. an editor after upload).
 export async function record(cfg, { log = console.log, inspectAfter = null } = {}) {
+  if (!cfg.url) throw new Error('this storyboard has no url: its steps are all scenes, so there is no web app to record or inspect — preview a scene with `storyshot scene <storyboard> --step N` (MCP: preview_scene)');
   const fast = inspectAfter != null;
   const RAW = path.join(cfg.work, 'raw');
   fs.mkdirSync(cfg.work, { recursive: true });
