@@ -1,7 +1,7 @@
 {
   "name": "storyshot",
   "version": "0.8.0",
-  "description": "Turn a short YAML storyboard into a polished product demo video of your web app — smooth cursor, auto zoom, captions, music.",
+  "description": "Ask your coding agent for a video of your web app: promo clips, narrated tutorials, lessons and docs GIFs from a YAML storyboard.",
   "author": "boheling <boheling@gmail.com>",
   "repository": {
     "type": "git",
@@ -26,10 +26,25 @@
   },
   "keywords": [
     "demo",
+    "demo-video",
+    "product-demo",
+    "promo-video",
     "video",
-    "playwright",
     "screen-recording",
-    "product-demo"
+    "screencast",
+    "tutorial",
+    "gif",
+    "storyboard",
+    "playwright",
+    "ffmpeg",
+    "mcp",
+    "mcp-server",
+    "claude-code",
+    "cursor",
+    "codex",
+    "coding-agent",
+    "ai-agent",
+    "agent-skill"
   ],
   "license": "MIT",
   "dependencies": {
