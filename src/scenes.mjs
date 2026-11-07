@@ -12,9 +12,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 export const SCENE_DEFAULTS = { lead: 0.5, tail: 0.8 };
 export const GSAP_URL = 'https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js';
+// r160 is the last three.js with a classic-script build; everything after it is ESM only, and a
+// module script in a scene would run after HyperFrames has already collected the timelines.
+export const THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js';
+// That build announces its own deprecation the moment it loads, and the layout check reports every
+// console warning, so a 3D scene would carry one forever. Drop that one line and nothing else.
+const THREE_QUIET = `(function () { const w = console.warn; console.warn = function (m) { if (typeof m === 'string' && /build\\/three(\\.min)?\\.js" are deprecated/.test(m)) return; return w.apply(console, arguments); }; })();`;
 
 // How long a scene plays: a fixed `duration`, else its narration plus a lead-in and a tail.
 export function sceneSeconds(step, voiceLen) {
@@ -24,7 +33,7 @@ export function sceneSeconds(step, voiceLen) {
 }
 
 // What a scene file declares, and what is wrong with it (errors stop the render, warnings don't).
-export function sceneInfo(file, { width, height } = {}) {
+export function sceneInfo(file, { width, height, three = null } = {}) {
   const errors = [], warnings = [];
   if (!fs.existsSync(file)) return { errors: [`the scene ${file} does not exist — write it (\`storyshot init --purpose explainer\` writes a starter)`], warnings };
   const html = fs.readFileSync(file, 'utf8');
@@ -46,6 +55,11 @@ export function sceneInfo(file, { width, height } = {}) {
   if (/repeat\s*:\s*-1/.test(html)) errors.push(`${name}: repeat: -1 never ends; repeat a fixed number of times`);
   if (!/__storyshot/.test(html)) warnings.push(`${name}: times nothing from window.__storyshot — read them from its cues (S.at(k)) so the animation stays on the words when the narration changes`);
   if (/["'(]\/assets\//.test(html)) errors.push(`${name}: asset paths are relative: "assets/…", not "/assets/…"`);
+  // A 3D scene whose storyboard forgot `scenes: { three: true }` throws on its first line and
+  // renders an empty frame — the scene still "works" everywhere except in the video.
+  if (three === false && /\b(THREE|Kit3)\s*\./.test(html)) {
+    errors.push(`${name}: uses ${/\bKit3\s*\./.test(html) ? 'Kit3' : 'THREE'} but the storyboard does not load it — add \`scenes: { three: true }\` (with your css/js kit, if any)`);
+  }
   return { id, html, errors, warnings };
 }
 
@@ -124,7 +138,8 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:#000}
 #root{position:relative;width:100%;height:100%;font-family:var(--font)}
 </style>
 <script>${sceneRuntime(job, ctx)}
-${GSAP_GUARD}</script>
+${GSAP_GUARD}${job.kit?.three ? `\n${THREE_QUIET}` : ''}</script>
+${job.kit?.three ? `<script src="${THREE_URL}"></script>\n<script src="kit3d.js"></script>` : ''}
 ${(job.kit?.css ?? []).map((f, k) => `<link rel="stylesheet" href="kit/${k}-${path.basename(f)}">`).join('\n')}
 ${(job.kit?.js ?? []).map((f, k) => `<script src="kit/${k}-${path.basename(f)}"></script>`).join('\n')}
 </head><body>
@@ -140,15 +155,20 @@ export const fileHash = (f) => crypto.createHash('sha1').update(fs.readFileSync(
 
 // Write a scene's project into `dir` (index.html, the scene, its assets). Returns the scene info.
 export function writeSceneProject(job, ctx, dir) {
-  const info = sceneInfo(job.scene.file, { width: ctx.W, height: ctx.H });
+  const info = sceneInfo(job.scene.file, { width: ctx.W, height: ctx.H, three: !!job.kit?.three });
   if (info.errors.length) throw new Error(info.errors.join('; '));
   fs.mkdirSync(path.join(dir, 'compositions'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'index.html'), sceneDoc(job, ctx, info));
   fs.writeFileSync(path.join(dir, 'compositions', 'scene.html'), info.html);
+  // `scenes: { three: true }`: storyshot's own drawn-3D helpers, loaded before the storyboard's kit
+  if (job.kit?.three) fs.copyFileSync(path.join(HERE, 'scene-kit', 'kit3d.js'), path.join(dir, 'kit3d.js'));
   // the storyboard's scene kit, shared by every scene
-  for (const [kind, list] of Object.entries(job.kit ?? {})) for (const [k, f] of list.entries()) {
-    fs.mkdirSync(path.join(dir, 'kit'), { recursive: true });
-    fs.copyFileSync(f, path.join(dir, 'kit', `${k}-${path.basename(f)}`));
+  for (const [kind, list] of Object.entries(job.kit ?? {})) {
+    if (!Array.isArray(list)) continue;
+    for (const [k, f] of list.entries()) {
+      fs.mkdirSync(path.join(dir, 'kit'), { recursive: true });
+      fs.copyFileSync(f, path.join(dir, 'kit', `${k}-${path.basename(f)}`));
+    }
   }
   for (const [k, f] of Object.entries(sceneAssets(job.scene.file))) {
     fs.mkdirSync(path.dirname(path.join(dir, 'assets', k)), { recursive: true });

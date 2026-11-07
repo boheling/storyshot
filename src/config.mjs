@@ -202,7 +202,14 @@ export function loadConfig(file, { draft = false } = {}) {
 
   // scenes: { css: [files], js: [files] } shared by every scene (a palette, drawing helpers), loaded before each one
   const sk = raw.scenes ?? {};
-  const sceneKit = { css: [].concat(sk.css ?? []).map((f) => path.resolve(dir, f)), js: [].concat(sk.js ?? []).map((f) => path.resolve(dir, f)) };
+  // `three: true` adds storyshot's own drawn-3D helpers (three.js + Kit3) before the storyboard's
+  // own kit files, for scenes whose subject is an object rather than a quantity (guide: "3D scenes").
+  if (sk.three != null && typeof sk.three !== 'boolean') throw new Error('scenes.three is true or false (it loads three.js and storyshot\'s Kit3 helpers into every scene)');
+  const sceneKit = {
+    css: [].concat(sk.css ?? []).map((f) => path.resolve(dir, f)),
+    js: [].concat(sk.js ?? []).map((f) => path.resolve(dir, f)),
+    three: sk.three === true,
+  };
   return {
     name,
     purpose,

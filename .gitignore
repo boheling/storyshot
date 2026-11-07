@@ -21,3 +21,7 @@ videos/*-login.json
 *-steps/
 cursortest/
 __pycache__/
+
+# storyshot installing its own skill into this repo (absolute local paths; the real copy is skills/)
+.agents/
+AGENTS.md

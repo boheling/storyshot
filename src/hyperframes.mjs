@@ -20,6 +20,7 @@ import { writeSceneProject, sceneAssets, fileHash } from './scenes.mjs';
 
 export const HF_VERSION = '0.8.217';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const KIT3D = path.join(HERE, 'scene-kit', 'kit3d.js');
 // families HyperFrames resolves by name; any other needs an @font-face
 const BUNDLED = ['Inter', 'Montserrat', 'Outfit', 'Nunito', 'Oswald', 'League Gothic', 'Archivo Black', 'Space Mono', 'IBM Plex Mono', 'JetBrains Mono',
   'EB Garamond', 'Playfair Display', 'Source Code Pro', 'Noto Sans JP', 'Roboto', 'Open Sans', 'Lato', 'Poppins'];
@@ -591,7 +592,10 @@ blurIn('#try', ${n(ctaAt + 0.85)}, { d: 0.25 });` : ''}
 // --- rendering ---------------------------------------------------------------------------------------
 const hashOf = (...parts) => {
   const h = crypto.createHash('sha1');
-  for (const p of parts) h.update(typeof p === 'string' ? p : JSON.stringify(p));
+  // JSON.stringify(undefined) is undefined, not a string, and Hash.update throws on it. A scene step
+  // with a `duration:` and no `say:` line is legal and hashes `job.say` as undefined, so keep a name
+  // for the empty ones rather than crashing the whole render on them.
+  for (const p of parts) h.update(typeof p === 'string' ? p : JSON.stringify(p) ?? String(p));
   return h.digest('hex').slice(0, 16);
 };
 
@@ -622,6 +626,9 @@ export async function renderHyperframesCards(jobs, ctx, { log = console.log, war
       const files = sceneAssets(job.scene.file);
       const key = hashOf(HF_VERSION, ctx.FPS, job.seconds.toFixed(3), job.lead, job.cues, job.say, ctx.W, ctx.H, ctx.accent, ctx.ink, ctx.font, ctx.lang, ctx.subs,
         fs.existsSync(job.scene.file) ? fileHash(job.scene.file) : 'missing', ...Object.entries(files).map(([k, f]) => [k, fileHash(f)]),
+        // the shipped 3D helpers are part of the picture too: upgrading storyshot has to invalidate
+        // the cached frames of every 3D scene, or a fixed engine renders the old frames back
+        job.kit?.three ? ['kit3d', fileHash(KIT3D)] : 'no-three',
         ...[...(job.kit?.css ?? []), ...(job.kit?.js ?? [])].map((f) => [f, fs.existsSync(f) ? fileHash(f) : 'missing']));
       const dir = path.join(root, `${job.name}-${key}`), frames = path.join(dir, 'frames');
       if (fs.existsSync(path.join(dir, 'done'))) { out[job.name] = { dir: frames, ext: 'jpg', alpha: false }; continue; }

@@ -515,6 +515,16 @@ scene. A scene's narration may be a whole paragraph: it is spoken in chunks of
 whole sentences, and `voice.maxPause` caps the pauses inside a line (0.55 s in
 an explainer).
 
+`scenes: { three: true }` adds three.js and storyshot's `Kit3` helpers, for a
+scene whose subject is an **object** rather than a quantity: a solid is shaded
+flat by which way it faces and its edges are found in a second normal/depth
+pass, so it reads as a drawn figure rather than a render, and
+`eng.part(…, { explode })` + `eng.explode(k)` give an exploded view from one
+number. It is for the few scenes that need it — a list, a curve or a count is
+better and sharper in HTML — and it suits a light ground, because the ink edge
+is a drawn line on paper and a rim light on black. See "3D scenes, used
+sparingly" in `storyshot guide`.
+
 Every scene of a film shares one look, and the look belongs to the subject and
 the audience: a dark instrument panel suits a mechanism explained to specialists,
 a warm paper poster suits civics explained to nine-year-olds. Say which ground

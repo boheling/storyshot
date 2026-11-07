@@ -183,3 +183,53 @@ test('two sentences the voice runs together are still two phrases', () => {
   const ph = phraseTimes(pcm, [{ text: '一边往前走。 走到探针那里，切了下来。', start: 0, end: 2.0 }]);
   assert.deepEqual(ph.map((p) => p.text), ['一边往前走。', '走到探针那里，', '切了下来。']);
 });
+
+// --- drawn 3D scenes (`scenes: { three: true }`) ----------------------------------------------
+
+const scene3d = (body) => `<template><div id="s" data-composition-id="s" data-width="1920" data-height="1080"><canvas id="c" width="1920" height="1080"></canvas></div>
+<script>const S = window.__storyshot; ${body} window.__timelines['s'] = gsap.timeline({ paused: true });</script></template>`;
+
+test('a scene that uses Kit3 without scenes: { three: true } is an error, not a blank frame', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'ss3d-'));
+  const f = path.join(d, 'a.html');
+  fs.writeFileSync(f, scene3d("const eng = Kit3.engine(document.getElementById('c'), {});"));
+  assert.match(sceneInfo(f, { three: false }).errors.join(' '), /uses Kit3 .*scenes: \{ three: true \}/);
+  assert.deepEqual(sceneInfo(f, { three: true }).errors, []);
+  // bare THREE counts too, and a scene that mentions neither is left alone
+  fs.writeFileSync(f, scene3d('const g = new THREE.BoxGeometry(1, 1, 1);'));
+  assert.match(sceneInfo(f, { three: false }).errors.join(' '), /uses THREE/);
+  fs.writeFileSync(f, scene3d('const x = 1;'));
+  assert.deepEqual(sceneInfo(f, { three: false }).errors, []);
+});
+
+test('scenes.three loads three.js and Kit3 into the scene project, ahead of the storyboard kit', async () => {
+  const { writeSceneProject } = await import('../src/scenes.mjs');
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'ss3d-'));
+  const f = path.join(d, 'a.html');
+  fs.writeFileSync(f, scene3d("const eng = Kit3.engine(document.getElementById('c'), {});"));
+  const mine = path.join(d, 'mine.js');
+  fs.writeFileSync(mine, '// the storyboard\'s own helpers');
+  const ctx = { W: 1920, H: 1080, FPS: 30, accent: '#000', ink: '#111', font: 'Inter', lang: 'en', subs: false, fontFaces: '' };
+  const out = path.join(d, 'proj');
+  writeSceneProject({ name: 's', kind: 'scene', seconds: 4, scene: { file: f, lead: 0 }, lead: 0, cues: [], kit: { css: [], js: [mine], three: true } }, ctx, out);
+  const index = fs.readFileSync(path.join(out, 'index.html'), 'utf8');
+  assert.ok(fs.existsSync(path.join(out, 'kit3d.js')), 'the engine is copied in');
+  assert.ok(index.indexOf('three.min.js') < index.indexOf('kit3d.js'), 'three.js before the helpers');
+  assert.ok(index.indexOf('kit3d.js') < index.indexOf('mine.js'), "storyshot's kit before the storyboard's");
+  assert.ok(index.includes('are deprecated'), 'the r160 deprecation notice is filtered out of the console');
+});
+
+test('Kit3.rng is seeded, so the same second renders the same pixels', () => {
+  const src = fs.readFileSync(new URL('../src/scene-kit/kit3d.js', import.meta.url), 'utf8');
+  // comments stripped: the ban is explained in prose there, which would match the search for it
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(code, /Math\.random\s*\(/, 'the engine never reaches for an unseeded random');
+  const sandbox = { window: {}, THREE: function () {} };
+  vm.runInNewContext(src, sandbox);
+  const { rng } = sandbox.window.Kit3;
+  const a = rng(7), b = rng(7), c = rng(8);
+  const take = (f) => Array.from({ length: 5 }, () => f());
+  assert.deepEqual(take(a), take(b), 'one seed, one sequence');
+  assert.notDeepEqual(take(rng(7)), take(c), 'a different seed, a different sequence');
+  assert.ok(take(rng(3)).every((v) => v >= 0 && v < 1));
+});

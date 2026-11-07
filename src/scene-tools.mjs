@@ -50,6 +50,9 @@ export async function previewScene(cfg, stepNo, { at, check = true, log = consol
       for (const f of j.findings ?? []) {
         // the wrapper is ours: only what is about the scene file counts
         if (f.file && !/scene\.html$/.test(f.file)) continue;
+        // lint reads the composition alone, so it cannot see that `scenes: { three: true }` already
+        // loaded three.js and Kit3 in the page around it
+        if (f.code === 'missing_three_script' && cfg.sceneKit?.three) continue;
         (f.severity === 'error' ? lint.errors : f.severity === 'warning' ? lint.warnings : []).push(`${f.code}: ${f.message}${f.fixHint ? ` — ${f.fixHint}` : ''}`);
       }
     } catch { if (r.code !== 0) lint.errors.push((r.err || r.out).trim().split('\n').slice(-3).join(' | ')); }

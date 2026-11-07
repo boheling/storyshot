@@ -179,12 +179,12 @@ export function check(file, { draft = false } = {}) {
     // scenes: the file is there and keeps the HyperFrames contract (the full lint runs in `storyshot scene`)
     for (const [i, s] of cfg.steps.entries()) {
       if (!s.scene || s.hidden) continue;
-      const r = sceneInfo(s.scene.file, cfg.output);
+      const r = sceneInfo(s.scene.file, { ...cfg.output, three: !!cfg.sceneKit?.three });
       errors.push(...r.errors.map((e) => `step ${i + 1}: ${e}`));
       warnings.push(...r.warnings.map((w) => `step ${i + 1}: ${w}`));
       if (!cfg.voice && !(typeof s.duration === 'number')) errors.push(`step ${i + 1}: a scene is as long as its narration, and there is no voice: — add a voice: block, or give the scene a duration`);
     }
-    if (raw.scenes) unknown(raw.scenes, ['css', 'js'], 'scenes');
+    if (raw.scenes) unknown(raw.scenes, ['css', 'js', 'three'], 'scenes');
     for (const f of [...cfg.sceneKit.css, ...cfg.sceneKit.js]) if (!fs.existsSync(f)) errors.push(`scenes: ${f} does not exist`);
     for (const f of cfg.sceneKit.css) if (!/\.css$/i.test(f)) errors.push(`scenes.css: ${path.basename(f)} is not a .css file`);
     for (const f of cfg.sceneKit.js) if (!/\.m?js$/i.test(f)) errors.push(`scenes.js: ${path.basename(f)} is not a .js file`);

@@ -481,6 +481,51 @@ not just full stops**, so "一个线，一道帘子，一张纸" is three cues, 
 `cues` (or `preview_scene`) and key the beats to the list it prints, never to
 the sentences you counted in the `say:` line.
 
+**3D scenes, used sparingly.** `scenes: { three: true }` loads three.js and
+storyshot's own `Kit3` into every scene of the film. Kit3 does not light a
+scene, it *draws* one: flat tone chosen by which way a face points, ink edges
+found in a second normal/depth pass, and a long lens (fov 18) so parallel edges
+stay parallel. The result reads as a figure in a textbook, not as a render.
+
+**Most scenes should not use it.** Reach for 3D only when the form itself
+carries the meaning:
+
+- it is a **real object** the viewer could hold or stand next to (a culture
+  flask, an instrument, a ballot box);
+- the point is **how the parts fit together**, so an exploded view *is* the
+  answer (`eng.part(parent, { at, explode })`, then `eng.explode(k)`);
+- the point is **spatial**: something is inside, under or behind something
+  else, or how densely a volume is filled is the fact;
+- the idea needs **two angles** before it lands.
+
+Leave everything else in 2D — it is sharper, smaller, faster to write, and the
+type stays type. A quantity, a sequence, a list, a curve, a year, a name, and
+any object that is really a figure of speech (a "barcode", a "reading frame", a
+brake) all belong in HTML and SVG. Extruding a bar chart into boxes adds a third
+dimension with no information in it. Keep 3D to roughly **a third of a film's
+scenes at most**, on the one object the film keeps coming back to; a film where
+every scene is a rendered object stops reading as an explanation and starts
+reading as a product demo.
+
+**Prefer a light ground for it.** The edge pass finds a silhouette and draws it
+*dark*, which on paper is a drawn line and on a dark ground has to become a pale
+rim — that is a light, which is the one thing the technique exists to avoid. On
+a dark film, translucency also stops working: glass reads as a hole. Pick the
+film's ground for its subject as always, but if the film will carry 3D, that is
+an argument for paper. And remember a ground change is a **palette** change: a
+signal colour chosen to glow on blue-black usually fails contrast on paper (a
+`#ff5c8a` that sang on `#0f1218` reads at 2.6:1 on `#f4f1ea`).
+
+Keep the words in HTML over the canvas, not in the 3D scene: text drawn in WebGL
+is soft, cannot be checked for contrast or the 28 px floor, and does not pick up
+the film's fonts. The scene renders from the timeline — `eng.render()` inside a
+GSAP `onUpdate`, never a frame loop — and uses `Kit3.rng(seed)` where it needs
+scatter, because frames are rendered by seeking and `Math.random` would give a
+different picture every render. `storyshot guide` prints Kit3's full API in
+`src/scene-kit/kit3d.js`; a scene that calls `Kit3` or `THREE` without
+`scenes: { three: true }` is a `check` error, because it would otherwise render
+an empty frame.
+
 **The scene file contract** (`storyshot check` and `preview_scene` enforce it):
 
 ```html
