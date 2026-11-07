@@ -56,9 +56,15 @@ export async function previewScene(cfg, stepNo, { at, check = true, log = consol
   }
 
   // stills: as each phrase is spoken (a beat into it), and the end
-  let times = at?.length ? at : [...local.map((c) => c.t + Math.min(0.9, (c.end - c.t) * 0.6)), seconds - 0.05];
-  times = [...new Set(times.map((t) => +Math.max(0, Math.min(seconds - 0.02, t)).toFixed(2)))].sort((a, b) => a - b);
-  if (times.length > 12) times = Array.from({ length: 12 }, (_, k) => times[Math.round(k * (times.length - 1) / 11)]);
+  // HOLD is a probe, not a shot worth looking at: the same picture at HOLD and at the end means
+  // nothing has moved for the last 2.5 s (see "does the film end, or does it just stop?" below).
+  const HOLD = seconds > 4 ? +(seconds - 2.55).toFixed(2) : null;
+  let times = at?.length ? at : [...local.map((c) => c.t + Math.min(0.9, (c.end - c.t) * 0.6)), HOLD, seconds - 0.05];
+  times = [...new Set(times.filter((t) => t != null).map((t) => +Math.max(0, Math.min(seconds - 0.02, t)).toFixed(2)))].sort((a, b) => a - b);
+  if (times.length > 12) {
+    times = Array.from({ length: 12 }, (_, k) => times[Math.round(k * (times.length - 1) / 11)]);
+    if (HOLD != null && !at?.length && !times.includes(HOLD)) times = [...new Set([...times, HOLD])].sort((a, b) => a - b);
+  }
   const shots = path.join(dir, 'shots');
   const r = await hyperframesRun(['snapshot', dir, '--at', times.join(','), '--no-end', '--output', shots], { log });
   if (r.code !== 0) throw new Error(`the scene did not load in HyperFrames: ${(r.err || r.out).trim().split('\n').filter(Boolean).slice(-4).join(' | ')}`);
@@ -97,7 +103,26 @@ export async function previewScene(cfg, stepNo, { at, check = true, log = consol
       found[k] = [...groups.values()].map((ws) => (ws.length > 1 ? `${ws[0]} (and ${ws.length - 1} more like it)` : ws[0]));
     }
   }
-  return { dir, seconds, cues: local, times, images, sheet, sheets, lint, check: check ? found : null, subs: ctx.subs };
+  // Does the film end, or does it just stop? A recap scene adds and adds, and its last frame — the
+  // fullest of the whole film — is then held until the file runs out. The layout check samples too
+  // few moments to see it, but the stills are already rendered: if the last two are the same picture
+  // and they are seconds apart, the film has no last beat. (Only the film's last scene: a held frame
+  // in the middle is a pause, and a scene handing over to an end card has already done its part.)
+  const last = cfg.steps.map((x, k) => (x.hidden ? -1 : k)).filter((k) => k >= 0).at(-1);
+  const hold = HOLD == null ? -1 : times.indexOf(HOLD);
+  if (images.length === times.length && hold >= 0 && hold < times.length - 1 && last === i && !cfg.endCard) {
+    const same = (a, b) => { try { return fs.readFileSync(a).equals(fs.readFileSync(b)); } catch { return false; } };
+    if (same(images[images.length - 1], images[hold])) {
+      found.warnings.push(
+        `frozen_ending (at ${times[times.length - 1].toFixed(1)}s): nothing has changed on screen since ${times[hold].toFixed(1)}s, ` +
+        `so the film ends on a still frame of its fullest moment. A frozen picture is usually the symptom: check the WORDS first — read this ` +
+        `scene's say: line alone, and if it summarises and stops rather than concluding, the film has no ending to show. An explainer ends on a ` +
+        `closing beat of its own after the recap: what this actually means, what is still open, and one thought to leave with. Then clear everything ` +
+        `except the one thing the viewer should leave holding, land that move ON the final words, and prefer a move still running when the file ends`);
+    }
+  }
+  return { dir, seconds, cues: local, times, images, sheet, sheets, lint,
+    check: check || found.warnings.length ? found : null, subs: ctx.subs };
 }
 
 // What to do about the findings agents meet most in scenes (HyperFrames' own messages point at its docs).

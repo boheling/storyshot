@@ -97,10 +97,21 @@ export function initExplainer({ topic, file, lang = 'en', portrait = false } = {
   const dir = path.dirname(path.resolve(file));
   const zh = /^zh/i.test(lang);
   const [W, H] = portrait ? [1080, 1920] : [1920, 1080];
+  // Four steps, not three: a recap re-counts what the film said and then runs out, which a viewer hears
+  // as the film being cut off. The last step is the ending itself (`storyshot guide`: "How an explainer ends").
   const scenes = [1, 2, 3].map((k) => ({ id: `${name}-s${k}`.replace(/[^a-z0-9-]/gi, '-'), rel: `scenes/${name}-${k}.html` }));
+  scenes.push({ id: `${name}-close`.replace(/[^a-z0-9-]/gi, '-'), rel: `scenes/${name}-close.html` });
   const say = zh
-    ? ['TODO 一个观众会问的问题，一两句话。', 'TODO 用一个具体例子回答，每个短句对应画面上的一个变化。', 'TODO 一句话总结。']
-    : ['TODO the question a viewer would ask, in one or two sentences.', 'TODO answer it with one concrete example, one change on screen per phrase.', 'TODO the idea in one line.'];
+    ? ['TODO 一个观众会问的问题，一两句话。', 'TODO 用一个具体例子回答，每个短句对应画面上的一个变化。', 'TODO 把讲过的再数一遍。',
+       'TODO 结尾：这件事到底意味着什么（一句在第一场说不出来的话）；哪些还没有答案；留给观众的一句话，落在片子自己的那张图上。']
+    : ['TODO the question a viewer would ask, in one or two sentences.', 'TODO answer it with one concrete example, one change on screen per phrase.',
+       'TODO count back over what the film showed, one line each.',
+       'TODO the ending. What this actually means (the sentence you could not have said in scene 1), what is still open, and one thought to leave with, on the film\'s own picture.'];
+  const note = [
+    '\n    # scene: { file: …, title: Chapter title, lead: 0.5, tail: 0.8 }   (lead: seconds before the voice starts)', '', '',
+    zh ? '\n    # 回顾数完就停，所以听起来没有结局；这一场才是结局。最后一下落在最后一句话上，\n    # 而且到最后一帧还在动（一条还在画的线，一道还在合的帘子），别停在一张满画面上。'
+       : '\n    # The recap stops rather than ends; this scene is the ending. Land its last move ON the final words,\n    # and leave something still moving at the last frame — not a held frame of the film\'s fullest moment.',
+  ];
   const yaml = `# Storyshot storyboard (explainer) — every step is a scene: an animation you write as a HyperFrames
 # composition (scenes/*.html), timed to the step's narration. Reference: \`storyshot guide\` ("Scenes and explainers").
 # Loop: write the say: lines → storyshot cues (when each phrase is spoken) → write the scenes with S.at(k)
@@ -109,16 +120,19 @@ name: ${name}
 purpose: explainer
 out: ${name}.mp4
 ${zh ? 'lang: zh\nvoice: { provider: qwen, voice: dylan }      # free, local (Apple Silicon); elsewhere kokoro zf_001' : 'voice: { provider: kokoro }                  # free, local'}
-${portrait ? `output: { width: ${W}, height: ${H} }\nviewport: { width: 900, height: 1600 }\n` : ''}subtitles: burn                                  # or true for an .srt beside the video
+${portrait ? `output: { width: ${W}, height: ${H} }\nviewport: { width: 900, height: 1600 }\n` : ''}subtitles: true                                  # an .srt beside the video, which is the right one for an explainer: the
+                                                 # scenes already carry text, and \`burn\` lights the words up at the bottom
+                                                 # of the picture, pulling the eye off the drawing for the whole film.
+                                                 # Burn them for social video or a feed that autoplays muted, and say so.
 ground: light                                    # light | dark: the film's ground, chosen for the subject and its audience
                                                  # (\`storyshot guide\`: "The look follows the subject"). Paper for a subject that
                                                  # is taught, printed or voted on; dark for a mechanism, an instrument or anything
-                                                 # that glows. Subtitles and cards follow it; paint every scene to match.
-theme: { accent: "#b45309", ink: "#17181b" }     # accent: the one colour that points. It also paints the word being
-                                                 # spoken in the subtitles, so it has to read on the ground above
+                                                 # that glows. The cards follow it; paint every scene to match.
+theme: { accent: "#b45309", ink: "#17181b" }     # accent: the one colour that points (with \`subtitles: burn\`, also the word
+                                                 # being spoken), so it has to read on the ground above
 
 steps:
-${scenes.map((sc, k) => `  - scene: ${sc.rel}${k === 0 ? '\n    # scene: { file: …, title: Chapter title, lead: 0.5, tail: 0.8 }   (lead: seconds before the voice starts)' : ''}
+${scenes.map((sc, k) => `  - scene: ${sc.rel}${note[k] ?? ''}
     say: ${say[k]}`).join('\n\n')}
 `;
   fs.mkdirSync(path.join(dir, 'scenes', 'assets'), { recursive: true });
@@ -145,7 +159,7 @@ function starterScene(id, W, H) {
   <script>
     (function () {
       // S.at(k): when phrase k of this step's say: line starts (S.end(k): ends); S.duration, S.width, S.height,
-      // S.safeBottom (px the burned-in subtitles take), S.cues ([{ text, t, end }]). Run \`storyshot cues\` to see them.
+      // S.safeBottom (px burned-in subtitles take; 0 without \`subtitles: burn\`), S.cues ([{ text, t, end }]). Run \`storyshot cues\`.
       const S = window.__storyshot;
       const tl = gsap.timeline({ paused: true });
       tl.fromTo('#${id}-line', { opacity: 0, filter: 'blur(8px)' }, { opacity: 1, filter: 'blur(0px)', duration: 0.4, ease: 'power3.out' }, S.at(0));

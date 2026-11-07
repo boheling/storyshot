@@ -501,7 +501,7 @@ the scene file.
 ```yaml
 purpose: explainer          # scenes only: no url, nothing recorded
 voice: { provider: qwen, voice: dylan }
-subtitles: burn
+subtitles: true             # an .srt beside the video; `burn` puts the words on the picture (social, muted autoplay)
 steps:
   - scene: scenes/question.html                       # or { file, title, lead: 0.5, tail: 0.8 }
     say: An intact probe carries a dye. Why doesn't it glow?

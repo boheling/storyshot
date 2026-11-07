@@ -44,29 +44,47 @@ export async function soundtrack(cfg, events, silentVideo, { log = console.log }
     for (let i = 0; i < Math.min(N, f.length / 2); i++) { music[0][i] = f[2 * i] * 0.5; music[1][i] = f[2 * i + 1] * 0.5; }
   } else if (cfg.music?.style === 'calm') {
     // calm (explainers): slow pad chords vi–IV–I–V in C, two bars each, a soft bass under them and a
-    // sparse bell; no drums, nothing on the beat that would pull at the voice
+    // sparse bell; no drums, nothing on the beat that would pull at the voice.
+    // The film has to *end*, not stop. Truncating the loop wherever the video happens to finish leaves
+    // the last chord hanging (and faded down, which a listener hears as "turned off", not "over"), so
+    // the loop is phased to reach IV one chord before the end, the tonic lands there — under the last
+    // spoken line — and rings out through the tail: a plagal cadence, the gentlest full stop there is.
     const BEAT = 60 / cfg.music.bpm, LEN = BEAT * 8;
     const chords = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]];
-    for (let b = 0, t0 = 0; t0 < events.total; b++, t0 = b * LEN) {
-      const ch = chords[b % chords.length], len = Math.min(LEN, events.total - t0) + 1.2; // rings into the next chord
+    const CAD = Math.max(0, events.total - LEN);   // where the tonic lands (a clip shorter than one
+                                                   // chord is all cadence, which is the right answer)
+    const before = Math.ceil(CAD / LEN);           // chords before it...
+    const phase = ((2 - before) % 4 + 4) % 4;      // ...phased so the last of them is IV
+    const pad = (ch, t0, len, gain = 1) => {
       for (const [k, note] of [...ch, ch[0] + 12].entries()) {
         for (const det of [-0.06, 0.06]) {
           const f = hz(note + det), filt = svf();
           add(music, t0, len, (t) => {
             const env = Math.min(1, t / 1.4) * Math.min(1, Math.max(0, len - t) / 1.6);
             return filt(saw(f * t) * 0.6 + Math.sin(2 * Math.PI * f * t) * 0.4, 650 + 250 * Math.sin(t * 0.4 + k)).lp * env;
-          }, 0.024, (k - 1.5) * 0.35 + det * 2);
+          }, 0.024 * gain, (k - 1.5) * 0.35 + det * 2);
         }
       }
       const fb = hz(ch[0] - 12);
-      add(music, t0, len, (t) => Math.sin(2 * Math.PI * fb * t) * Math.min(1, t / 0.6) * Math.min(1, Math.max(0, len - t) / 1.2), 0.09);
+      add(music, t0, len, (t) => Math.sin(2 * Math.PI * fb * t) * Math.min(1, t / 0.6) * Math.min(1, Math.max(0, len - t) / 1.2), 0.09 * gain);
+    };
+    for (let b = 0, t0 = 0; t0 < CAD; b++, t0 = b * LEN) {
+      const ch = chords[(b + phase) % chords.length], len = Math.min(LEN, CAD - t0) + 1.2; // rings into the next chord
+      pad(ch, t0, len);
       if (b % 2 === 0) for (const [j, note] of [ch[2] + 12, ch[1] + 24].entries()) {
         const f = hz(note);
         add(music, t0 + j * BEAT * 2, 2.5, (t) => (Math.sin(2 * Math.PI * f * t) + 0.15 * Math.sin(4 * Math.PI * f * t)) * Math.exp(-t * 1.8) * Math.min(1, t / 0.01), 0.03, j ? 0.3 : -0.3);
       }
     }
-    // fade in over 2 s, out over the last 3 s
-    for (const c of music) for (let i = 0; i < N; i++) c[i] *= Math.min(1, i / SR / 2) * Math.min(1, (N - i) / SR / 3);
+    // the cadence: the tonic swells a little louder than the loop ever did, with two bells over it
+    const RING = events.total - CAD, TONIC = [48, 52, 55];
+    pad(TONIC, CAD, RING, 1.15);
+    for (const [j, note] of [TONIC[2] + 12, TONIC[0] + 24].entries()) {
+      const f = hz(note);
+      add(music, CAD + j * BEAT, RING, (t) => (Math.sin(2 * Math.PI * f * t) + 0.2 * Math.sin(4 * Math.PI * f * t)) * Math.exp(-t * 0.9) * Math.min(1, t / 0.01), 0.035, j ? 0.3 : -0.3);
+    }
+    // fade in over 2 s; the cadence is what ends the music, so the fade out only guards the cut
+    for (const c of music) for (let i = 0; i < N; i++) c[i] *= Math.min(1, i / SR / 2) * Math.min(1, (N - i) / SR / 1.2);
   } else if (cfg.music) {
     // I–V–vi–IV in C at `bpm`, resolving on the end card (or fading at the end)
     const BEAT = 60 / cfg.music.bpm, BAR = BEAT * 4;

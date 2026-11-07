@@ -129,7 +129,12 @@ export async function burnSubtitles(cfg, narration, { log = console.log, rendere
   // letters with an ink outline on a dark film, ink letters with a white outline on a light one, where
   // white letters would need a dark bar under them. The word being spoken is the accent either way.
   const light = filmGround(cfg) === 'light' && isDark(cfg.theme.ink);
-  const restCol = light ? cfg.theme.ink : '#ffffff', edgeCol = light ? '#ffffff' : cfg.theme.ink, sweep = cfg.theme.accent;
+  const restCol = light ? cfg.theme.ink : '#ffffff', sweep = cfg.theme.accent;
+  // The outline is what separates the letters from the picture, so it has to be the OPPOSITE of them.
+  // `theme.ink` is only dark on a light film — a dark film names its light text colour `ink` — and
+  // taking the outline from it there put a near-white edge around the accent-coloured word being
+  // spoken, which reads as a ghosted double of every letter, crawling along the line as it is read.
+  const edgeCol = light ? '#ffffff' : isDark(cfg.theme.ink) ? cfg.theme.ink : '#000000';
   const shade = light ? [255, 255, 255] : [0, 0, 0];
   if (renderer === 'png') {
     // no libass in this ffmpeg: draw each state of each line (the words spoken so far in the accent

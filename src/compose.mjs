@@ -659,7 +659,12 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       `[${last}][in]overlay=0:0:eof_action=pass[v${++idx}];\n`;
     last = `v${idx}`;
   }
-  graph += `[${last}]trim=duration=${TOTAL},format=yuv420p[out]`;
+  // The picture needs a full stop too. Without one the file simply ceases on whatever was on screen —
+  // which in an explainer is the recap, the busiest frame of the film, held still and then cut. An end
+  // card is already an ending; otherwise settle to the film's own ground over the last of the tail.
+  const OUTRO = ec ? 0 : Math.min(0.9, TOTAL * 0.02);
+  const outro = OUTRO > 0.05 ? `,fade=out:st=${(TOTAL - OUTRO).toFixed(3)}:d=${OUTRO.toFixed(3)}:color=${filmGround(cfg) === 'light' ? 'white' : 'black'}` : '';
+  graph += `[${last}]trim=duration=${TOTAL},format=yuv420p${outro}[out]`;
   if (clean) graph += `;\n[vclean0]trim=duration=${TOTAL},format=yuv420p[clean]`;
   const graphFile = path.join(cfg.work, 'graph.txt');
   fs.writeFileSync(graphFile, graph);

@@ -93,7 +93,7 @@ or stands in for a recording of them.
    | `tutorial` | every step of the workflow, each explained, plus a second example; as long as that takes | yes | soft | step numbers, spotlight, camera follows, part cards, recap, .srt, chapters |
    | `course` | the concepts to teach: each idea, shown in the app, checked with a question | yes | none | spotlight, camera follows, concept and question cards, recap, .srt, chapters |
    | `docs` | one clip per step, each just long enough to see its result | none | none | step numbers, spotlight, cropped GIFs + PNGs, README.md article |
-   | `explainer` | the questions the viewer has about the concept, each answered by one scene; no web app | yes | calm | your scenes in a look chosen for the subject and the audience, .srt or burned-in subtitles, chapters |
+   | `explainer` | the questions the viewer has about the concept, each answered by one scene, then a closing scene after the recap ("How an explainer ends"); no web app | yes | calm | your scenes in a look chosen for the subject and the audience, an .srt beside the video (burned in only for social or muted autoplay), chapters |
 
    An explainer has no site to look at, so the plan carries one more line: the
    **look** — who the viewer is, and the style that suits them and the subject
@@ -287,6 +287,10 @@ common ones):
    screen (its bullets light up as you name them; a formula goes in `emblem`).
 5. A check: a question card, then the step that reveals the answer.
 6. The recap, in the same words as before.
+7. A last word, which the recap is not: what the viewer can do now that they
+   could not do at the start, and the one thing to keep. A film that stops on
+   its recap sounds cut off, whatever its type — see "How an explainer ends"
+   below, which is where that is spelled out.
 
 Every step answers the question the step before it raised. Link them out loud:
 "Now that b has moved the line up, let's see what m does." When the camera
@@ -417,7 +421,9 @@ with no `say:` needs a `duration`. A scene has no `actions`, `caption` or
    question, one concrete example that runs through the whole video (one
    gene, one request, one dataset). Then one question per scene, answered by
    one picture. Follow "Writing the narration" above: short spoken sentences;
-   question → concrete case → name the idea → why → recap.
+   question → concrete case → name the idea → why → recap → **a closing scene**
+   ("How an explainer ends" below). The arc does not end on the recap: plan the
+   closing scene here, with the others, not after the first render.
 3. **Lines.** Write the `say:` lines: one idea per scene, usually 2–5
    sentences (about 60 English words or 120 Chinese characters at most).
    Commas are cue points: each phrase can trigger one change on screen.
@@ -434,6 +440,46 @@ with no `say:` needs a `duration`. A scene has no `actions`, `caption` or
 7. **Render**, look at `preview.jpg` (one frame per scene), and fix. After
    editing only scenes or lines, `compose` re-renders just the scenes that
    changed.
+
+**How an explainer ends.** A recap is not an ending. A recap re-counts what the
+film already said and then runs out, and a viewer hears that as the film being
+cut off — "像没有结局一样，很突兀". Storyshot resolves the music and settles the
+picture, but a full stop is something only the script has: a conclusion, what is
+still open, and one thought to leave with. **Write the last scene as a scene of
+its own, after the recap**, and give it the four or five sentences the rest of
+the film earned:
+
+- **What this actually means.** Not a summary — the thing that is true now that
+  the viewer has seen all of it. Often it is the one sentence you could not have
+  said in scene 1: *the lesson is not "keep going", it is that a guess got
+  treated as a proof while an old algorithm waited for hardware.*
+- **What is still open.** Name it plainly, with the same honesty as the body. A
+  film that admits its limit ends; a film that trails off into a caveat stops.
+- **One thought to leave with**, in the film's own images, not a new one. Land
+  the final words on it. *The brake was all you had; now you can also hand over
+  the picture of who to chase.*
+
+Then the picture follows the words:
+
+- **The closing frame shows less than the one before it.** Let the recap build,
+  then take it away: clear everything except the one object, number or sentence
+  the film was about. A viewer leaves holding one thing, so choose which.
+- **Keep the last 2 s alive.** Land the closing move *on* the final words, and
+  prefer a move that is still running when the file ends — a line still being
+  drawn, a curtain still closing — over one that finished and is being held.
+- Three or more seconds of a motionless frame is the defect the layout check
+  calls `dead_stretch`; it does not see the `tail`, so check that yourself, and
+  `preview_scene` reports `frozen_ending` when the last scene is already frozen.
+- A recap that now has a closing scene after it should stop holding a long
+  `tail` for an ending it no longer has: shorten it and let the recap dissolve
+  as its last words land, so it reads as a page turn.
+- An `end_card` is an alternative ending, not an extra one: with a card the last
+  scene hands over to it, and storyshot leaves the picture to the card.
+
+One practical trap when you time that scene: **the voice breaks cues on commas,
+not just full stops**, so "一个线，一道帘子，一张纸" is three cues, not one. Run
+`cues` (or `preview_scene`) and key the beats to the list it prints, never to
+the sentences you counted in the `say:` line.
 
 **The scene file contract** (`storyshot check` and `preview_scene` enforce it):
 
@@ -606,7 +652,11 @@ Explainer defaults:
 - **Music:** `music: { style: calm }`, soft pads with no drums;
   `music: false` for none.
 - **Subtitles:** `subtitles: true` writes an .srt; `burn` puts them on the
-  video, the better choice for social video and Chinese. Burned-in words take
+  video. `true` is the default and the right one for an explainer watched on a
+  screen: the scenes already carry text, and a burned-in line lighting up word
+  by word at the bottom pulls the eye off the drawing for the whole film. Burn
+  them for social video, for a feed that autoplays muted, or when asked — and
+  then say so, because it is a trade, not a free addition. Burned-in words take
   their colour from `ground:` (see "The look follows the subject"), so set it.
 - **Ground:** `ground: light | dark`, chosen for the subject and the audience,
   not inherited from the last film.
