@@ -120,7 +120,7 @@ name: ${name}
 purpose: explainer
 out: ${name}.mp4
 ${zh ? 'lang: zh\nvoice: { provider: qwen, voice: dylan }      # free, local (Apple Silicon); elsewhere kokoro zf_001' : 'voice: { provider: kokoro }                  # free, local'}
-${portrait ? `output: { width: ${W}, height: ${H} }\nviewport: { width: 900, height: 1600 }\n` : ''}subtitles: true                                  # an .srt beside the video, which is the right one for an explainer: the
+${portrait ? 'aspect: portrait                                 # 9:16, 1080x1920: a phone held upright, and every short-video feed.\n                                                 # Write every scene as one column: `storyshot guide` ("Portrait").\n' : ''}subtitles: true                                  # an .srt beside the video, which is the right one for an explainer: the
                                                  # scenes already carry text, and \`burn\` lights the words up at the bottom
                                                  # of the picture, pulling the eye off the drawing for the whole film.
                                                  # Burn them for social video or a feed that autoplays muted, and say so.

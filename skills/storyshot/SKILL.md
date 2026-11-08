@@ -681,6 +681,17 @@ much cheaper to show one previewed scene in the chosen style and ask.
   - A glow that spills out of its box: `data-layout-allow-overflow` on the box.
   - A label sitting on its object: `data-layout-allow-overlap` on the container.
   - Small credits or texture: `data-layout-ignore`.
+  - But `data-layout-ignore` takes an element out of the check entirely, so two
+    ignored elements may overlap and nothing will say so. A source credit
+    running under a "schematic" mark in the same corner is the usual way this
+    bites. Read that corner off the still.
+- **A CSS rule beats an SVG presentation attribute.** If your scene CSS says
+  `.fig .ln { fill: none; stroke-width: 4 }`, then `fill="#c00"` or
+  `stroke-width="7"` *as attributes* on a `.ln` element do nothing at all —
+  silently, with no warning. Shapes come out unfilled and strokes come out the
+  wrong weight. Set them as inline **styles** instead, or give the element its
+  own class. This is the single most common reason a drawn scene looks wrong
+  while every check passes.
 - **"The film's last line needs 2 s".** Only the video's last scene must hold
   its final words. Elsewhere, reveal text on an earlier phrase or raise
   `tail:`.
@@ -688,6 +699,10 @@ much cheaper to show one previewed scene in the chosen style and ask.
   so they come out dark when the scenes do; `ground: light | dark` settles the
   whole film and `cards: light | dark` overrides the cards alone. Keep
   end-card bullets short: about 10 Chinese characters or 5 English words each.
+  `ground` only picks light or dark, so a film drawn on a *colour* — warm
+  paper, a blueprint blue — still opens on storyshot's near-white, which reads
+  as cold and as a different film. Give that colour as `theme: { paper:
+  "#e9ddc4" }` and every card tone is mixed from it and the ink instead.
 
 Long narration is fine: a scene's `say:` is spoken in chunks of whole
 sentences, and in an explainer no pause inside a line lasts longer than
@@ -714,6 +729,47 @@ scene kit — and from the same written description of the look, or they will
 each invent one. Settle anything they disagree about (a colour that fails
 contrast, an object drawn two ways) in the kit, once, not scene by scene.
 Review every scene's stills yourself afterwards.
+
+### Portrait
+
+`aspect: portrait` makes the video 1080×1920 — a phone held upright, which is
+what most short-video feeds want. `square` is 1:1 and `landscape` (16:9) is
+the default; `output:` still takes an exact size when none of them fits, and
+`viewport:` now follows the output's shape unless it is given.
+
+**Ask which feed it is for before you pick 9:16.** The tall frames are not
+interchangeable. Any ratio can be written out — `aspect: "3:4"` is 1080×1440,
+`aspect: "4:5"` is 1080×1350 — the short side is always 1080. 9:16 is right for
+TikTok, Reels, Shorts and Douyin. **Xiaohongshu (RED) fills its feed with 3:4**
+and crops a 9:16 video to it, so a 9:16 film posted there loses the top and
+bottom of every frame — which, in a film that stacks its beats down a column, is
+where the first and last beat live. 3:4 is a different staging problem again:
+the frame is only 1.33× taller than wide while the type still has to grow for a
+1080-wide frame, so it holds *less* than 16:9 did. Cut harder.
+
+A portrait film is **not a 16:9 film resized**. The frame is 1.8× taller than
+it is wide, so rebuild each scene rather than scaling it:
+
+- **One column, read top to bottom.** A 16:9 scene puts the object on one side
+  and its labels on the other. In portrait that side-by-side has nowhere to go:
+  stack it instead — the object, then the label under it, then the next beat
+  under that. A scene that is a left-to-right comparison in 16:9 becomes a
+  top-and-bottom one.
+- **Fewer things, bigger.** 1080 px of width is half what you had. Carry one
+  idea per screenful, and give the subject the middle of the frame, where a
+  thumb is not.
+- **Type goes up, not down.** The 28 px floor is measured at 1080p, so in
+  portrait it is a *width* floor: 28 px across 1080 px reads like 50 px across
+  1920. Titles 92–120 px, leads 52–64 px, labels 36–40 px.
+- **Keep the ends clear.** Feeds put a caption, a handle and buttons over the
+  bottom fifth and a status bar over the top. Hold the content between about
+  12% and 80% of the height. With `subtitles: burn`, `S.safeBottom` is already
+  22% in portrait (16% in landscape) — keep above it.
+- **Burn the subtitles.** A portrait film is usually watched in a feed that
+  autoplays muted, which is the one case where `subtitles: burn` earns its
+  cost. Say so when you do it.
+- Each scene's root still carries `data-width="1080" data-height="1920"`, and
+  `storyshot check` tells you when it does not match the video.
 
 ## 4. Render, look, fix
 

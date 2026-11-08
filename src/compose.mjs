@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { renderHyperframesCards } from './hyperframes.mjs';
-import { sceneSeconds, filmGround } from './scenes.mjs';
+import { sceneSeconds, filmGround, mixColour, shadeColour } from './scenes.mjs';
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const md = (s, accent) => esc(s).replace(/\*\*(.+?)\*\*/g, `<b style="color:${accent};font-weight:700">$1</b>`);
@@ -388,11 +388,18 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   // draw on a dark ground get dark cards, so a dark film doesn't cut to a white card; `ground: light |
   // dark` says it outright and `cards: light | dark` overrides the cards alone
   const darkCards = cfg.cards === 'dark' || (cfg.cards !== 'light' && filmGround(cfg) === 'dark');
-  const CK = darkCards
-    ? { bg: `radial-gradient(${W * 0.62}px ${H * 0.65}px at 50% 40%,#1e2a44 0%,#111830 60%,#0b1020 100%)`, title: '#f1f5f9', sub: '#cbd5e1', muted: '#94a3b8', item: '#e2e8f0', track: '#26314d',
-      pillBg: '#1a2238', pillFg: '#e2e8f0', pillLine: '1px solid #33405f', ctaBg: accent, ctaFg: ink, shadow: 'rgba(0,0,0,.45)' }
-    : { bg: `radial-gradient(${W * 0.62}px ${H * 0.65}px at 50% 40%,#ffffff 0%,#eef2f7 60%,#e2e8f0 100%)`, title: ink, sub: '#334155', muted: '#64748b', item: '#1e293b', track: '#e2e8f0',
-      pillBg: ink, pillFg: '#e2e8f0', pillLine: 'none', ctaBg: ink, ctaFg: '#fff', shadow: 'rgba(15,23,42,.25)' };
+  // `theme.paper`: the film's own ground. Every card tone is then mixed from that paper and the ink,
+  // so a film drawn on warm paper does not open on a cold blue-white title card.
+  const paper = cfg.theme.paper;
+  const CK = paper
+    ? { bg: `radial-gradient(${W * 0.62}px ${H * 0.65}px at 50% 40%,${shadeColour(paper, darkCards ? -0.07 : 0.08)} 0%,${paper} 58%,${shadeColour(paper, darkCards ? 0.05 : -0.07)} 100%)`,
+      title: ink, sub: mixColour(ink, paper, 0.24), muted: mixColour(ink, paper, 0.46), item: mixColour(ink, paper, 0.12), track: mixColour(ink, paper, 0.76),
+      pillBg: ink, pillFg: paper, pillLine: 'none', ctaBg: ink, ctaFg: paper, shadow: `${mixColour(ink, '#000000', 0.3)}40` }
+    : darkCards
+      ? { bg: `radial-gradient(${W * 0.62}px ${H * 0.65}px at 50% 40%,#1e2a44 0%,#111830 60%,#0b1020 100%)`, title: '#f1f5f9', sub: '#cbd5e1', muted: '#94a3b8', item: '#e2e8f0', track: '#26314d',
+        pillBg: '#1a2238', pillFg: '#e2e8f0', pillLine: '1px solid #33405f', ctaBg: accent, ctaFg: ink, shadow: 'rgba(0,0,0,.45)' }
+      : { bg: `radial-gradient(${W * 0.62}px ${H * 0.65}px at 50% 40%,#ffffff 0%,#eef2f7 60%,#e2e8f0 100%)`, title: ink, sub: '#334155', muted: '#64748b', item: '#1e293b', track: '#e2e8f0',
+        pillBg: ink, pillFg: '#e2e8f0', pillLine: 'none', ctaBg: ink, ctaFg: '#fff', shadow: 'rgba(15,23,42,.25)' };
   const card = (c, logoPath, { thinkAt = 0 } = {}) => {
     const image = c.imageFile && fs.existsSync(c.imageFile)
       ? `<img class="a rise" src="data:image/${path.extname(c.imageFile).slice(1).replace('jpg', 'jpeg').replace('svg', 'svg+xml')};base64,${fs.readFileSync(c.imageFile).toString('base64')}" style="animation-delay:.4s;max-width:${W * 0.6}px;max-height:${H * 0.42}px;border-radius:${12 * H / 1080}px;box-shadow:0 ${12 * H / 1080}px ${36 * H / 1080}px rgba(15,23,42,.18)">` : '';
@@ -557,7 +564,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   // doesn't render) the built-in ones. A launch outro is drawn with transparency over the last frame,
   // which the ffmpeg pass below zooms into the page.
   const hf = cfg.hyperframes || cards.some((c) => c.scene) ? await renderHyperframesCards(hfJobs(), {
-    W, H, FPS, dark: darkCards, accent, ink, font, lang: cfg.lang, labels: cfg.labels, opts: cfg.hyperframes, work: cfg.work, subs: cfg.subtitles === 'burn',
+    W, H, FPS, dark: darkCards, accent, ink, paper, font, lang: cfg.lang, labels: cfg.labels, opts: cfg.hyperframes, work: cfg.work, subs: cfg.subtitles === 'burn',
     frame: { FX, FY, FW, FH, ...Object.fromEntries([['frameBg', 'frame-bg.png'], ['chrome', 'frame-chrome.png'], ['url', 'frame-url0.png']]
       .map(([k, f]) => [k, cfg.frame && fs.existsSync(path.join(cfg.work, f)) ? path.join(cfg.work, f) : null])) },
   }, { log, warn }) : {};

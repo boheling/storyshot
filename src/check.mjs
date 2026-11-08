@@ -36,7 +36,7 @@ export function narrationLint(text) {
   return { tells, long };
 }
 
-const TOP = ['name', 'url', 'out', 'purpose', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'intro', 'frame', 'pace', 'follow', 'article', 'cards', 'ground', 'lang', 'colorScheme',
+const TOP = ['name', 'url', 'out', 'purpose', 'aspect', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'intro', 'frame', 'pace', 'follow', 'article', 'cards', 'ground', 'lang', 'colorScheme',
   'scrollOffset', 'captionPosition', 'captions', 'highlight', 'stepNumbers', 'subtitles', 'chapters', 'clips', 'maxWait', 'setup', 'steps', 'end_card', 'hyperframes', 'scenes'];
 const STEP = ['caption', 'say', 'sayAt', 'duration', 'zoom', 'actions', 'hidden', 'sfx', 'highlight', 'captionPosition', 'card', 'follow', 'doc', 'scene'];
 const SCENE = ['file', 'title', 'lead', 'tail'];

@@ -16,7 +16,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { writeSceneProject, sceneAssets, fileHash } from './scenes.mjs';
+import { writeSceneProject, sceneAssets, fileHash, mixColour, shadeColour } from './scenes.mjs';
 
 export const HF_VERSION = '0.8.217';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -152,6 +152,9 @@ const isCmd = (cta) => /^\$?\s*(npx|npm|pnpm|yarn|bun|pip|pipx|uv|brew|curl|git|
 const lum = (hex) => { const m = /^#?([0-9a-f]{6})$/i.exec(hex ?? ''); if (!m) return 0.5; const n = parseInt(m[1], 16); return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; };
 // a light accent (a highlighter colour) made dark enough to draw lines and text with on white: same
 // hue, lightness capped (lower for yellows and greens, which read light at any lightness)
+// Fine noise, laid over a flat or near-flat card ground so an 8-bit gradient does not contour.
+const GRAIN = `url('data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .055 0"/></filter><rect width="200" height="200" filter="url(#n)"/></svg>')}')`;
+
 const deepen = (hex) => {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex ?? ''); if (!m) return '#4f46e5';
   const n = parseInt(m[1], 16), [r, g, b] = [n >> 16, (n >> 8) & 255, n & 255].map((c) => c / 255);
@@ -301,9 +304,16 @@ function lesson(job, ctx) {
   const { W, H, dark, font, opts } = ctx, u = Math.min(H, W * 1.15) / 1080, D = job.seconds, c = job.card, accent = ctx.accent, ink = ctx.ink;
   // portrait with burned-in subtitles: the subtitles sit above the bottom fifth, so the card keeps above them
   const lift = ctx.subs && H > W ? H * 0.22 : 0;
-  const P = dark
-    ? { ground: '#0c1222', ground2: '#070b16', glow: '#1b2744', text: '#eef2f8', muted: '#9aa8bd', line: '#2a3550', chip: '#131c31', chipLine: '#26324d', band: 0.14, shadow: 'rgba(0,0,0,.35)' }
-    : { ground: '#eef2f7', ground2: '#dfe6ef', glow: '#ffffff', text: ink, muted: '#56667d', line: '#c6d0dc', chip: '#ffffff', chipLine: '#d6dee8', band: 0.17, shadow: 'rgba(13,27,46,.08)' };
+  // `theme.paper`: the film's own ground, which every card tone is then mixed from, so a film drawn on
+  // warm paper opens on that paper instead of storyshot's default cold blue-white.
+  const paper = ctx.paper;
+  const P = paper
+    ? { ground: paper, ground2: shadeColour(paper, dark ? 0.035 : -0.045), glow: shadeColour(paper, dark ? -0.045 : 0.05), text: ink,
+      muted: mixColour(ink, paper, 0.44), line: mixColour(ink, paper, 0.7), chip: shadeColour(paper, dark ? 0.07 : 0.06),
+      chipLine: mixColour(ink, paper, 0.74), band: dark ? 0.14 : 0.17, shadow: `${mixColour(ink, '#000000', 0.35)}1f` }
+    : dark
+      ? { ground: '#0c1222', ground2: '#070b16', glow: '#1b2744', text: '#eef2f8', muted: '#9aa8bd', line: '#2a3550', chip: '#131c31', chipLine: '#26324d', band: 0.14, shadow: 'rgba(0,0,0,.35)' }
+      : { ground: '#eef2f7', ground2: '#dfe6ef', glow: '#ffffff', text: ink, muted: '#56667d', line: '#c6d0dc', chip: '#ffffff', chipLine: '#d6dee8', band: 0.17, shadow: 'rgba(13,27,46,.08)' };
   const strong = dark ? accent : deepen(accent); // accent as text/line on this ground
   const bandText = opts.band ? String(opts.band).replace(/\s+/g, '') : null;
   const colorOf = (ch) => (opts.bandColors === 'aminoacid' ? RES[ch] : opts.bandColors === 'nucleotide' ? NUC[ch] : null) ?? strong;
@@ -346,7 +356,9 @@ function lesson(job, ctx) {
 
   const css = `${fontFaces(font)}
 #stage{font-family:'${font}','StoryshotCJK',sans-serif;color:${P.text}}
-.bg{background:radial-gradient(${W * 0.73}px ${H * 0.88}px at 50% 40%, ${P.glow} 0%, ${P.ground} 52%, ${P.ground2} 100%)}
+/* the grain is what keeps a wide, low-saturation gradient (warm paper above all) from banding into
+   visible rings once the frames are written as JPEG */
+.bg{background:${paper ? `${GRAIN}, ` : ''}radial-gradient(${W * 0.73}px ${H * 0.88}px at 50% 40%, ${P.glow} 0%, ${P.ground} 52%, ${P.ground2} 100%)}
 .backdrop{object-fit:cover;opacity:${dark ? 0.16 : 0.1};-webkit-mask-image:radial-gradient(ellipse 60% 60% at 50% 50%,#000 35%,transparent 100%)}
 .band-wrap{position:absolute;left:0;right:0;height:${80 * u}px;overflow:hidden;opacity:${P.band};-webkit-mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent)}
 .band{position:absolute;left:0;top:0;white-space:nowrap;font:500 ${54 * u}px 'IBM Plex Mono',monospace;letter-spacing:.3em}

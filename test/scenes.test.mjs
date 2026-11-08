@@ -6,8 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 import { phrases, phraseTimes } from '../src/voice.mjs';
-import { sceneInfo, sceneSeconds, sceneRuntime, filmGround, contrast } from '../src/scenes.mjs';
-import { loadConfig } from '../src/config.mjs';
+import { sceneInfo, sceneSeconds, sceneRuntime, sceneDoc, filmGround, contrast, mixColour, shadeColour } from '../src/scenes.mjs';
+import { loadConfig, aspectFrame } from '../src/config.mjs';
 
 const SR = 48000;
 // stereo PCM: sound (a 220 Hz tone) and silence, as [seconds, loud?] pieces
@@ -232,4 +232,94 @@ test('Kit3.rng is seeded, so the same second renders the same pixels', () => {
   assert.deepEqual(take(a), take(b), 'one seed, one sequence');
   assert.notDeepEqual(take(rng(7)), take(c), 'a different seed, a different sequence');
   assert.ok(take(rng(3)).every((v) => v >= 0 && v < 1));
+});
+
+test('aspect sets the frame, and the viewport follows it', () => {
+  const d = tmp(), y = path.join(d, 'x.yaml');
+  fs.mkdirSync(path.join(d, 'scenes'));
+  fs.writeFileSync(path.join(d, 'scenes', 'a.html'), SCENE('a'));
+  const board = (extra) => {
+    fs.writeFileSync(y, `purpose: explainer\n${extra}steps:\n  - scene: scenes/a.html\n    duration: 2\n`);
+    return loadConfig(y);
+  };
+  // the default is unchanged, viewport and all
+  let cfg = board('');
+  assert.deepEqual([cfg.output.width, cfg.output.height, cfg.aspect], [1920, 1080, 'landscape']);
+  assert.deepEqual([cfg.viewport.width, cfg.viewport.height], [1600, 900]);
+  // portrait: a phone upright, and a viewport nobody had to work out
+  cfg = board('aspect: portrait\n');
+  assert.deepEqual([cfg.output.width, cfg.output.height, cfg.aspect], [1080, 1920, 'portrait']);
+  assert.deepEqual([cfg.viewport.width, cfg.viewport.height], [900, 1600]);
+  assert.equal(cfg.output.width / cfg.viewport.width, cfg.output.height / cfg.viewport.height);
+  // the ratios spell the same thing
+  assert.equal(board('aspect: "9:16"\n').aspect, 'portrait');
+  assert.equal(board('aspect: vertical\n').aspect, 'portrait');
+  assert.deepEqual([board('aspect: square\n').output.width, board('aspect: square\n').output.height], [1080, 1080]);
+  // an exact size still wins, and still names its own shape
+  cfg = board('output: { width: 1440, height: 1800 }\n');
+  assert.deepEqual([cfg.viewport.width, cfg.viewport.height, cfg.aspect], [1280, 1600, 'portrait']);
+  assert.throws(() => board('aspect: tiktok\n'), /aspect must be one of/);
+  assert.throws(() => board('aspect: portrait\nviewport: { width: 1600, height: 900 }\n'), /same aspect ratio/);
+});
+
+test('a ratio nobody named is still an aspect, with 1080 on the short side', () => {
+  // the three named shapes are the three common ones, not the only ones a feed asks for: Xiaohongshu
+  // fills with 3:4 and crops a 9:16 video, and Instagram's feed wants 4:5.
+  assert.deepEqual(aspectFrame('3:4'), [1080, 1440]);
+  assert.deepEqual(aspectFrame('4:5'), [1080, 1350]);
+  assert.deepEqual(aspectFrame('21:9'), [2520, 1080]);
+  assert.deepEqual(aspectFrame('2:1'), [2160, 1080]);
+  assert.deepEqual(aspectFrame('1:1'), [1080, 1080]);
+  // h.264 will not take an odd dimension, so neither side is ever one
+  for (const r of ['3:4', '4:5', '21:9', '16:10', '5:7', '1.85:1', '7:3']) {
+    assert.ok(aspectFrame(r).every((n) => n % 2 === 0), `${r} is even`);
+  }
+  assert.equal(aspectFrame('1080x1920')?.join('x'), '1080x1920');   // `x` and `/` spell it too
+  for (const bad of ['tiktok', '', '0:4', '3:', '-3:4', 'a:b']) assert.equal(aspectFrame(bad), null, bad);
+
+  const d = tmp(), y = path.join(d, 'x.yaml');
+  fs.mkdirSync(path.join(d, 'scenes'));
+  fs.writeFileSync(path.join(d, 'scenes', 'a.html'), SCENE('a'));
+  fs.writeFileSync(y, 'purpose: explainer\naspect: "3:4"\nsteps:\n  - scene: scenes/a.html\n    duration: 2\n');
+  const cfg = loadConfig(y);
+  assert.deepEqual([cfg.output.width, cfg.output.height], [1080, 1440]);
+  assert.deepEqual([cfg.viewport.width, cfg.viewport.height], [1200, 1600]);
+  assert.equal(cfg.aspect, 'portrait', 'a 3:4 film is still a portrait film');
+});
+
+test('theme.paper is the ground the cards are built on, and must be a colour', () => {
+  const d = tmp(), y = path.join(d, 'x.yaml');
+  fs.mkdirSync(path.join(d, 'scenes'));
+  fs.writeFileSync(path.join(d, 'scenes', 'a.html'), SCENE('a'));
+  const board = (theme) => {
+    fs.writeFileSync(y, `purpose: explainer\n${theme}steps:\n  - scene: scenes/a.html\n    duration: 2\n`);
+    return loadConfig(y);
+  };
+  assert.equal(board('').theme.paper, null);
+  assert.equal(board('theme: { paper: "#e9ddc4" }\n').theme.paper, '#e9ddc4');
+  assert.throws(() => board('theme: { paper: warm }\n'), /theme\.paper/);
+});
+
+test('a colour mixes toward another, which is where the card tones come from', () => {
+  assert.equal(mixColour('#000000', '#ffffff', 0.5), '#808080');
+  assert.equal(mixColour('#e9ddc4', '#e9ddc4', 0.5), '#e9ddc4');
+  assert.equal(mixColour('#241c15', '#e9ddc4', 0), '#241c15');
+  assert.equal(shadeColour('#808080', 1), '#ffffff');
+  assert.equal(shadeColour('#808080', -1), '#000000');
+  assert.equal(mixColour('var(--ink)', '#ffffff', 0.5), null);
+});
+
+test('the host a scene mounts into carries no id, so getElementById finds the scene itself', () => {
+  const d = tmp(), y = path.join(d, 'x.yaml');
+  fs.mkdirSync(path.join(d, 'scenes'));
+  fs.writeFileSync(path.join(d, 'scenes', 'a.html'), SCENE('a'));
+  fs.writeFileSync(y, 'purpose: explainer\nsteps:\n  - scene: scenes/a.html\n    duration: 2\n');
+  const cfg = loadConfig(y);
+  const ctx = { W: 1920, H: 1080, accent: '#9e3321', ink: '#241c15', font: 'Inter', lang: 'en', fontFaces: '', subs: false };
+  const job = { seconds: 2, lead: 0.5, cues: [], say: '', name: 's1', scene: cfg.steps[0].scene };
+  const doc = sceneDoc(job, ctx, { id: 'a' });
+  // the host is matched on data-composition-id; giving it the id as well put a second element with
+  // that id in the document, and the scene's own getElementById then returned this empty host
+  assert.match(doc, /<div class="clip" data-composition-id="a"/);
+  assert.equal(/\sid="a"/.test(doc), false);
 });

@@ -4,7 +4,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { VOICE_DEFAULTS, kokoroVoiceFor, qwenVoiceFor } from './voice.mjs';
 import { QWEN_VOICES, qwenSupported, qwenVoice } from './qwen-tts.mjs';
-import { SCENE_DEFAULTS } from './scenes.mjs';
+import { SCENE_DEFAULTS, toRgb } from './scenes.mjs';
 
 // Built-in labels drawn into the video, by `lang` (e.g. es, es-MX); other languages get English
 export const LABELS = {
@@ -54,6 +54,27 @@ export const PACES = {
 
 export const FRAME_STYLES = ['aurora', 'studio', 'dark', 'pastel', 'blur'];
 
+// The shape of the video, as one word in the storyboard: `aspect: portrait`. Portrait is a phone held
+// upright and is what every short-video feed wants; square still plays either way round.
+export const ASPECTS = { landscape: [1920, 1080], portrait: [1080, 1920], square: [1080, 1080] };
+export const ASPECT_ALIASES = {
+  '16:9': 'landscape', wide: 'landscape', horizontal: 'landscape',
+  '9:16': 'portrait', vertical: 'portrait', tall: 'portrait',
+  '1:1': 'square',
+};
+// Any other shape is written as the ratio itself — `aspect: "3:4"` → 1080x1440, `aspect: "4:5"` →
+// 1080x1350 — because the feeds do not all want the same tall frame: a 9:16 video is cropped in
+// Xiaohongshu's feed, where 3:4 is what fills it. The short side is always 1080, and both sides come
+// out even, which h.264 requires.
+export function aspectFrame(ratio) {
+  const m = String(ratio).match(/^\s*(\d+(?:\.\d+)?)\s*[:x/]\s*(\d+(?:\.\d+)?)\s*$/);
+  const [w, h] = [Number(m?.[1]), Number(m?.[2])];
+  if (!m || !(w > 0) || !(h > 0)) return null;
+  const even = (n) => 2 * Math.round(n / 2);
+  return w >= h ? [even((1080 * w) / h), 1080] : [1080, even((1080 * h) / w)];
+}
+export const orientationOf = (w, h) => (h > w ? 'portrait' : h === w ? 'square' : 'landscape');
+
 export const VIDEO_DIR = 'videos';
 export const KINDS = { pitch: 'promo', tutorial: 'tutorial', course: 'lesson', docs: 'docs', explainer: 'explainer' };
 // pxgenius.ai → pxgenius; an IP or a port is kept whole so two internal apps don't share a name
@@ -94,11 +115,29 @@ export function loadConfig(file, { draft = false } = {}) {
   // only a storyboard made entirely of scenes has nothing to record
   if (!raw.url && !raw.steps.every((s) => s?.scene || s?.hidden)) throw new Error('demo.yaml: `url` is required (only a storyboard whose steps are all scenes can leave it out)');
 
-  const viewport = { width: 1600, height: 900, ...raw.viewport };
-  const output = { width: 1920, height: 1080, fps: 30, ...raw.output };
+  // aspect: the shape of the video in one word — landscape (16:9, the default), portrait (9:16: a
+  // phone held upright, and most short-video feeds) or square (1:1) — or as a ratio, `3:4` for the
+  // shape Xiaohongshu's feed fills. `output` still wins when it is given outright, so an unusual
+  // size stays possible.
+  const aspectName = raw.aspect == null ? null : (ASPECT_ALIASES[String(raw.aspect).toLowerCase()] ?? String(raw.aspect).toLowerCase());
+  const aspectSize = aspectName == null ? null : (ASPECTS[aspectName] ?? aspectFrame(aspectName));
+  if (aspectName && !aspectSize) throw new Error(`aspect must be one of ${Object.keys(ASPECTS).join(', ')}, or a ratio like "3:4" (16:9, 9:16 and 1:1 also work)`);
+  const [AW, AH] = aspectSize ?? ASPECTS.landscape;
+  const output = { width: AW, height: AH, fps: 30, ...raw.output };
+  // The browser viewport is only what a recording is captured at, and it has to share the output's
+  // aspect ratio. Unless it is given, it follows the output — so a portrait or square video never
+  // asks for that arithmetic, and a storyboard of scenes (which records nothing) never mentions it.
+  const long = 1600;
+  const viewport = {
+    ...(output.width >= output.height
+      ? { width: long, height: Math.round((long * output.height) / output.width) }
+      : { width: Math.round((long * output.width) / output.height), height: long }),
+    ...raw.viewport,
+  };
   const scale = output.width / viewport.width;
   if (Math.abs(viewport.height * scale - output.height) > 1) {
-    throw new Error(`viewport ${viewport.width}x${viewport.height} and output ${output.width}x${output.height} must have the same aspect ratio`);
+    throw new Error(`viewport ${viewport.width}x${viewport.height} and output ${output.width}x${output.height} must have the same aspect ratio`
+      + ' (leave `viewport` out and it follows the output)');
   }
 
   const purpose = raw.purpose ?? 'pitch';
@@ -199,6 +238,7 @@ export function loadConfig(file, { draft = false } = {}) {
   for (const c of clips) if (!['gif', 'webm', 'mp4', 'png'].includes(c)) throw new Error('clips must be gif, webm, mp4 or png (or a list of them)');
   if (music?.file) music.file = path.resolve(dir, music.file);
   if (music?.style && !['calm'].includes(music.style)) throw new Error('music.style must be calm (or leave it out for the upbeat synth)');
+  if (raw.theme?.paper != null && !toRgb(raw.theme.paper)) throw new Error('theme.paper is the film\'s background colour, as a hex or rgb() value (e.g. "#e9ddc4")');
 
   // scenes: { css: [files], js: [files] } shared by every scene (a palette, drawing helpers), loaded before each one
   const sk = raw.scenes ?? {};
@@ -231,7 +271,13 @@ export function loadConfig(file, { draft = false } = {}) {
     scrollOffset: raw.scrollOffset ?? 40,
     // burned-in subtitles sit at the bottom, so captions move to the top
     captionPosition: raw.captionPosition ?? (pick('subtitles') === 'burn' ? 'top' : 'bottom'),
-    theme: { accent: '#d9f75b', ink: '#0f172a', font: 'Inter', ...raw.theme },
+    // theme.paper: the film's own background colour. The title, section and end cards are built on it
+    // instead of storyshot's default near-white, which is a cold blue-grey and cuts badly against a
+    // film drawn on warm paper. Leave it out and the cards keep the default ground for `ground:`.
+    theme: { accent: '#d9f75b', ink: '#0f172a', font: 'Inter', paper: null, ...raw.theme },
+    // landscape | portrait | square, for anything that lays out by the shape rather than the pixels
+    // which way up the finished video is, whatever got it there: a named aspect, a ratio or `output`
+    aspect: orientationOf(output.width, output.height),
     setup: raw.setup ?? [],
     steps,
     endCard,

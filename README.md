@@ -259,9 +259,11 @@ by hand.
 ```yaml
 url: https://example.com
 out: acme-promo.mp4                             # relative to this file; default: <file name>.mp4
-viewport: { width: 1600, height: 900 }          # CSS px the site is laid out at
-output: { width: 1920, height: 1080, fps: 30 }  # same aspect ratio; use 1080x1920 with a 900x1600 viewport for vertical
-theme: { accent: "#d9f75b", ink: "#0f172a", font: Inter }
+aspect: landscape                               # landscape (16:9, default) | portrait (9:16, 1080x1920: a phone upright, and most short-video feeds) | square (1:1). 16:9, 9:16 and 1:1 work too,
+                                                # and so does any other ratio: "3:4" is 1080x1440 (what Xiaohongshu fills), "4:5" is 1080x1350. The short side is always 1080
+viewport: { width: 1600, height: 900 }          # CSS px the site is laid out at; leave it out and it follows the output's shape
+output: { width: 1920, height: 1080, fps: 30 }  # an exact size, when `aspect` is not the shape you want; the viewport must share its aspect ratio
+theme: { accent: "#d9f75b", ink: "#0f172a", font: Inter, paper: "#e9ddc4" }   # paper: the film's own background. The intro, section and end cards are built on it instead of the default near-white, which is cold against a warm film. Leave it out and the cards follow `ground:`
 music: { bpm: 120, volume: 1 }                  # or { file: track.mp3 }, or false
 sfx: true                                       # click / whoosh / riser sounds; clicks = no whooshes on cards and page changes, and no rising sound under a riser step, only its chime (tutorial and course default); false = none
 voice: { provider: elevenlabs, voice: hpp4J3VqNfWAUOO0d1Us }   # optional voiceover, see below
@@ -529,8 +531,24 @@ Every scene of a film shares one look, and the look belongs to the subject and
 the audience: a dark instrument panel suits a mechanism explained to specialists,
 a warm paper poster suits civics explained to nine-year-olds. Say which ground
 you chose with `ground: light | dark`, and the burned-in subtitles and the cards
-follow it. The playbook's "The look follows the subject" has the styles and what
-each ground costs.
+follow it. When the film is drawn on a *colour* rather than on plain light or
+dark, give it as `theme: { paper: "#e9ddc4" }` and the title, section and end
+cards are built on that ground instead of the default near-white, which is a
+cold blue-grey and reads as a different film. The playbook's "The look follows
+the subject" has the styles and what each ground costs.
+
+`aspect: portrait` makes the video 1080x1920 — a phone held upright, and what
+most short-video feeds want (`square` is 1:1, `landscape` 16:9 is the default,
+and `output:` still takes an exact size). The feeds do not all want the same
+tall frame, so any ratio works written out: `aspect: "3:4"` is 1080x1440, which
+is the shape Xiaohongshu's feed fills and the one it crops a 9:16 video down
+to, and `aspect: "4:5"` is 1080x1350 for an Instagram feed. The short side is
+always 1080 and both sides come out even. A portrait film is not a landscape
+film resized: a tall frame reads top to bottom, so a scene that puts an object
+beside its labels stacks them instead, and a side-by-side comparison becomes an
+upper and a lower half. Each scene's root carries `data-width="1080"
+data-height="1920"`, and `storyshot check` says so when it does not match. The
+playbook's "Portrait" has the type scale and the margins a feed covers.
 
 `lead` is how long the scene plays before the voice starts (default 0.5 s), and
 `tail` is how long it holds after the voice ends (default 0.8 s). Consecutive

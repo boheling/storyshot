@@ -144,7 +144,12 @@ ${(job.kit?.css ?? []).map((f, k) => `<link rel="stylesheet" href="kit/${k}-${pa
 ${(job.kit?.js ?? []).map((f, k) => `<script src="kit/${k}-${path.basename(f)}"></script>`).join('\n')}
 </head><body>
 <div id="root" data-composition-id="main" data-start="0" data-duration="${D}" data-width="${W}" data-height="${H}">
-<div id="${info.id}" class="clip" data-composition-id="${info.id}" data-composition-src="compositions/scene.html" data-start="0" data-duration="${D}" data-track-index="1" data-width="${W}" data-height="${H}"></div>
+<!-- The host the scene mounts into carries no \`id\`, only \`data-composition-id\`, which is what
+     HyperFrames matches on. It used to carry the scene's id as well, and since the scene's own root
+     element must have that same id, every scene then had TWO elements with it in one document:
+     document.getElementById('<id>') returned this empty host, and a scene that appended to it put
+     everything outside its own styled root and rendered a blank frame. -->
+<div class="clip" data-composition-id="${info.id}" data-composition-src="compositions/scene.html" data-start="0" data-duration="${D}" data-track-index="1" data-width="${W}" data-height="${H}"></div>
 ${job.preview && ctx.subs ? `<div id="storyshot-subtitle-band" data-layout-ignore style="position:absolute;left:0;right:0;bottom:0;height:${Math.round(H > W ? H * 0.22 : H * 0.16)}px;z-index:9999;background:repeating-linear-gradient(135deg,rgba(255,64,64,.18) 0 14px,rgba(255,64,64,.08) 14px 28px);border-top:3px dashed rgba(255,64,64,.9);pointer-events:none"><span style="position:absolute;right:24px;top:10px;font:600 26px/1 sans-serif;color:#ff4040">burned-in subtitles</span></div>` : ''}
 </div>
 <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
@@ -195,11 +200,29 @@ export function formatTimings(list) {
   ].join('\n')).join('\n\n');
 }
 
+// The red, green and blue of a hex or rgb() colour, 0–255. null for anything else (a variable, an
+// image, a colour function).
+export function toRgb(colour) {
+  const hex = String(colour).match(/#([0-9a-f]{6}|[0-9a-f]{3})\b/i)?.[1], rgb = String(colour).match(/rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i);
+  return hex ? (hex.length === 3 ? [...hex].map((h) => parseInt(h + h, 16)) : [0, 2, 4].map((k) => parseInt(hex.slice(k, k + 2), 16))) : rgb ? rgb.slice(1, 4).map(Number) : null;
+}
+const hex2 = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+
+// Mix two colours: t = 0 is all `a`, t = 1 is all `b`. Returns a hex colour, or null if either side
+// can't be read. This is how a film's own `theme.paper` becomes a whole set of card tones instead of
+// storyshot's default near-white ones, which are cold against warm paper.
+export function mixColour(a, b, t) {
+  const [x, y] = [toRgb(a), toRgb(b)];
+  if (!x || !y) return null;
+  return `#${x.map((v, i) => hex2(v + (y[i] - v) * t)).join('')}`;
+}
+// Lighten (amount > 0) or darken (amount < 0) a colour, 0–1.
+export const shadeColour = (c, amount) => mixColour(c, amount >= 0 ? '#ffffff' : '#000000', Math.abs(amount));
+
 // How light a hex or rgb() colour is, 0 (black) to 1 (white). null for anything else (a variable, an
 // image, a colour function).
 export function luminance(colour) {
-  const hex = String(colour).match(/#([0-9a-f]{6}|[0-9a-f]{3})\b/i)?.[1], rgb = String(colour).match(/rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i);
-  const c = hex ? (hex.length === 3 ? [...hex].map((h) => parseInt(h + h, 16)) : [0, 2, 4].map((k) => parseInt(hex.slice(k, k + 2), 16))) : rgb ? rgb.slice(1, 4).map(Number) : null;
+  const c = toRgb(colour);
   if (!c) return null;
   const lin = c.map((v) => (v / 255 <= 0.03928 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4));
   return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
