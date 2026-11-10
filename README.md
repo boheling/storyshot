@@ -1,19 +1,94 @@
 # Storyshot
 
-Ask your coding agent for a video of your web app, and get a polished 1080p
-MP4: a promo clip, a narrated tutorial, a lesson, or step-by-step GIFs for your
-docs.
+Ask your coding agent for a video, and get a polished 1080p MP4. Two kinds of
+film come out of one tool:
 
+- **An explainer of an idea** — no web app, no footage, nothing recorded. Every
+  scene is an animation the agent writes and times to the narration: a
+  mechanism, a diagram that builds, a number that lands. Chinese or English.
+  *This is what most people come for.*
+- **A video of your web app** — a promo, a narrated tutorial, a lesson, or
+  step-by-step GIFs for your docs. A real browser clicks through your site, and
+  the recording gets a smooth cursor, automatic zoom, captions, an optional
+  voiceover, music and an end card.
+
+The agent plans, writes and fixes the storyboard. Storyshot does the rendering,
+and the same storyboard always renders the same video.
+
+## Install it into your coding agent
+
+**The skill is the front door.** You do not learn a CLI — your agent does.
+
+Open your project in your coding agent (Claude Code, Cursor, Codex, Gemini CLI,
+Copilot in VS Code, Windsurf, Cline) and paste this one line into its chat, with
+your agent's name in place of `claude`:
+
+> Set up Storyshot in this project: run `npx -y storyshot setup claude` and do everything it says.
+
+Agent names: `claude` · `cursor` · `codex` · `gemini` · `vscode` · `windsurf` · `cline`.
+
+That one command installs **the Storyshot skill** into your agent, writes the MCP
+server config, adds `.storyshot/` to `.gitignore`, and downloads the browser it
+needs. The skill is what teaches your agent the whole workflow — how to plan a
+film, write the scenes, read the render back and fix it — so from the next chat
+on you can just ask for a video in plain words.
+
+Restart or reload your agent when `setup` says to. Then:
+
+> *「做一个视频，讲清楚热泵为什么能把一份电变成三份热」*
+>
+> *"make an explainer about how a heat pump moves three units of heat per unit of electricity"*
+>
 > *"make a 15 s promo video of https://myapp.com"*
+>
+> *"make a narrated tutorial showing how to export a report"*
 
-Storyshot gives coding agents (Cursor, Claude Code, Codex, Gemini CLI, Copilot in VS Code, Windsurf, Cline) what they need to
-do this well. A real browser clicks through your site, and the recording gets
-a smooth cursor, automatic zoom, captions, an optional AI voiceover, music
-and an end card. Loading time is squeezed out, so a 30-second AI job takes a
-second or two on screen.
+or type `/storyshot`.
 
-The agent plans, writes and fixes the storyboard. Storyshot does the
-recording and editing, and the same storyboard always renders the same video.
+`npx storyshot doctor` re-checks everything at any time. Storyshot runs on
+macOS, Linux and Windows. Needs Node 18+ and ffmpeg (setup prints the exact
+install command for your OS if it is missing).
+
+### Explainers, in one paragraph
+
+An explainer has no `url` and records nothing. You ask for a subject; the agent
+writes a storyboard of **scenes**, and each scene is an HTML animation it draws
+and times to the voice, phrase by phrase. It renders a still of every scene,
+looks at it, and fixes what is wrong before it ever renders video. Free local
+voices in English and Chinese, synth music, subtitles and chapters — no API key
+and no per-video cost. Start here:
+[the explainers in the gallery](https://boheling.github.io/storyshot-gallery/#explainer),
+and the ["Scenes and explainers" playbook](#for-agents-tools-and-playbook).
+
+## What `setup` writes, per agent
+
+| agent | what `setup` writes |
+|---|---|
+| Cursor | `.cursor/mcp.json` and the skill in `.cursor/skills/storyshot/` |
+| Claude Code | `.mcp.json` and the skill in `.claude/skills/storyshot/` |
+| Codex | the skill in `.agents/skills/storyshot/`, a short section in `AGENTS.md` pointing to it, and the MCP server through `codex mcp add` (in `~/.codex/config.toml`, for your user). Storyshot launches a browser, which Codex's sandbox blocks: approve it when Codex asks, or run Codex with `--sandbox danger-full-access` |
+| Gemini CLI | `.gemini/settings.json`, a section in `GEMINI.md`, the skill in `.agents/skills/storyshot/` (trust the folder when Gemini asks, or it ignores project settings) |
+| Copilot in VS Code (`vscode`) | `.vscode/mcp.json`, a section in `.github/copilot-instructions.md`, the skill in `.agents/skills/storyshot/` |
+| Windsurf | `.windsurf/rules/storyshot.md`, the skill in `.agents/skills/storyshot/`, and the MCP server in `~/.codeium/windsurf/mcp_config.json` (for your user) |
+| Cline | `.clinerules/storyshot.md`, the skill in `.agents/skills/storyshot/`, and the MCP server in Cline's own settings in each editor it is installed in (for your user) |
+
+Existing files are merged, not replaced: other MCP servers stay, and instruction files get one marked
+Storyshot section that a second `setup` updates instead of duplicating.
+
+**Tested end to end** (setup, then an agent making a real video from a plain request): **Claude Code,
+Cursor and Codex**. Gemini CLI, Copilot in VS Code, Windsurf and Cline get the configuration their docs
+describe, but haven't been tested with a real session yet; reports are welcome.
+
+The agent does the rest:
+- `setup` writes the MCP server config and the Storyshot skill, adds
+  `.storyshot/` to `.gitignore`, and downloads the browser it needs.
+- If ffmpeg is missing, setup prints the exact install command for your OS
+  (`brew install ffmpeg`, `winget install --id Gyan.FFmpeg -e`,
+  `sudo apt-get install -y ffmpeg`). The agent runs it after you approve.
+- The agent reads the skill and starts on your video in the same chat, using
+  the CLI.
+
+From the next chat on, the agent uses the Storyshot MCP tools automatically.
 
 https://github.com/user-attachments/assets/05dd9a73-2edc-46af-9b2b-a8e33c7005b4
 
@@ -56,51 +131,6 @@ https://github.com/user-attachments/assets/8d3370ca-7a90-48af-b1c9-88189763e95d
 
 How each one was made, what we saw, and the caveats:
 [docs/comparison](docs/comparison/README.md).
-
-## Quick start
-
-Open your project in your coding agent and paste this into its chat, with your
-agent's name (`cursor`, `claude`, `codex`, `gemini`, `vscode`, `windsurf` or `cline`):
-
-> Set up Storyshot in this project: run `npx -y storyshot setup cursor` and do
-> everything it says. Then make a short promo video of https://myapp.com
-
-| agent | what `setup` writes |
-|---|---|
-| Cursor | `.cursor/mcp.json` and the skill in `.cursor/skills/storyshot/` |
-| Claude Code | `.mcp.json` and the skill in `.claude/skills/storyshot/` |
-| Codex | the skill in `.agents/skills/storyshot/`, a short section in `AGENTS.md` pointing to it, and the MCP server through `codex mcp add` (in `~/.codex/config.toml`, for your user). Storyshot launches a browser, which Codex's sandbox blocks: approve it when Codex asks, or run Codex with `--sandbox danger-full-access` |
-| Gemini CLI | `.gemini/settings.json`, a section in `GEMINI.md`, the skill in `.agents/skills/storyshot/` (trust the folder when Gemini asks, or it ignores project settings) |
-| Copilot in VS Code (`vscode`) | `.vscode/mcp.json`, a section in `.github/copilot-instructions.md`, the skill in `.agents/skills/storyshot/` |
-| Windsurf | `.windsurf/rules/storyshot.md`, the skill in `.agents/skills/storyshot/`, and the MCP server in `~/.codeium/windsurf/mcp_config.json` (for your user) |
-| Cline | `.clinerules/storyshot.md`, the skill in `.agents/skills/storyshot/`, and the MCP server in Cline's own settings in each editor it is installed in (for your user) |
-
-Existing files are merged, not replaced: other MCP servers stay, and instruction files get one marked
-Storyshot section that a second `setup` updates instead of duplicating.
-
-**Tested end to end** (setup, then an agent making a real video from a plain request): **Claude Code,
-Cursor and Codex**. Gemini CLI, Copilot in VS Code, Windsurf and Cline get the configuration their docs
-describe, but haven't been tested with a real session yet; reports are welcome.
-
-The agent does the rest:
-- `setup` writes the MCP server config and the Storyshot skill, adds
-  `.storyshot/` to `.gitignore`, and downloads the browser it needs.
-- If ffmpeg is missing, setup prints the exact install command for your OS
-  (`brew install ffmpeg`, `winget install --id Gyan.FFmpeg -e`,
-  `sudo apt-get install -y ffmpeg`). The agent runs it after you approve.
-- The agent reads the skill and starts on your video in the same chat, using
-  the CLI.
-
-Restart or reload your agent when convenient (`setup` says how for each one). From the next chat on,
-the agent uses the Storyshot MCP tools automatically, and you can just ask:
-
-- *"make a 15 s promo video of https://myapp.com"*, or type `/storyshot`
-- *"make a narrated tutorial showing how to export a report"*
-- *"make a lesson video explaining how the AI editor works"*
-- *"make docs GIFs for the onboarding flow"*
-
-`npx storyshot doctor` re-checks everything at any time. Storyshot runs on
-macOS, Linux and Windows.
 
 ## What happens when you ask
 
