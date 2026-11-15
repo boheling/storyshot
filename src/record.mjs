@@ -423,7 +423,10 @@ export async function record(cfg, { log = console.log, inspectAfter = null } = {
   }
   const { width: VW, height: VH } = cfg.viewport;
 
-  const browser = await chromium.launch();
+  // STORYSHOT_GPU=1 renders WebGL on the GPU (Metal on macOS) instead of SwiftShader;
+  // 3D pages otherwise record at ~10 fps and every step comes out rushed.
+  const gpu = /^(1|true|yes)$/i.test(process.env.STORYSHOT_GPU || '');
+  const browser = await chromium.launch(gpu ? { args: ['--enable-gpu', '--ignore-gpu-blocklist', ...(process.platform === 'darwin' ? ['--use-angle=metal'] : [])] } : {});
   const context = await sessionContext(browser, {
     viewport: cfg.viewport, deviceScaleFactor: cfg.scale, colorScheme: cfg.colorScheme, storageState: cfg.storageState, ignoreHTTPSErrors: cfg.ignoreHTTPSErrors,
     permissions: ['clipboard-read', 'clipboard-write'], // for `paste`

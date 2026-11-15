@@ -10,6 +10,26 @@ import { sceneSeconds, filmGround, mixColour, shadeColour } from './scenes.mjs';
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const md = (s, accent) => esc(s).replace(/\*\*(.+?)\*\*/g, `<b style="color:${accent};font-weight:700">$1</b>`);
 
+// The camera path as one ffmpeg expression: a value per keyframe interval, smoothstepped between the
+// two ends. Written as a FLAT SUM of gated terms, not a nested if/else chain — ffmpeg's expression
+// parser guards recursion at 100 levels, and each zoom contributes four keyframes, so a tutorial
+// written to "one job per step" (30-odd zooms, 130-odd intervals) silently exceeded it and the whole
+// compose failed with "Missing ')' or too many args". A `+` chain is parsed iteratively, so the depth
+// is constant however long the film is. The gates partition the timeline, so exactly one term is ever
+// non-zero: the first interval also covers everything before it, and the last keyframe holds to the end.
+export function keyframeExpr(kf, get, fps) {
+  const n = kf.length, terms = [];
+  for (let i = 0; i < n - 1; i++) {
+    const t0 = kf[i][0], t1 = kf[i + 1][0], v0 = get(kf[i]), v1 = get(kf[i + 1]);
+    const p = `clip((T-${t0.toFixed(3)})/${Math.max(1e-3, t1 - t0).toFixed(3)},0,1)`;
+    const body = v0 === v1 ? `${v0}` : `(${v0}+(${(v1 - v0).toFixed(4)})*${p}*${p}*(3-2*${p}))`;
+    const gate = i === 0 ? `lt(T,${t1.toFixed(3)})` : `(gte(T,${t0.toFixed(3)})*lt(T,${t1.toFixed(3)}))`;
+    terms.push(`${gate}*${body}`);
+  }
+  terms.push(`gte(T,${kf[n - 1][0].toFixed(3)})*${get(kf[n - 1])}`);
+  return `(${terms.join('+')})`.replaceAll('T', `(on/${fps})`);
+}
+
 export async function compose(cfg, { log = console.log, voiceLens = { steps: {}, endCard: null } } = {}) {
   const warnings = [];
   const warn = (m) => { warnings.push(m); log(`warning: ${m}`); };
@@ -192,11 +212,23 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
       ...cards.map((c) => [c.t0, c.t1]),
       ...segs.filter((g) => voiceLens.steps[g.i] != null).map((g) => [g.o0 + g.sayAt, g.o0 + g.sayAt + voiceLens.steps[g.i]]),
     ];
+    // A promo must never stall. A tutorial is the opposite: the viewer is doing this too, and needs a
+    // beat to read the result, find the control on their own screen, and catch up. So a lesson gets a
+    // longer allowance, and a step that asked to hold (`pause`) means it — only a hold long enough to
+    // feel broken is worth a word there.
+    const teach = cfg.purpose === 'tutorial' || cfg.purpose === 'course';
+    const held = (i) => (cfg.steps[i]?.actions ?? []).some((a) => a && (a.pause != null || a.wait != null));
     let from = null;
     const report = (to) => {
-      if (from != null && to - from >= 3) {
+      if (from != null) {
         const ns = segs.filter((x) => x.o1 > from + 1e-6 && x.o0 < to - 1e-6).map((x) => x.i + 1);
-        warn(`${ns.length > 1 ? `steps ${ns[0]}–${ns.at(-1)}` : `step ${ns[0] ?? (segs.at(-1)?.i ?? cfg.steps.length - 1) + 1}`}: ${(to - from).toFixed(1)}s of dead air at ${from.toFixed(1)}–${to.toFixed(1)}s (nothing moves and nothing is said) — shorten the wait or pause, hide the load, or narrate what is happening`);
+        const limit = !teach ? 3 : ns.length && ns.every((k) => held(k - 1)) ? 8 : 6;
+        const fix = teach
+          ? 'say what is happening or what to look at, or let the step hold on purpose with `pause`'
+          : 'shorten the wait or pause, hide the load, or narrate what is happening';
+        if (to - from >= limit) {
+          warn(`${ns.length > 1 ? `steps ${ns[0]}–${ns.at(-1)}` : `step ${ns[0] ?? (segs.at(-1)?.i ?? cfg.steps.length - 1) + 1}`}: ${(to - from).toFixed(1)}s of dead air at ${from.toFixed(1)}–${to.toFixed(1)}s (nothing moves and nothing is said) — ${fix}`);
+        }
       }
       from = null;
     };
@@ -270,16 +302,7 @@ export async function compose(cfg, { log = console.log, voiceLens = { steps: {},
   }
   if (kf.at(-1)[0] < TOTAL) kf.push([TOTAL, 1, C0]);
   const S = 2; // supersample to avoid zoompan's integer-pixel jitter
-  const piece = (get) => {
-    let e = String(get(kf.at(-1)));
-    for (let i = kf.length - 2; i >= 0; i--) {
-      const t0 = kf[i][0], t1 = kf[i + 1][0], v0 = get(kf[i]), v1 = get(kf[i + 1]);
-      const p = `clip((T-${t0.toFixed(3)})/${Math.max(1e-3, t1 - t0).toFixed(3)},0,1)`;
-      const body = v0 === v1 ? `${v0}` : `(${v0}+(${(v1 - v0).toFixed(4)})*${p}*${p}*(3-2*${p}))`;
-      e = `if(lt(T,${t1.toFixed(3)}),${body},${e})`;
-    }
-    return e.replaceAll('T', `(on/${FPS})`);
-  };
+  const piece = (get) => keyframeExpr(kf, get, FPS);
   const zExpr = piece((k) => k[1]);
   const cxExpr = piece((k) => +(k[2][0] * S).toFixed(1));
   const cyExpr = piece((k) => +(k[2][1] * S).toFixed(1));

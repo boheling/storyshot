@@ -175,7 +175,9 @@ or scientific tool they have never seen. Storyshot paces `tutorial` and
 `course` slowly by default (`pace: slow`: slower cursor and typing, a beat
 after every click, a hold after every narration line, slower voice, real
 progress shown for waits) and the camera follows the action (`follow`), so
-small controls are readable. Your job is the structure:
+small controls are readable. What the tool cannot set for you is the structure
+and the voice. The structure first; "The teaching voice" below is the half that
+decides whether a slow film still sounds like a sales pitch:
 
 - **Start with the goal**: an `intro` with `bullets` saying what the viewer
   will be able to do ("Run a BLAST search", "Read the hits table", "Judge a
@@ -245,6 +247,86 @@ small controls are readable. Your job is the structure:
   don't pad: if a part is long, split it into more parts rather than
   speeding it up.
 
+#### The teaching voice
+
+`pace: slow` buys time on screen: slower cursor and typing, a beat after every
+click, a hold after every line. It cannot buy time *inside* a sentence. A
+tutorial that still sounds like an ad read slowly is nearly always a writing
+problem, not a timing one — and the usual cause is density, not length.
+`check` holds a `tutorial` or a `course` to the rules below. A promo is held to
+none of them, which is the point: they are different jobs.
+
+1. **One job per step.** A step either names an idea, does an action, or reads
+   a result. Not two of those, and never three. The line that packs all three
+   is the commonest failure, and it reads fine on the page:
+
+   > "The E value is how many hits this good you would expect by pure chance in
+   > a database this size. Smaller is better, and anything below 1e-5 usually
+   > means a real relationship. Here it is 6e-106, essentially zero."
+
+   A definition, a rule of thumb and a reading, in eleven seconds. The viewer
+   is still working out what "expect by chance" means when the number arrives,
+   so they keep none of it. As three steps they keep all three.
+2. **A step's whole `say:` fits in about 35 words (55 Chinese characters).**
+   Past that, split the step.
+3. **A sentence is about 15 words (25 characters).** `check` speaks up past 18
+   (30), so 15 is what to write to, not a line to trip over. Promos are allowed
+   25; a lesson is not.
+4. **At most three figures in one line.** Nobody holds four numbers by ear. Say
+   the one that carries the point, round it out loud ("about eighty percent"),
+   and let the screen carry the exact value — which it can, because you marked
+   the cell.
+5. **Say the number, then what it means, then the rule again.** Teaching
+   repeats. A script that states each fact exactly once reads as a list of
+   facts, however plainly each one is put. The recap at the end repeats them in
+   the same words as the first time.
+6. **Silence is part of the lesson.** After a result appears, the viewer needs a
+   beat to find it on their own screen. Hold the step (`pause: 2000`) and say
+   nothing. Compose's dead-air warning knows the difference: 3 s is too long in
+   a promo, a `tutorial` or `course` is allowed 6 s, and 8 s on a step that
+   asked to hold. Resolve a dead-air warning in a lesson by saying what to look
+   at, not by cutting the beat.
+7. **A new term gets a step of its own**, the first time it appears, before any
+   number is attached to it.
+
+**A tutorial's caption is a label, not a payoff.** A promo bolds the payoff
+because a promo is selling the payoff. Here the caption says where the viewer
+is — "The E value column", "Part 2: read the results" — and the voice does the
+explaining. `Shorter protein, **larger** E value` reaches the conclusion before
+the narration gets there, which is an ad's grammar; `check` warns on `**` in a
+tutorial caption. A `note` works the same way: it labels the control it points
+at in a few words ("FASTA or accession"), it does not recommend it ("Curated,
+fast: good for learning").
+
+#### What a lesson adds
+
+A tutorial teaches the steps; a lesson (`course`) teaches the idea behind them,
+so the clicking is usually done in `hidden` steps and the film is about reading
+what is on the page. It is held to the whole teaching voice above, and to three
+things of its own. `check` warns on each.
+
+1. **A card names one idea.** A concept card's `say:` gets the same budget as a
+   step (about 35 words, 55 Chinese characters), and it is the easiest place to
+   break it, because a card feels like the place for the whole explanation:
+   definition, threshold and example. Put the name and the plain-words meaning
+   on the card. The rule and the number go in the steps after it, where the
+   page can show them and you can `mark` them.
+2. **A question card waits, and its step shows the answer.** A check has three
+   parts: the question, time to answer it (`think: 3`, at least 2), and the
+   answer marked on the page. Without the wait it is a rhetorical question,
+   which a promo asks and a lesson does not. Without the mark, a viewer who
+   guessed wrong is told so and never shown where to look. The step a question
+   card sits on is the reveal: it points at the answer first, and the reason
+   comes in the step after.
+3. **Ask at least once.** A lesson with no question is a lecture: the viewer
+   cannot tell whether they followed it. The best second question is a new case
+   the rule has to be applied to (a different search, another input), not the
+   first one asked again.
+
+The order inside each idea is the one in "Explain in an order the viewer can
+follow" below: a concrete case on screen, then the card that names it, then the
+reading, then the rule, then the question.
+
 ### Writing the narration
 
 Viewers notice three things first: lines that run together, phrasing nobody
@@ -254,7 +336,9 @@ They should sound like one person talking a friend through it.
 
 **Say it like a person.**
 - Short sentences, one idea each: about 15 words at most in English, 25
-  characters in Chinese. If you would run out of breath, split it.
+  characters in Chinese. If you would run out of breath, split it. In a
+  tutorial or lesson `check` enforces this, along with a budget for the whole
+  step — see "The teaching voice".
 - Spoken words: contractions ("you'll", "it's"), "you", present tense, active
   voice. In Chinese, 口语 rather than 书面语: "点一下这里", not "进行点击操作".
 - Use the exact labels on screen, and the same term every time (no synonyms
@@ -314,8 +398,10 @@ Rules of thumb from real renders (promos and tutorials):
     icon and name, not an address bar.
   - Other purposes: leave out `duration`. `auto` times each step to its
     narration and plays motion in real time.
-- **Captions ≤ 7 words.** `**bold**` the payoff ("Every text box is
-  **fully editable**"). Steps with the same caption keep it on screen.
+- **Captions ≤ 7 words.** In a promo, `**bold**` the payoff ("Every text box is
+  **fully editable**"); in a tutorial or lesson a caption is a label for where
+  the viewer is, with no bold payoff (see "The teaching voice"). Steps with the
+  same caption keep it on screen.
 - **Narration (`say:`) is not a caption.** Write full spoken sentences, one
   instruction or idea per step. Use normal spelling, and put pronunciations in
   `voice.pronounce` (e.g. `pxGenius: P X Genius`, `AI: A I`) so subtitles stay
@@ -380,7 +466,9 @@ Notes:
   automatically (never under 2.5 s); leave out `duration` there.
 - Compose warns about **dead air**: 3 s or more where nothing moves and
   nothing is said. Shorten the wait or pause, hide the load in a `hidden`
-  step, or narrate it. Keep `intro` cards to 6–8 s.
+  step, or narrate it. A `tutorial` or `course` is allowed 6 s, and 8 s on a
+  step that asked to hold with `pause`, because a learner needs the beat.
+  Keep `intro` cards to 6–8 s.
 - With `subtitles: burn`, the top caption pills can repeat the subtitles;
   `captions: false` keeps them off the video (chapters and SRT still use them).
 - `.storyshot/` next to the YAML is a cache of recordings, screenshots and

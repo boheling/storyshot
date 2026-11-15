@@ -1,69 +1,175 @@
-# Lesson: what an E value and percent identity tell you. purpose: course → explains the why:
-# concept card with a diagram, the idea shown on real results, a question card with a pause,
-# recap. The search itself is set up in hidden steps (the lesson is about reading, not clicking).
+# Lesson: what an E value and percent identity tell you. purpose: course → explains the why.
+# Each idea goes: a real case on screen, the card that names it, the reading, the rule, a question.
+# The searches are set up in hidden steps (the lesson is about reading, not clicking). Rows are marked
+# by accession, so the marked row is always the protein the narration names. Spoken numbers were read
+# from the real results.
 name: blast-lesson
 purpose: course
 url: https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastp&PAGE_TYPE=BlastSearch
 out: blast-lesson.mp4
-voice: { provider: kokoro, voice: af_heart, pronounce: { BLAST: blast, NCBI: N C B I, E-value: E value } }
+voice:
+  provider: kokoro
+  voice: af_heart
+  pronounce:
+    BLAST: blast
+    NCBI: N C B I
+    Swiss-Prot: Swiss Prot
+    "1e-5": 1 e minus 5
+    "6e-106": 6 e minus 106
+    "2e-07": 2 e minus 7
+subtitles: true
+chapters: true
 
 intro:
   title: Reading a BLAST hit
-  subtitle: "Is it a **real** relative?"
-  bullets: [What an E value measures, Why identity is a different question, How to judge a hit]
-  say: When BLAST lists a hit, is it a real relative, or a coincidence? Two numbers answer two different questions.
+  subtitle: Real relative, or luck?
+  bullets:
+    - What the E value counts
+    - What identity tells you
+    - Which one to check first
+  say: Which BLAST hits are real relatives? You'll learn what the E value counts, what identity tells you, and which one to check first.
 
 setup:
-  - hide: '[id*="QSI"], [class*="QSI"], #feedback, .feedback-tab'   # NCBI survey pop-up and feedback tab
+  - hide: '[id*="QSI"], [class*="QSI"], .ncbi-alerts'   # NCBI survey / feedback pop-ups and the site-wide notice bar
   - dismiss: { role: button, name: "Tell us what you think!", exact: true }
 
 steps:
   - hidden: true
     actions:
       - type: { target: { css: "#seq" }, text: "MVHLTPEEKSAVTALWGKVNVDEVGGEALGRLLVVYPWTQRFFESFGDLSTPDAVMGNPKVKAHGKKVLGAFSDGLAHLDNLKGTFATLSELHCDKLHVDPENFRLLGNVLVCVLAHHFGKEFTPPVQAAYQKVVAGVANALAHKYH", delay: 0 }
-      - select: { target: { label: Database, exact: true }, option: "UniProtKB/Swiss-Prot" }
+      - select: { target: { label: Database, exact: true }, option: "UniProtKB/Swiss-Prot(swissprot)" }
+      - click: { role: button, name: "BLAST", exact: true }
+      - waitFor: { text: "Sequences producing significant alignments", timeout: 240000 }
+      - scrollTo: { css: "#tabDescr", ms: 0 }
+
+  # ── a real case first ─────────────────────────────────────────────────────
+  - caption: A real search
+    say: Here is a real search. Human hemoglobin beta, against the Swiss-Prot database. Each row is one hit.
+    actions:
+      - mark: "Sequences producing significant alignments"
+      - pause: 2000
+
+  - caption: The first row
+    say: The top hit is hemoglobin beta itself. Nobody doubts this one. But how does the table show it?
+    zoom: { target: { css: '#dscTable tbody tr:has(a[href*="protein/P68871."]) td.c10' }, scale: 1.9, start: 1.0, offset: { x: -220 } }
+    actions:
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P68871."])' }
+
+  # ── idea 1: the E value ───────────────────────────────────────────────────
+  - card:
+      kicker: Concept
+      title: The E value
+      image: e-value.svg
+      say: One number answers that. The E value. It counts the hits this good you'd expect by pure chance.
+    caption: The E value column
+    say: Here it is, for the top hit. 6e-106.
+    zoom: { target: { css: '#dscTable tbody tr:has(a[href*="protein/P68871."]) td.c9' }, scale: 1.9, start: 1.0, offset: { x: -220 } }
+    actions:
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P68871."]) td.c9' }
+      - note: { target: { css: '#dscTable tbody tr:has(a[href*="protein/P68871."]) td.c9' }, text: "Hits expected by chance", side: bottom }
+
+  - caption: The E value column
+    say: That's over a hundred zeros after the decimal point. Chance would give you no hit this good. So this match is not luck.
+    zoom: { target: { css: '#dscTable tbody tr:has(a[href*="protein/P68871."]) td.c9' }, scale: 1.9, start: 0, offset: { x: -220 } }
+    actions:
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P68871."]) td.c9' }
+
+  - caption: The E value rule
+    say: Here's the rule of thumb. Below 1e-5, a hit is usually a real relative. Near one, it could be luck.
+    zoom: { target: { css: '#dscTable tbody tr:has(a[href*="protein/P68871."]) td.c9' }, scale: 1.9, start: 0, offset: { x: -220 } }
+    actions:
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P68871."]) td.c9' }
+      - note: { target: { css: '#dscTable tbody tr:has(a[href*="protein/P68871."]) td.c9' }, text: "Below 1e-5", side: bottom }
+
+  # ── question 1: the rule on two rows of this table ────────────────────────
+  - card:
+      kicker: Question
+      title: "Gorilla: 99% identical. Mouse: about 80%. Which is the real relative?"
+      think: 4
+      say: Now a question. The gorilla hit is 99 percent identical. The mouse hit is about 80. Which one is the real relative?
+    caption: The gorilla row
+    say: Look at the gorilla's E value first. It's tiny.
+    zoom: { target: { css: '#dscTable tbody tr:has(a[href*="protein/P02024."]) td.c9' }, scale: 1.9, start: 1.0, offset: { x: -220 } }
+    actions:
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P02024."])' }
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P02024."]) td.c9' }
+
+  - caption: The mouse row
+    say: Now the mouse, further down. Its E value is tiny too. Far below 1e-5.
+    zoom: { target: { css: '#dscTable tbody tr:has(a[href*="protein/P02088."]) td.c9' }, scale: 1.9, start: 1.0, offset: { x: -220 } }
+    actions:
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P02088."])' }
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P02088."]) td.c9' }
+
+  - caption: The mouse row
+    say: So the answer is both. Neither match is chance. Both are real relatives.
+    zoom: { target: { css: '#dscTable tbody tr:has(a[href*="protein/P02088."]) td.c9' }, scale: 1.9, start: 0, offset: { x: -220 } }
+    actions:
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P02088."]) td.c9' }
+
+  # ── idea 2: percent identity ──────────────────────────────────────────────
+  - card:
+      kicker: Concept
+      title: Percent identity
+      bullets:
+        - Positions with the same amino acid
+        - How close the relative is
+      say: So what does identity tell you? Something else. It's the share of positions with the same amino acid. It says how close the relative is.
+    caption: The percent identity column
+    say: The mouse is about 80 percent identical. That's a distant relative.
+    zoom: { target: { css: '#dscTable tbody tr:has(a[href*="protein/P02088."]) td.c10' }, scale: 1.9, start: 1.0, offset: { x: -220 } }
+    actions:
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P02088."]) td.c10' }
+      - note: { target: { css: '#dscTable tbody tr:has(a[href*="protein/P02088."]) td.c10' }, text: "Share of identical positions", side: bottom }
+
+  - caption: The percent identity column
+    say: Back at the top, the gorilla is 99 percent. That's a very close relative.
+    zoom: { target: { css: '#dscTable tbody tr:has(a[href*="protein/P02024."]) td.c10' }, scale: 1.9, start: 1.0, offset: { x: -220 } }
+    actions:
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P02024."])' }
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P02024."]) td.c10' }
+
+  - caption: Two numbers, two questions
+    say: Two numbers, two questions. The E value asks, is it chance? Identity asks, how close? Check the E value first.
+    zoom: { target: { css: '#dscTable tbody tr:has(a[href*="protein/P02024."]) td.c9' }, scale: 1.9, start: 0, offset: { x: -220 } }
+    actions:
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P02024."]) td.c9' }
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P02024."]) td.c10' }
+
+  # ── question 2: the same rule on a new search ─────────────────────────────
+  - hidden: true
+    actions:
+      - goto: "https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastp&PAGE_TYPE=BlastSearch"
+      - networkIdle: true
+      - type: { target: { css: "#seq" }, text: "MALWMRLLPLLALLALWGPDPAAAFVNQHLCGSHLVEALYLVCGERGFFYTPKTRREAEDLQVGQVELGGGPGAGSLQPLALEGSLQKRGIVEQCCTSICSLYQLENYCN", delay: 0 }
+      - select: { target: { label: Database, exact: true }, option: "UniProtKB/Swiss-Prot(swissprot)" }
       - click: { role: button, name: "BLAST", exact: true }
       - waitFor: { text: "Sequences producing significant alignments", timeout: 240000 }
       - scrollTo: { css: "#tabDescr", ms: 0 }
 
   - card:
-      kicker: Concept
-      title: The E value
-      image: e-value.svg
-      say: The E value is how many hits this good you would expect by pure chance, in a database this size. Far below one in a hundred thousand, chance is ruled out. Near one, the hit could be luck.
-    caption: Human hemoglobin beta, searched in Swiss-Prot
-    say: Here is a real search, human hemoglobin beta against Swiss Prot.
-    actions:
-      - mark: { css: "#dscTable tbody tr:nth-child(1)" }
-
-  - caption: "E value: chance is **ruled out**"
-    say: The top hit has an E value of about 1 e minus 106. You would expect essentially zero hits this good by chance. This is not luck.
-    actions:
-      - note: { target: { css: "#dscTable tbody tr:nth-child(1) td.c9" }, text: "≈ 0 hits expected by chance" }
-
-  - card:
       kicker: Question
-      title: "Gorilla: 99% identical. Rat: about 80%. Which one is the **real** relative?"
+      title: "34% identical. E value 2e-07. Real relative, or luck?"
       think: 4
-      say: Gorilla is 99 percent identical, rat about 80. Which one is the real relative?
-    caption: Both are real relatives
-    say: Both. Look at the E values. Both are tiny, so neither match is chance. Identity tells you how close the relative is, not whether it is real.
+      say: One more, from a new search. This time the query is human insulin. One hit is only 34 percent identical. Its E value is 2e-07. Real relative, or luck?
+    caption: The E value first
+    say: Check the E value first. 2e-07 is below 1e-5. So it's a real relative.
+    zoom: { target: { css: '#dscTable tbody tr:has(a[href*="protein/P01344."]) td.c9' }, scale: 1.9, start: 1.0, offset: { x: -220 } }
     actions:
-      - mark: { css: "#dscTable tbody tr:nth-child(2)" }
-      - mark: { css: "#dscTable tbody tr:nth-child(24)" }
-      - note: { target: { css: "#dscTable tbody tr:nth-child(24) td.c9" }, text: "Still tiny" }
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P01344."])' }
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P01344."]) td.c9' }
 
-  - card:
-      kicker: Concept
-      title: Two questions, two numbers
-      bullets: ["E value: **is** it related?", "Identity: **how closely**?", "Judge the E value first"]
-      say: So, two numbers for two questions. The E value asks whether it is related at all. Identity asks how closely. Always judge the E value first.
-    caption: Identity tells you **how close**
-    say: Down the list, identity drops as species get more distant, while the E values stay far below the threshold.
+  - caption: Then identity
+    say: Then identity. 34 percent says it's a distant one. It's an insulin-like growth factor, a cousin of insulin.
+    zoom: { target: { css: '#dscTable tbody tr:has(a[href*="protein/P01344."]) td.c10' }, scale: 1.9, start: 0, offset: { x: -220 } }
     actions:
-      - note: { target: { css: "#dscTable tbody tr:nth-child(24) td.c10" }, text: "Lower identity = more distant" }
+      - mark: { css: '#dscTable tbody tr:has(a[href*="protein/P01344."]) td.c10' }
 
 end_card:
   title: Recap
-  bullets: ["Small E value: not chance", "Identity: how close, not whether", "Check the E value first"]
-  say: Small E value, not chance. Identity, how close. And check the E value first.
+  bullets:
+    - "E value: is it chance?"
+    - "Below 1e-5: a real relative"
+    - "Identity: how close?"
+    - Check the E value first
+  say: To recap. The E value asks, is it chance? Below 1e-5, a hit is usually a real relative. Identity asks, how close? Check the E value first. So the next time BLAST hands you a list, you don't have to take its word. You can read it yourself.

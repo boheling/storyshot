@@ -9,6 +9,9 @@ import { sentences } from './voice.mjs';
 import { sceneInfo, filmGround, contrast } from './scenes.mjs';
 import path from 'node:path';
 
+const cjkLen = (s) => (s.match(/[぀-ヿ㐀-鿿가-힯]/g) ?? []).length;
+const wordLen = (s) => s.replace(/[぀-ヿ㐀-鿿가-힯]/g, ' ').split(/\s+/).filter((w) => /\w/.test(w)).length;
+
 // Phrases that mark narration as machine-written, and sentences too long to say in one breath.
 const TELLS = [
   /\bnot (?:just|only|merely) [^.,;!?]{1,40}?,? but(?: also)?\b/i, // "not just X, but Y"
@@ -28,15 +31,41 @@ export function narrationLint(text) {
   }
   let long = null;
   for (const s of sentences(t)) {
-    const cjk = (s.match(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g) ?? []).length;
-    const words = s.replace(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g, ' ').split(/\s+/).filter((w) => /\w/.test(w)).length;
+    const cjk = cjkLen(s), words = wordLen(s);
     if (cjk > 40 && !long) long = `${cjk}-character`;
     else if (!cjk && words > 25 && !long) long = `${words}-word`;
   }
   return { tells, long };
 }
 
-const TOP = ['name', 'url', 'out', 'purpose', 'aspect', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'intro', 'frame', 'pace', 'follow', 'article', 'cards', 'ground', 'lang', 'colorScheme',
+// How much one step may carry when the viewer is meant to follow along and do it themselves.
+// A promo packs; a tutorial parcels out. The skill has always asked for 15 words a sentence, but the
+// lint above only caught 25, which is a promo's budget — tutorials and lessons are held to the number
+// the skill actually says, and a step gets a budget of its own. Density is the thing nobody notices
+// while writing: three jobs in one breath (name the idea, give the rule, read the number) is what
+// makes a tutorial sound like an ad read at speed, even when every sentence is short.
+// sentenceWords/Chars is the number the skill asks for; the lint only speaks up past the slack, so
+// "about 15 words" stays a target to write to rather than a line to trip over at 16.
+export const TEACH = { words: 35, chars: 55, sentenceWords: 15, sentenceChars: 25, slackWords: 18, slackChars: 30, numbers: 3 };
+const an = (s) => `${/^(?:8|11|18|8\d|11\d|18\d)/.test(s) ? 'an' : 'a'} ${s}`;
+export function teachingLint(text) {
+  const t = String(text).replace(/\*\*/g, '');
+  const c = cjkLen(t), w = wordLen(t);
+  const heavy = c > TEACH.chars ? `${c}-character` : (!c && w > TEACH.words ? `${w}-word` : null);
+  let long = null;
+  for (const s of sentences(t)) {
+    const sc = cjkLen(s), sw = wordLen(s);
+    if (sc > TEACH.slackChars && !long) long = `${sc}-character`;
+    else if (!sc && sw > TEACH.slackWords && !long) long = `${sw}-word`;
+  }
+  // figures the viewer has to hold: a digit that starts a number, so an accession (P68871) or a
+  // version inside a word is not one, and the comma in "1,000" is part of it while the one after
+  // "105," is not. Chinese numerals are spelled out, where the character budget above is what limits them.
+  const numbers = [...new Set(t.match(/(?<![A-Za-z\d])\d(?:,?\d)*(?:\.\d+)?(?:e[-+]?\d+)?%?/gi) ?? [])];
+  return { heavy, long, numbers };
+}
+
+const TOP =['name', 'url', 'out', 'purpose', 'aspect', 'viewport', 'output', 'theme', 'music', 'voice', 'sfx', 'storageState', 'ignoreHTTPSErrors', 'intro', 'frame', 'pace', 'follow', 'article', 'cards', 'ground', 'lang', 'colorScheme',
   'scrollOffset', 'captionPosition', 'captions', 'highlight', 'stepNumbers', 'subtitles', 'chapters', 'clips', 'maxWait', 'setup', 'steps', 'end_card', 'hyperframes', 'scenes'];
 const STEP = ['caption', 'say', 'sayAt', 'duration', 'zoom', 'actions', 'hidden', 'sfx', 'highlight', 'captionPosition', 'card', 'follow', 'doc', 'scene'];
 const SCENE = ['file', 'title', 'lead', 'tail'];
@@ -91,6 +120,8 @@ export function check(file, { draft = false } = {}) {
     return { ok: false, errors: [`YAML syntax: ${e.message.split('\n')[0]}`], warnings, summary: '' };
   }
   unknown(raw, TOP, 'top level');
+  const sold = []; // tutorial captions written as a promo's payoff, reported together
+  let questions = 0; // question cards (a card that waits with `think`), which a lesson is expected to have
   for (const [i, a] of (raw.setup ?? []).entries()) checkAction(a, `setup action ${i + 1}`);
   for (const [i, s] of (raw.steps ?? []).entries()) {
     const where = `step ${i + 1}`;
@@ -121,7 +152,41 @@ export function check(file, { draft = false } = {}) {
       if (s.say && kinds.some((k) => k === 'scroll' || k === 'scrollTo') && !kinds.some((k) => ['mark', 'note', 'click', 'type', 'select', 'move', 'hover'].includes(k)) && !s.zoom) {
         warnings.push(`${where}: scrolls and talks but points at nothing — on a dense page the viewer can't tell what you mean; \`mark\` or \`note\` the row or value the narration is about (the camera then zooms to it)`);
       }
+      // A promo's caption bolds the payoff, because a promo is selling the payoff. A tutorial's caption
+      // says where the viewer is, and the narration does the explaining: bold it and the caption gets
+      // to the conclusion before the voice does, which is the grammar of an ad, not of a lesson. It is
+      // one decision rather than one mistake per step, so it is reported once.
+      if (typeof s.caption === 'string' && s.caption.includes('**')) sold.push([i + 1, s.caption]);
+      // A callout points at a control and names it. Longer than that and it is arguing for the app.
+      for (const a of (s.actions ?? [])) {
+        const n = a?.note;
+        const t = typeof n === 'string' ? n : n?.text;
+        if (t && (wordLen(t) > 8 || cjkLen(t) > 14)) warnings.push(`${where}: the note reads as a sentence ("${t}") — a callout is a label for the control it points at, a few words at most`);
+      }
+      // A question card is a check, and a check has three parts: the question, time to answer it, and
+      // the answer shown on the page. Without the wait it is a rhetorical question, which a promo asks
+      // and a lesson does not; without something marked, the viewer who guessed wrong is told they
+      // were wrong and never shown where to look.
+      const card = s.card && typeof s.card === 'object' ? s.card : null;
+      const asks = card && /question|quiz|check|问题|提问|思考|想一想|pregunta|frage/i.test(String(card.kicker ?? ''));
+      if (card && (card.think != null || asks)) {
+        questions++;
+        if (card.think == null) warnings.push(`${where} card: asks a question but does not wait for an answer — give it \`think: 3\` (seconds), so the viewer answers before the reveal`);
+        else if (!(card.think >= 2)) warnings.push(`${where} card: think: ${card.think} is too short to answer in — give the viewer at least 2 seconds, 3 to 4 for anything they have to work out`);
+        if (!s.zoom && !kinds.some((k) => ['mark', 'note', 'move', 'hover', 'click', 'slide', 'drag', 'type', 'select'].includes(k))) {
+          warnings.push(`${where}: this step answers the question card before it, but points at nothing — \`mark\` the row, value or line that is the answer, so a viewer who guessed wrong sees why`);
+        }
+      }
     }
+  }
+  // A lesson that never asks is a lecture: the viewer cannot tell whether they followed it.
+  if (raw.purpose === 'course' && !questions && (raw.steps ?? []).some((s) => !s.hidden && s.say)) {
+    warnings.push('a lesson with no question card — check understanding at least once: `card: { kicker: Question, title: "…?", think: 3 }` on the step that then marks the answer');
+  }
+  if (sold.length) {
+    const ns = sold.map(([n]) => n);
+    const which = sold.length === 1 ? `step ${ns[0]}` : sold.length > 6 ? `steps ${ns[0]}–${ns.at(-1)} (${sold.length} captions)` : `steps ${ns.join(', ')}`;
+    warnings.push(`${which}: the caption bolds a payoff (${sold.slice(0, 3).map(([, c]) => `"${c}"`).join(', ')}${sold.length > 3 ? ', …' : ''}) — that is a promo's grammar, and it reaches the conclusion before the voice does; in a ${raw.purpose} a caption labels where the viewer is ("The E value column", "Part 2: read the results") and the narration explains`);
   }
   if (raw.end_card) unknown(raw.end_card, END, 'end_card');
   if (raw.intro) unknown(raw.intro, END, 'intro');
@@ -226,12 +291,29 @@ export function check(file, { draft = false } = {}) {
     }
     // spoken lines that read as machine-written, or run on without a breath (the skill's "Writing the narration")
     if (cfg.voice) {
-      const lines = [...visible.flatMap((s) => [[s.say, `step ${cfg.steps.indexOf(s) + 1}`], [s.card?.say, `step ${cfg.steps.indexOf(s) + 1} card`]]),
-        [cfg.intro?.say, 'intro'], [cfg.endCard?.say, 'end card']].filter(([t]) => t);
-      for (const [text, where] of lines) {
+      const teach = cfg.purpose === 'tutorial' || cfg.purpose === 'course';
+      const lines = [...visible.flatMap((s) => [[s.say, `step ${cfg.steps.indexOf(s) + 1}`, true], [s.card?.say, `step ${cfg.steps.indexOf(s) + 1} card`, 'card']]),
+        [cfg.intro?.say, 'intro', false], [cfg.endCard?.say, 'end card', false]].filter(([t]) => t);
+      for (const [text, where, isStep] of lines) {
         const { tells, long } = narrationLint(text);
         if (tells.length) warnings.push(`${where}: the narration sounds machine-written (${tells.map((x) => `"${x}"`).join(', ')}) — say it plainly, as you would out loud`);
-        if (long) warnings.push(`${where}: a ${long} sentence — split it, so the voice gets a breath between the parts`);
+        // a tutorial's own sentence budget is tighter, and it replaces this one
+        if (long && !teach) warnings.push(`${where}: a ${long} sentence — split it, so the voice gets a breath between the parts`);
+        if (!teach) continue;
+        const t = teachingLint(text);
+        if (isStep === 'card' && t.heavy) {
+          // a concept card names one idea. The rule that goes with it, and the number that shows it,
+          // belong to the steps after the card, where the page can carry them
+          warnings.push(`${where}: ${an(t.heavy)} line on one card — a card names one idea; say the rule and read the number in the steps after it, where the page shows them`);
+        } else if (isStep && t.heavy) {
+          warnings.push(`${where}: ${an(t.heavy)} line for one step — one job per step in a ${cfg.purpose} (name the idea, do the action, or read the result); split it`);
+        }
+        if (t.long) {
+          warnings.push(`${where}: ${an(t.long)} sentence — a ${cfg.purpose} keeps them to about ${TEACH.sentenceWords} words (${TEACH.sentenceChars} Chinese characters), so the viewer holds one idea at a time`);
+        }
+        if (t.numbers.length > TEACH.numbers) {
+          warnings.push(`${where}: ${t.numbers.length} figures in one line (${t.numbers.join(', ')}) — nobody holds that many by ear; say the one that carries the point, round it out loud ("about 80 percent"), and leave the exact values on screen`);
+        }
       }
     }
     // the Chinese Kokoro voice needs a Python for its G2P: say so now, not after the recording

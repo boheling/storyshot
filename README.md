@@ -172,8 +172,8 @@ After your next release, re-render it and you have an up-to-date video.
 | ask for | type (`purpose`) | you get |
 |---|---|---|
 | a promo / launch / landing-page clip | `pitch` | short and tightly cut: intro card, the app in a browser frame, music, captions |
-| a how-to or onboarding video | `tutorial` | paced to follow along: one narrated action per step, the camera following each click, part cards, a second example, a recap; `.srt` + chapters |
-| a lesson | `course` | explains the *why*: concept cards, the idea shown in the app, question cards, a recap, no music; `.srt` + chapters |
+| a how-to or onboarding video | `tutorial` | paced to follow along: one narrated action per step, the camera following each click, part cards, a second example, a recap; `.srt` + chapters. `check` holds the narration to a teaching pace too — one job per step, a budget per line, no bolded payoffs — so a slow film doesn't still read as a pitch |
+| a lesson | `course` | explains the *why*: concept cards, the idea shown in the app, question cards, a recap, no music; `.srt` + chapters. `check` holds it to the tutorial's teaching pace, and to a lesson's own shape: a card names one idea, a question waits for an answer and its step marks it |
 | help-center snippets | `docs` | silent per-step GIFs and PNGs cropped to the action, plus a ready-to-paste Markdown article |
 | an animated explainer of how something works | `explainer` | no web app: every step is a **scene**, an animation the agent writes and times to the narration (a mechanism, a diagram that grows, a number); calm music, subtitles, chapters |
 
