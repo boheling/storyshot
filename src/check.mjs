@@ -6,7 +6,7 @@ import { gitIgnored } from './auth.mjs';
 import { isZhVoice, zhVoiceStatus } from './kokoro-zh.mjs';
 import { qwenStatus } from './qwen-tts.mjs';
 import { sentences } from './voice.mjs';
-import { sceneInfo, filmGround, contrast } from './scenes.mjs';
+import { sceneInfo, filmGround, contrast, LOOK_PLACEHOLDER } from './scenes.mjs';
 import path from 'node:path';
 
 const cjkLen = (s) => (s.match(/[぀-ヿ㐀-鿿가-힯]/g) ?? []).length;
@@ -256,6 +256,21 @@ export function check(file, { draft = false } = {}) {
     const ids = cfg.steps.filter((s) => s.scene && !s.hidden).map((s) => sceneInfo(s.scene.file).id).filter(Boolean);
     for (const id of new Set(ids.filter((x, k) => ids.indexOf(x) !== k))) errors.push(`two scenes share the composition id "${id}" — give each scene its own id (and prefix its element ids with it)`);
     if (cfg.purpose === 'explainer' && !cfg.steps.some((s) => s.scene)) warnings.push('an explainer is made of scenes: give its steps a scene: file');
+    // the look: one sheet shared by every scene, and the film's own rather than the starter's or the default
+    if (cfg.purpose === 'explainer') {
+      const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '');
+      const sceneFiles = [...new Set(cfg.steps.filter((s) => s.scene && !s.hidden).map((s) => s.scene.file))];
+      const kitCss = cfg.sceneKit.css.map(read).join('\n');
+      if (sceneFiles.length >= 3 && !cfg.sceneKit.css.length) {
+        warnings.push('the scenes share no look sheet, so each one will invent its own colours and type — write the film\'s look once (colour, type, composition, one bold thing) in a CSS file and list it as `scenes: { css: scenes/kit/look.css }` (`storyshot guide`: "Design the film before the first scene")');
+      }
+      if (LOOK_PLACEHOLDER.test(kitCss)) {
+        warnings.push('the look sheet is still the grey pencil test — choose the film\'s colours, type and composition from its subject, repeat ground, ink and accent in `theme:`, then delete the "storyshot-look: placeholder" line');
+      }
+      if (/text-transform\s*:\s*uppercase/i.test(kitCss + sceneFiles.map(read).join('\n'))) {
+        warnings.push('a label is set in capitals with `text-transform: uppercase` — small tracked-out capitals above a heading are the mark of a template, and they are slower to read on a moving picture; write labels in sentence case, in the film\'s own face');
+      }
+    }
     // burned-in subtitles follow the film's ground: ink letters on a light film, white on a dark one,
     // with the word being spoken in the accent either way, so the accent has to carry a large text's
     // 3:1 against that ground

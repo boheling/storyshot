@@ -16,7 +16,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { writeSceneProject, sceneAssets, fileHash, mixColour, shadeColour } from './scenes.mjs';
+import { writeSceneProject, sceneAssets, fileHash, mixColour, shadeColour, contrast } from './scenes.mjs';
 
 export const HF_VERSION = '0.8.217';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -82,7 +82,15 @@ export async function hyperframesRun(args, { log = console.log } = {}) {
     p.on('close', (code) => resolve({ code, out, err }));
   });
 }
-export const sceneFontFaces = (font) => fontFaces(font);
+// A look sheet names its own faces (`--head-face: 'League Gothic'`), but it is a linked file, and HyperFrames only
+// resolves the bundled families it finds in the page's own <style>. So the ones the kit's CSS mentions are named
+// there too; without this a preview shows the face and the render falls back to a system sans.
+const kitFontRule = (kit) => {
+  const css = (kit?.css ?? []).filter((f) => fs.existsSync(f)).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+  const used = BUNDLED.filter((name) => new RegExp(`['"]${name}['"]`).test(css));
+  return used.length ? `\n.storyshot-kit-fonts{font-family:${used.map((n) => `'${n}'`).join(',')}}` : '';
+};
+export const sceneFontFaces = (font, kit) => fontFaces(font) + kitFontRule(kit);
 
 // --- narration cues --------------------------------------------------------------------------------
 // When the narration names each item (a bullet, the call to action): the item's earliest content word
@@ -299,7 +307,7 @@ tl.build();
 </script></body></html>`;
 
 // --- lesson: tutorials, courses, docs ---------------------------------------------------------------
-function lesson(job, ctx) {
+export function lesson(job, ctx) {
   // sizes are designed for 1920x1080; a portrait frame (1080x1920) sizes them by its width instead
   const { W, H, dark, font, opts } = ctx, u = Math.min(H, W * 1.15) / 1080, D = job.seconds, c = job.card, accent = ctx.accent, ink = ctx.ink;
   // portrait with burned-in subtitles: the subtitles sit above the bottom fifth, so the card keeps above them
@@ -315,6 +323,9 @@ function lesson(job, ctx) {
       ? { ground: '#0c1222', ground2: '#070b16', glow: '#1b2744', text: '#eef2f8', muted: '#9aa8bd', line: '#2a3550', chip: '#131c31', chipLine: '#26324d', band: 0.14, shadow: 'rgba(0,0,0,.35)' }
       : { ground: '#eef2f7', ground2: '#dfe6ef', glow: '#ffffff', text: ink, muted: '#56667d', line: '#c6d0dc', chip: '#ffffff', chipLine: '#d6dee8', band: 0.17, shadow: 'rgba(13,27,46,.08)' };
   const strong = dark ? accent : deepen(accent); // accent as text/line on this ground
+  // a small accent-coloured mark (a strip segment, a list square): the accent itself where it shows
+  // against the ground, its deepened form where a pale accent would vanish into a pale card
+  const mark = (contrast(accent, P.ground) ?? 3) >= 2.2 ? accent : strong;
   const bandText = opts.band ? String(opts.band).replace(/\s+/g, '') : null;
   const colorOf = (ch) => (opts.bandColors === 'aminoacid' ? RES[ch] : opts.bandColors === 'nucleotide' ? NUC[ch] : null) ?? strong;
   const band = (id, top, text) => `<div class="band-wrap" data-layout-ignore style="top:${top}px"><div id="${id}" class="band">${
@@ -335,7 +346,8 @@ function lesson(job, ctx) {
   const subtitle = kicker === c.subtitle && job.kind === 'end' ? null : c.subtitle;
   // a picture goes beside the text (left), so a concept card with a diagram and a list still fits
   const split = !!job.image && W >= H && job.kind !== 'end';
-  const titleSize = (split ? 76 : (c.title ?? '').length > 28 ? 84 : job.kind === 'intro' ? 112 : 104) * u;
+  const tlen = [...String(c.title ?? '')].length * (CJK.test(c.title ?? '') ? 2 : 1);
+  const titleSize = (split ? 88 : tlen > 28 ? 92 : job.kind === 'intro' ? (tlen <= 20 ? 148 : 124) : 124) * u;
   const bullets = c.bullets ?? [];
   const v = job.voice;
   const cues = cueTimes(bullets, v?.text, v?.start ?? 0, v?.len ?? 0);
@@ -343,7 +355,7 @@ function lesson(job, ctx) {
   const at = bullets.map((_, i) => (v?.len ? cues[i] : job.kind === 'end' ? fallback(i, 1.4, Math.max(0.5, (D - 4) / bullets.length)) : fallback(i, job.kind === 'intro' ? 1.0 : 0.6, job.kind === 'intro' ? 0.9 : 0.4)));
   const chips = job.kind === 'intro' && bullets.length && bullets.length <= 4 && bullets.join('').length <= 90 && W >= H && !job.image;
   const cols = W < H ? 1 : bullets.length <= 3 ? Math.max(1, bullets.length) : bullets.length === 4 ? 2 : 3;
-  const itemW = Math.min(500 * u, (W * 0.88 - (cols - 1) * 26 * u) / cols);
+  const itemW = Math.min(700 * u, (W * 0.82 - (cols - 1) * 64 * u) / cols);
   const logo = job.logo ? `<img id="logo" class="logo" src="assets/logo${path.extname(job.logo)}">` : '';
   const image = job.image ? `<img id="img" class="cimg" src="assets/image${path.extname(job.image)}">` : '';
   const cta = c.cta ? (isCmd(c.cta)
@@ -352,64 +364,73 @@ function lesson(job, ctx) {
   const ctaAt = c.cta ? Math.max(bullets.length ? at.at(-1) + 0.6 : 0.8, v?.len ? cueTimes([c.cta], v.text, v.start, v.len)[0] : 0) : 0;
   const map = job.kind === 'section' && job.of > 1
     ? `<div id="map" class="map">${Array.from({ length: job.of }, (_, i) => `<div class="seg"><div class="fill" id="f${i}"></div></div>`).join('')}</div>` : '';
+  // The mark above every title is the film's own part strip: one segment per part on a section card, the
+  // current one filling; a strip of one on any other card. It is the only ornament a card has.
+  const strip = map || `<div class="map"><div class="seg"><div class="fill" id="dash"></div></div></div>`;
   const think = c.think ? `<div id="think" class="think"><div class="tlabel">${esc(ctx.labels.think)}</div><div class="track"><div id="drain" class="drain"></div></div></div>` : '';
 
+  const M = W * (W < H ? 0.075 : 0.09); // the one left edge everything hangs from
   const css = `${fontFaces(font)}
 #stage{font-family:'${font}','StoryshotCJK',sans-serif;color:${P.text}}
 /* the grain is what keeps a wide, low-saturation gradient (warm paper above all) from banding into
    visible rings once the frames are written as JPEG */
-.bg{background:${paper ? `${GRAIN}, ` : ''}radial-gradient(${W * 0.73}px ${H * 0.88}px at 50% 40%, ${P.glow} 0%, ${P.ground} 52%, ${P.ground2} 100%)}
+.bg{background:${paper ? `${GRAIN}, ` : ''}radial-gradient(${W * 0.8}px ${H * 0.95}px at 28% 44%, ${P.glow} 0%, ${P.ground} 55%, ${P.ground2} 100%)}
 .backdrop{object-fit:cover;opacity:${dark ? 0.16 : 0.1};-webkit-mask-image:radial-gradient(ellipse 60% 60% at 50% 50%,#000 35%,transparent 100%)}
 .band-wrap{position:absolute;left:0;right:0;height:${80 * u}px;overflow:hidden;opacity:${P.band};-webkit-mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent)}
 .band{position:absolute;left:0;top:0;white-space:nowrap;font:500 ${54 * u}px 'IBM Plex Mono',monospace;letter-spacing:.3em}
 .band i,.aln i{font-style:normal}
-.col{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 ${W * 0.06}px ${lift}px}
+/* An intertitle, not a slide: everything hangs from one left edge, the way a title card or a chapter
+   opening is set. Centred text with a row of boxes under it is what every deck looks like. */
+.col{position:absolute;inset:0;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;text-align:left;padding:0 ${M}px ${lift + H * 0.02}px}
 .aln{font:500 ${30 * u}px 'IBM Plex Mono',monospace;letter-spacing:.34em;line-height:1.12;margin-bottom:${44 * u}px;color:${P.muted}}
 .aln .row{white-space:nowrap}.aln i{display:inline-block}
 .aln .rm{color:${strong};opacity:.8}.aln i.df{color:${dark ? accent : P.text};background:${dark ? 'transparent' : accent};font-weight:700}
-.kick{font:600 ${30 * u}px 'IBM Plex Mono','StoryshotCJK',monospace;letter-spacing:.24em;text-transform:uppercase;color:${P.muted};margin-bottom:${22 * u}px}
-h1{font-weight:600;letter-spacing:-.03em;line-height:1.08;max-width:${W * 0.82}px;text-wrap:balance;font-size:${titleSize}px}
+/* the kicker is a plain name in the film's own face, as it was written: no capitals, no tracking, no mono */
+.kick{font-size:${40 * u}px;font-weight:600;line-height:1.2;color:${strong};margin-bottom:${14 * u}px}
+h1{font-weight:700;letter-spacing:-.035em;line-height:1.04;max-width:${W * 0.82}px;text-wrap:balance;font-size:${titleSize}px}
 .hl{position:relative;${dark ? `color:${accent}` : `background-image:linear-gradient(${accent},${accent});background-repeat:no-repeat;background-position:0 88%;background-size:0% 36%;padding:0 .06em`}}
-.sub{font-size:${44 * u}px;line-height:1.3;text-wrap:balance;color:${P.muted};margin-top:${22 * u}px;letter-spacing:-.01em;max-width:${W * 0.8}px}
+.sub{font-size:${50 * u}px;line-height:1.28;text-wrap:balance;color:${P.muted};margin-top:${28 * u}px;letter-spacing:-.01em;max-width:${W * 0.66}px}
 .logo{height:${H * 0.09}px;margin-bottom:${36 * u}px;${dark ? `background:#fff;padding:${10 * u}px ${16 * u}px;border-radius:${14 * u}px` : ''}}
-.cimg{max-width:${W * 0.6}px;max-height:${H * 0.4}px;margin-top:${34 * u}px;border-radius:${12 * u}px;box-shadow:0 ${12 * u}px ${36 * u}px ${P.shadow}}
-.split{flex-direction:row;gap:${72 * u}px;text-align:left}
+.cimg{max-width:${W * 0.6}px;max-height:${H * 0.4}px;margin-top:${34 * u}px;border-radius:${6 * u}px;border:${2 * u}px solid ${P.line}}
+.split{flex-direction:row;align-items:center;gap:${80 * u}px}
 .split .left .cimg{width:${W * 0.4}px;height:auto;max-height:${H * 0.62}px;object-fit:contain;margin-top:0}
-.split .right{display:flex;flex-direction:column;align-items:flex-start;max-width:${W * 0.44}px}
-.split h1{max-width:${W * 0.44}px;text-wrap:pretty}
-.split .map{justify-content:flex-start}
-.map{display:flex;justify-content:center;gap:${14 * u}px;margin-top:${60 * u}px}
-.seg{width:${120 * u}px;height:${8 * u}px;border-radius:${4 * u}px;background:${P.line};overflow:hidden}
-.fill{width:100%;height:100%;background:${accent};transform-origin:0 50%}
-.steps{display:flex;align-items:center;margin-top:${64 * u}px}
-.step{display:flex;align-items:center;gap:${18 * u}px;padding:${20 * u}px ${32 * u}px ${20 * u}px ${20 * u}px;border-radius:999px;background:${P.chip};border:${2 * u}px solid ${P.chipLine};font-size:${34 * u}px;font-weight:500;box-shadow:0 ${18 * u}px ${40 * u}px ${P.shadow}}
-.n{flex:none;width:${52 * u}px;height:${52 * u}px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:${accent};color:${ink};font:700 ${28 * u}px 'IBM Plex Mono',monospace}
-.link{width:${64 * u}px;height:${3 * u}px;background:${P.line};transform-origin:0 50%}
-.list{display:flex;flex-direction:column;gap:${18 * u}px;margin-top:${44 * u}px;text-align:left}
-.li{display:flex;align-items:center;gap:${20 * u}px;font-size:${38 * u}px}
-.grid{display:grid;grid-template-columns:repeat(${cols},${itemW}px);gap:${26 * u}px;margin-top:${56 * u}px;text-align:left}
-.item{display:flex;gap:${20 * u}px;align-items:flex-start;padding:${26 * u}px ${28 * u}px;border-radius:${22 * u}px;background:${P.chip};border:${2 * u}px solid ${P.chipLine};min-height:${140 * u}px;box-shadow:0 ${18 * u}px ${40 * u}px ${P.shadow}}
+.split .right{display:flex;flex-direction:column;align-items:flex-start;max-width:${W * 0.4}px}
+.split h1{max-width:${W * 0.4}px;text-wrap:pretty}
+.map{display:flex;gap:${10 * u}px;margin-bottom:${34 * u}px}
+.seg{width:${96 * u}px;height:${12 * u}px;border-radius:${2 * u}px;background:${P.line};overflow:hidden}
+.fill{width:100%;height:100%;background:${mark};transform-origin:0 50%}
+/* what the film covers, in the order it covers it: columns under one rule, numbered because they are
+   a sequence. No pills, no shadows: a box is drawn round a thing only when the thing is an object. */
+.steps{display:flex;align-items:stretch;gap:${40 * u}px;width:${W - 2 * M}px;margin-top:${84 * u}px;font-size:${40 * u}px}
+.step{flex:1 1 0;display:flex;flex-direction:column;gap:${14 * u}px;max-width:${640 * u}px;padding:${26 * u}px ${24 * u}px 0 0;border-top:${3 * u}px solid ${P.line};font-weight:500;line-height:1.24}
+.steps .n{font-size:.8em;font-weight:700;color:${strong};font-variant-numeric:tabular-nums}
+.link{display:none}
+.list{display:flex;flex-direction:column;margin-top:${48 * u}px}
+.li{display:flex;align-items:baseline;gap:${26 * u}px;font-size:${44 * u}px;line-height:1.24;padding:${18 * u}px ${40 * u}px ${18 * u}px 0;border-top:${2 * u}px solid ${P.line}}
+.li .n{flex:none;width:${16 * u}px;height:${16 * u}px;border-radius:${2 * u}px;background:${mark};transform:translateY(${-5 * u}px)}
+.grid{display:grid;grid-template-columns:repeat(${cols},${itemW}px);column-gap:${64 * u}px;margin-top:${52 * u}px}
+.item{display:flex;gap:${24 * u}px;align-items:center;padding:${26 * u}px 0;border-top:${2 * u}px solid ${P.line};min-height:${118 * u}px}
 .ck{flex:none;width:${52 * u}px;height:${52 * u}px;border-radius:50%;border:${3 * u}px solid ${P.line};position:relative}
 .ck .dot{position:absolute;inset:${-3 * u}px;border-radius:50%;background:${accent}}
 .ck svg{position:absolute;inset:${-3 * u}px;width:${52 * u}px;height:${52 * u}px}
-.tx{font-size:${31 * u}px;line-height:1.24;font-weight:500}
+.tx{font-size:${40 * u}px;line-height:1.24;font-weight:500}
 .tx b{color:${dark ? accent : P.text}}
 .tx code,.li code{font:500 .9em 'IBM Plex Mono',monospace}
-.cta{margin-top:${50 * u}px;font-size:${38 * u}px;line-height:1.3;font-weight:600;padding:${20 * u}px ${44 * u}px;border-radius:${16 * u}px;background:${dark ? accent : ink};color:${dark ? ink : '#fff'}}
+.cta{margin-top:${56 * u}px;font-size:${42 * u}px;line-height:1.3;font-weight:600;padding:${18 * u}px ${40 * u}px;border-radius:${8 * u}px;background:${dark ? accent : ink};color:${dark ? ink : '#fff'}}
 .cta.cmd{font:500 ${36 * u}px 'IBM Plex Mono',monospace;background:${dark ? '#1a2238' : ink};color:#e2e8f0;text-align:left}
 .cta.cmd b{color:${accent}}
 #type{display:inline-block;white-space:nowrap}
-.think{position:absolute;left:50%;bottom:${lift ? H * 0.2 : H * 0.1}px;width:${W * 0.3}px;margin-left:${-W * 0.15}px;text-align:center;font-size:${26 * u}px;color:${P.muted}}
+.think{position:absolute;left:${M}px;bottom:${lift ? H * 0.2 : H * 0.1}px;width:${W * 0.26}px;font-size:${32 * u}px;color:${P.muted}}
 .tlabel{margin-bottom:${12 * u}px}
-.track{height:${8 * u}px;border-radius:99px;background:${P.line};overflow:hidden}
-.drain{height:100%;background:${accent};transform-origin:0 50%}`;
+.track{height:${10 * u}px;border-radius:${2 * u}px;background:${P.line};overflow:hidden}
+.drain{height:100%;background:${mark};transform-origin:0 50%}`;
 
   const body = `<div class="full bg"></div>
 ${job.backdrop ? `<img id="backdrop" class="full backdrop" src="assets/backdrop.jpg">` : ''}
 ${bandText ? band('bandA', 96 * u, bandText) + band('bandB', H - 176 * u, [...bandText].reverse().join('')) : ''}
 <div class="col${split ? ' split' : ''}" data-fit-box>
   ${split ? `<div class="left">${image}</div><div class="right">` : ''}
-  ${logo}${emblem}
+  ${logo}${emblem}${strip}
   ${kicker ? `<div id="kick" class="kick">${esc(kicker)}</div>` : ''}
   ${c.title ? `<h1 id="title">${words(c.title)}</h1>` : ''}
   ${subtitle ? `<div id="sub" class="sub">${words(subtitle)}</div>` : ''}
@@ -418,19 +439,19 @@ ${bandText ? band('bandA', 96 * u, bandText) + band('bandB', H - 176 * u, [...ba
     ? `<div class="steps">${bullets.map((b, i) => `${i ? `<div class="link" id="l${i}"></div>` : ''}<div class="step" id="s${i}"><span class="n">${i + 1}</span><span>${md(b)}</span></div>`).join('')}</div>`
     : job.kind === 'end'
       ? `<div class="grid">${bullets.map((b, i) => `<div class="item" id="i${i}"><div class="ck"><div class="dot" id="d${i}"></div><svg viewBox="0 0 52 52"><path id="p${i}" d="M15 27 l8 8 l15 -17" pathLength="1" fill="none" stroke="${ink}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="1" stroke-dashoffset="1"/></svg></div><div class="tx">${md(b)}</div></div>`).join('')}</div>`
-      : `<div class="list">${bullets.map((b, i) => `<div class="li" id="s${i}"><span class="n">${i + 1}</span><span>${md(b)}</span></div>`).join('')}</div>`}
-  ${cta}${map}
+      : `<div class="list">${bullets.map((b, i) => `<div class="li" id="s${i}"><span class="n"></span><span>${md(b)}</span></div>`).join('')}</div>`}
+  ${cta}
   ${split ? '</div>' : ''}
 </div>
 ${think}`;
 
   const n = (x) => x.toFixed(2);
   const js = `
-fit('#title', ${split ? W * 0.44 : W * 0.82}, 3);
-fit('#sub', ${split ? W * 0.44 : W * 0.8}, 3);
-fit('#aln', ${split ? W * 0.44 : W * 0.88}, 0);
-fit('.steps', ${W * 0.88}, 0);
-fit('#cta', ${split ? W * 0.44 : W * 0.8}, ${isCmd(c.cta) ? 0 : 2});
+fit('#title', ${split ? W * 0.4 : W * 0.82}, 3);
+fit('#sub', ${split ? W * 0.4 : W * 0.66}, 3);
+fit('#aln', ${split ? W * 0.4 : W * 0.82}, 0);
+fit('.steps', ${W * 0.82}, 0);
+fit('#cta', ${split ? W * 0.4 : W * 0.8}, ${isCmd(c.cta) ? 0 : 2});
 ${bandText ? `tl.fromTo('#bandA', { x: 0 }, { x: ${-92 * D * u}, duration: ${D}, ease: 'none' }, 0);
 tl.fromTo('#bandB', { x: ${-900 * u} }, { x: ${-900 * u + 92 * D * u}, duration: ${D}, ease: 'none' }, 0);` : ''}
 ${job.backdrop ? `tl.fromTo('#backdrop', { x: 0 }, { x: ${-14 * D * u}, duration: ${D}, ease: 'none' }, 0);` : ''}
@@ -444,19 +465,20 @@ ${dark ? '' : `if (document.querySelector('#title .hl')) tl.fromTo('#title .hl',
 blurIn('#sub .w', ${job.kind === 'intro' ? 0.8 : 0.55}, { d: 0.16, stagger: ${CJK.test(subtitle ?? '') ? 0.03 : 0.06} });
 ${dark ? '' : `if (document.querySelector('#sub .hl')) tl.fromTo('#sub .hl', { backgroundSize: '0% 36%' }, { backgroundSize: '100% 36%', duration: 0.45, ease: 'power2.inOut' }, 1.05);`}
 ${image ? `tl.fromTo('#img', { opacity: 0, y: ${24 * u} }, { opacity: 1, y: 0, duration: 0.6, ease: 'expo.out' }, 0.45);` : ''}
-${map ? `tl.fromTo('#map', { opacity: 0 }, { opacity: 1, duration: 0.25, ease: 'power2.out' }, 0.4);
+${map ? '' : `tl.fromTo('#dash', { scaleX: 0 }, { scaleX: 1, duration: 0.6, ease: 'expo.out' }, 0.05);`}
+${map ? `tl.fromTo('#map', { opacity: 0 }, { opacity: 1, duration: 0.25, ease: 'power2.out' }, 0.05);
 ${Array.from({ length: job.of }, (_, i) => i < job.index ? `tl.fromTo('#f${i}', { scaleX: 1 }, { scaleX: 1, duration: 0.01 }, 0);`
-    : i === job.index ? `tl.fromTo('#f${i}', { scaleX: 0 }, { scaleX: 1, duration: 0.7, ease: 'power2.inOut' }, 0.55);`
+    : i === job.index ? `tl.fromTo('#f${i}', { scaleX: 0 }, { scaleX: 1, duration: 0.7, ease: 'power2.inOut' }, 0.2);`
       : `tl.fromTo('#f${i}', { scaleX: 0 }, { scaleX: 0, duration: 0.01 }, 0);`).join('\n')}` : ''}
 ${bullets.map((_, i) => chips
     ? `${i ? `tl.fromTo('#l${i}', { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: 'power2.inOut' }, ${n(at[i] - 0.3)});` : ''}
-tl.fromTo('#s${i}', { opacity: 0, y: ${18 * u}, filter: 'blur(6px)' }, { opacity: 1, y: 0, filter: 'blur(0px)', duration: 0.45, ease: 'expo.out' }, ${n(at[i])});`
+tl.fromTo('#s${i}', { opacity: 0 }, { opacity: 1, duration: 0.4, ease: 'power2.out' }, ${n(at[i])});`
     : job.kind === 'end'
       ? `tl.fromTo('#i${i}', { opacity: 0.42 }, { opacity: 1, duration: 0.25, ease: 'power2.out', immediateRender: false }, ${n(at[i])});
 tl.fromTo('#d${i}', { scale: 0 }, { scale: 1, duration: 0.3, ease: 'back.out(1.6)' }, ${n(at[i])});
 tl.fromTo('#p${i}', { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.3, ease: 'power2.out' }, ${n(at[i] + 0.12)});`
-      : `tl.fromTo('#s${i}', { opacity: 0, x: ${-24 * u}, filter: 'blur(6px)' }, { opacity: 1, x: 0, filter: 'blur(0px)', duration: 0.45, ease: 'expo.out' }, ${n(at[i])});`).join('\n')}
-${job.kind === 'end' && bullets.length ? `tl.fromTo('.item', { opacity: 0, y: ${24 * u}, filter: 'blur(6px)' }, { opacity: 0.42, y: 0, filter: 'blur(0px)', duration: 0.5, ease: 'expo.out', stagger: 0.06 }, 0.5);` : ''}
+      : `tl.fromTo('#s${i}', { opacity: 0 }, { opacity: 1, duration: 0.4, ease: 'power2.out' }, ${n(at[i])});`).join('\n')}
+${job.kind === 'end' && bullets.length ? `tl.fromTo('.item', { opacity: 0 }, { opacity: 0.42, duration: 0.4, ease: 'power2.out', stagger: 0.05 }, 0.5);` : ''}
 ${cta ? `blurIn('#cta', ${n(ctaAt)});
 ${isCmd(c.cta) ? `tl.fromTo('#type', { clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0% 0 0)', duration: ${n(String(c.cta).length * 0.045)}, ease: 'steps(${String(c.cta).length})' }, ${n(ctaAt + 0.2)});` : ''}` : ''}
 ${think ? `blurIn('#think', ${n(job.thinkAt)});
@@ -634,9 +656,9 @@ export async function renderHyperframesCards(jobs, ctx, { log = console.log, war
   for (const job of jobs) {
     if (job.kind === 'scene') {
       // the agent's composition, wrapped in a project as long as the scene (see scenes.mjs)
-      const sctx = { ...ctx, fontFaces: fontFaces(ctx.font) };
+      const sctx = { ...ctx, fontFaces: sceneFontFaces(ctx.font, job.kit) };
       const files = sceneAssets(job.scene.file);
-      const key = hashOf(HF_VERSION, ctx.FPS, job.seconds.toFixed(3), job.lead, job.cues, job.say, ctx.W, ctx.H, ctx.accent, ctx.ink, ctx.font, ctx.lang, ctx.subs,
+      const key = hashOf(HF_VERSION, ctx.FPS, job.seconds.toFixed(3), job.lead, job.cues, job.say, ctx.W, ctx.H, ctx.accent, ctx.ink, ctx.font, sctx.fontFaces, ctx.lang, ctx.subs,
         fs.existsSync(job.scene.file) ? fileHash(job.scene.file) : 'missing', ...Object.entries(files).map(([k, f]) => [k, fileHash(f)]),
         // the shipped 3D helpers are part of the picture too: upgrading storyshot has to invalidate
         // the cached frames of every 3D scene, or a fixed engine renders the old frames back

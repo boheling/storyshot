@@ -17,6 +17,9 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 export const SCENE_DEFAULTS = { lead: 0.5, tail: 0.8 };
+// The marker a starter look sheet (`storyshot init --purpose explainer`) carries until its four parts are
+// the film's own; `check` reads it.
+export const LOOK_PLACEHOLDER = /storyshot-look:\s*placeholder/;
 export const GSAP_URL = 'https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js';
 // r160 is the last three.js with a classic-script build; everything after it is ESM only, and a
 // module script in a scene would run after HyperFrames has already collected the timelines.

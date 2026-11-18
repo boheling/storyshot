@@ -98,7 +98,7 @@ or stands in for a recording of them.
    An explainer has no site to look at, so the plan carries one more line: the
    **look** — who the viewer is, and the style that suits them and the subject
    ("3rd–5th graders, so a classroom poster: warm paper, dark ink, chunky
-   shapes"). See "The look follows the subject" in step 3. It is much cheaper to
+   shapes"). See "Design the film before the first scene" in step 3. It is much cheaper to
    agree on it now than to repaint ten finished scenes.
 
    Captions match the site's language. `kokoro` (free, local) speaks English
@@ -518,9 +518,10 @@ with no `say:` needs a `duration`. A scene has no `actions`, `caption` or
 4. **Cues.** Run `storyshot cues` (MCP `scene_cues`). It synthesizes the voice
    and prints each scene's length and when each phrase is spoken. These are
    the times `S.at(k)` returns inside the scene.
-5. **Look.** Choose the film's style from its subject and its audience, write
-   it down (ground, palette, type, how objects are drawn), and put it in the
-   scene kit before any scene is written. "The look follows the subject" below.
+5. **Look.** Design the film: fill in the look sheet (colour, type,
+   composition, one bold thing) from the subject and its audience, and read it
+   back against the defaults, before any scene is written. "Design the film
+   before the first scene" below.
 6. **Scenes.** Write each scene file (contract below). Then preview it with
    `storyshot scene … --step N` (MCP `preview_scene`), which gives stills a beat
    into each phrase, HyperFrames lint, and a layout check. Look at every still,
@@ -669,27 +670,88 @@ an empty frame.
   Time every reveal from `S.at`, never from hard-coded seconds, so the
   animation stays on the words when a line changes.
 
-**The look follows the subject and the audience.** There is no house style, and
-the last explainer's look is not a default. A film for eight-year-olds about
-voting and a film for biologists about pooled screens should not look alike:
-choose the style, say so in the plan, and put it in the scene kit
-(`scenes: { css: …, js: … }`) before the first scene is written, so ten scenes
-can't disagree about it.
+**Design the film before the first scene.** There is no house style, and the
+last explainer's look is not a default. A film for eight-year-olds about voting
+and a film for biologists about pooled screens should not look alike, and
+neither should look like "an explainer". Most films that look poor were never
+designed: each scene picked its own colours and sizes, and the result is the
+average of every video the agent has seen. So the look is decided once, written
+down, and put in the scene kit before any scene exists.
 
-Two questions decide it. **Who is watching?** Children and general audiences
-need big friendly drawings, few colours and a light ground; specialists read
-dense instrument-like pictures and are at home on a dark panel. **What is the
-subject made of?** A thing that glows, fluoresces, counts or signals wants a
-dark ground to light up on; a thing that is printed, taught, filled in or voted
-on wants paper. Starting points, not a menu to pick blindly:
+**The look comes from the subject's own world**: what it is printed on, drawn
+with, lit by, measured in, and the lettering it already comes with. A film about
+Columbus's flags was drawn on sailcloth, in the serif of a ship's log, with the
+one green of the banner itself, and nobody mistakes it for another film. A
+ballot has its own form typography; a gel has its own bands and its own dark; a
+railway timetable, a lab notebook, a nautical chart and a school exercise book
+each bring a ground, an ink and a way of labelling. Start there, not from a
+style you already know how to make.
 
-| subject, and who it is for | the look | made of |
-|---|---|---|
-| a mechanism, molecule, instrument or pipeline, for people who work on it | instrument panel | near-black ground, one or two signal colours that light up, hairlines, mono labels, counters, glows |
-| anything for children; civics, history and everyday subjects for everyone | classroom poster | warm paper, dark ink, chunky rounded shapes, thick strokes, big plain type, drawings with visible hand |
-| money, policy, a market, a result, for a general adult or professional audience | clean report | white ground, one accent, wide margins, one typeface, real numbers, nothing decorative |
-| a machine, a building, a physical process | blueprint | deep blue or sepia ground, a faint grid, dimension and leader lines, small-caps part labels |
-| a person, a place, a historical event | storybook | a tinted ground that is neither black nor white, illustrated figures, soft shapes, one warm accent |
+Two questions set the frame. **Who is watching?** Children and general
+audiences need big friendly drawings, few colours and a light ground;
+specialists read denser pictures. **What is the subject made of?** A thing that
+glows, fluoresces, counts or signals wants a dark ground to light up on; a thing
+that is printed, taught, filled in or voted on wants paper.
+
+**Write the look sheet.** `storyshot init --purpose explainer` writes
+`scenes/kit/look.css`: a grey pencil test with four parts to fill in. `check`
+warns until it is the film's own. Show the plan to the user in your reply, in
+these same four parts:
+
+1. **Colour: four to six named values, one job each.** The ground, the ink, the
+   one colour that points, one colour per thing the story tracks, and a quiet
+   tone for structure (rules, leader lines, whatever is not being talked about).
+   Name them after the subject (`--sailcloth`, `--banner-green`), which is a
+   quick test of whether they came from it. Repeat ground, ink and the pointing
+   colour as `theme: { paper, ink, accent }`, so the intro and end cards belong
+   to the same film.
+2. **Type: one family, or two that are plainly different, and four or five
+   sizes.** Say what each size is for (a name on a part, a sentence, what the
+   scene is about, a number that is itself the point) and use only those. The
+   face is a choice, not `var(--font)` by default: Storyshot resolves Inter,
+   Montserrat, Outfit, Nunito, Oswald, League Gothic, Archivo Black, EB Garamond,
+   Playfair Display, Roboto, Open Sans, Lato, Poppins, Space Mono, IBM Plex Mono
+   and JetBrains Mono by name, and any other face is a `.woff2` in
+   `scenes/assets/` with an `@font-face { src: url('../assets/Name.woff2') }` in
+   the look sheet. For Chinese, the machine's own faces are what is there: a
+   sans (PingFang SC, Noto Sans SC), a Song (Songti SC, Noto Serif SC) or a Kai
+   (Kaiti SC), named in a `local()` chain. A Song or Kai title over sans labels
+   is already a distinct voice.
+3. **Composition: one sentence and a sketch.** Where the object sits, which one
+   edge the words hang from, how a label reaches its part. Draw it in ASCII, for
+   the frame's real shape, and keep it for every scene:
+
+   ```text
+   edge
+   |  What this scene is about        +---------------------------+
+   |                                  |                           |
+   |  a name ------------------------>|   the object, 40% of the  |
+   |                                  |   frame or more           |
+   |                                  +---------------------------+
+   ```
+4. **One bold thing.** What a viewer will remember this film looked like: the
+   way the object is drawn, one enormous numeral, a single saturated colour on a
+   quiet page. Spend the boldness there and keep everything else plain.
+
+**Then read the sheet back against the defaults, before drawing anything.**
+These are where a film lands when nobody chose. Each is right for some subject,
+and each is a tell when it appears for no reason:
+
+- warm cream paper, a serif title and a terracotta or orange accent;
+- a near-black ground with one neon accent that glows;
+- the picture cut into identical rounded cards with a soft grey shadow under
+  each, or a "dashboard" of panels round things that are not objects;
+- a row of small icons with a label under each, in a mostly empty frame;
+- a small label in tracked-out capitals above every heading, and a monospace
+  face for labels and numbers (mono is for code, sequences and columns that
+  must line up, and for nothing else);
+- a different bright colour for each item (teal, purple, orange) where the
+  colours mean nothing;
+- stock-icon people, gears and light bulbs standing in for the real thing;
+- every element fading in and sliding up, each on its own.
+
+If a part of the sheet is what you would have written for any other subject,
+change that part and say what you changed and why. Only then write scenes.
 
 **Then tell Storyshot which ground you chose**: `ground: light` or
 `ground: dark` in the storyboard. Burned-in subtitles and the intro/section/end
@@ -737,10 +799,23 @@ much cheaper to show one previewed scene in the chosen style and ask.
   once.
 - **Motion.** One hero move per beat, and something new every 2–4 s.
   Arrivals ease out (`expo.out`, 0.5–0.7 s) and exits are shorter. Text lands
-  and then stays still while it is read.
+  and then stays still while it is read. A thing arrives the way it would
+  really appear (a line is drawn, a liquid fills, a count ticks up); a fade
+  with a slide on every element is the default, and reads as one.
 - **Text.** At least 28 px at 1080p, and nothing under `S.safeBottom`. Never
   repeat the narration word for word on screen (the subtitles do that).
-  Avoid bullet slides and rows of three cards.
+  Avoid bullet slides and rows of three cards. Words are plain names in
+  sentence case, in the film's own face and one of the sheet's sizes.
+- **Type is part of the picture.** When a number, a year or a single word is
+  the point, set it as the object: at the sheet's largest size, with tabular
+  figures if it counts, not as a caption under a drawing of something else.
+- **Structure means something.** Number things only when they are a sequence.
+  Draw a box round something only when it is an object with an edge. A rule, a
+  leader line or a bracket should say which part belongs to which; if it only
+  decorates, take it out.
+- **Take one thing off.** Before a scene is done, look at its last still and
+  remove one element that is not doing a job: a second accent, a glow, a
+  frame, an extra label.
 - **Colour.** Rationed: one accent, plus one colour per thing the story
   tracks (for example, allele G amber and allele A green everywhere: dye,
   dot, label).
@@ -805,16 +880,18 @@ Explainer defaults:
   by word at the bottom pulls the eye off the drawing for the whole film. Burn
   them for social video, for a feed that autoplays muted, or when asked — and
   then say so, because it is a trade, not a free addition. Burned-in words take
-  their colour from `ground:` (see "The look follows the subject"), so set it.
+  their colour from `ground:` (see "Design the film before the first scene"), so set it.
 - **Ground:** `ground: light | dark`, chosen for the subject and the audience,
   not inherited from the last film.
+- **Look:** `scenes: { css: scenes/kit/look.css }`, the look sheet every scene
+  draws from. `check` warns when an explainer has none, or still has the
+  starter's grey one.
 - **Chapters:** come from the scenes' `title`s.
 - **Cards:** an `intro` and an `end_card` work as in lessons.
 
 Long explainers (more than about 6 scenes) build fastest if each scene is
 written by its own sub-agent, all from the same lines, cues, scene contract and
-scene kit — and from the same written description of the look, or they will
-each invent one. Settle anything they disagree about (a colour that fails
+scene kit — and from the same look sheet, or they will each invent one. Settle anything they disagree about (a colour that fails
 contrast, an object drawn two ways) in the kit, once, not scene by scene.
 Review every scene's stills yourself afterwards.
 

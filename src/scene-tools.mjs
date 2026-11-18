@@ -34,7 +34,7 @@ export async function previewScene(cfg, stepNo, { at, check = true, log = consol
   const seconds = sceneSeconds(s, len);
   const { width: W, height: H, fps: FPS } = cfg.output;
   const { accent, ink, font } = cfg.theme;
-  const ctx = { W, H, FPS, accent, ink, font, lang: cfg.lang, subs: cfg.subtitles === 'burn', fontFaces: sceneFontFaces(font) };
+  const ctx = { W, H, FPS, accent, ink, font, lang: cfg.lang, subs: cfg.subtitles === 'burn', fontFaces: sceneFontFaces(font, cfg.sceneKit) };
   const job = { name: `step${stepNo}`, kind: 'scene', seconds, scene: s.scene, say: s.say, lead: s.scene.lead, cues, step: i, preview: true, kit: cfg.sceneKit };
   const dir = path.join(cfg.work, 'scene-preview', `step-${stepNo}`);
   fs.rmSync(dir, { recursive: true, force: true });

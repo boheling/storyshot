@@ -64,7 +64,7 @@ server.registerTool('init_storyboard', {
   try {
     if (purpose === 'explainer') {
       const r = initExplainer({ topic, file: file ? abs(file) : undefined, lang, portrait });
-      return { content: [text(`Wrote ${r.file} and the starter scenes\n${r.scenes.join('\n')}\n\n${r.yaml}\nNext: write the say: lines, call scene_cues, write the scenes with S.at(k), then preview_scene each one.`)] };
+      return { content: [text(`Wrote ${r.file}, the look sheet ${r.look} and the starter scenes\n${r.scenes.join('\n')}\n\n${r.yaml}\nNext: the look sheet is a grey pencil test. Decide the film's look from its subject and audience and write it there first (guide: "Design the film before the first scene"). Then write the say: lines, call scene_cues, write the scenes with S.at(k), then preview_scene each one.`)] };
     }
     if (!url) return fail('give the url of the web app (only purpose: explainer starts without one)');
     await ensureBrowser(() => {});

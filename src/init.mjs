@@ -124,37 +124,104 @@ ${portrait ? 'aspect: portrait                                 # 9:16, 1080x1920
                                                  # scenes already carry text, and \`burn\` lights the words up at the bottom
                                                  # of the picture, pulling the eye off the drawing for the whole film.
                                                  # Burn them for social video or a feed that autoplays muted, and say so.
-ground: light                                    # light | dark: the film's ground, chosen for the subject and its audience
-                                                 # (\`storyshot guide\`: "The look follows the subject"). Paper for a subject that
+scenes: { css: scenes/kit/look.css }             # the look sheet: this film's colour, type and composition, shared by every
+                                                 # scene. It starts as a grey pencil test. Decide the look from the subject
+                                                 # BEFORE drawing (\`storyshot guide\`: "Design the film before the first scene").
+ground: light                                    # light | dark: the film's ground, from the look sheet. Paper for a subject that
                                                  # is taught, printed or voted on; dark for a mechanism, an instrument or anything
                                                  # that glows. The cards follow it; paint every scene to match.
-theme: { accent: "#b45309", ink: "#17181b" }     # accent: the one colour that points (with \`subtitles: burn\`, also the word
-                                                 # being spoken), so it has to read on the ground above
+theme: { accent: "#5c5c5c", ink: "#26262a", paper: "#e3e3e0" }   # the look sheet's three main colours, repeated here so
+                                                 # the intro and end cards belong to the same film. accent: the one colour
+                                                 # that points, so it has to read on the ground. paper: the ground itself.
 
 steps:
 ${scenes.map((sc, k) => `  - scene: ${sc.rel}${note[k] ?? ''}
     say: ${say[k]}`).join('\n\n')}
 `;
   fs.mkdirSync(path.join(dir, 'scenes', 'assets'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'scenes', 'kit'), { recursive: true });
+  const look = path.join(dir, 'scenes', 'kit', 'look.css');
+  if (!fs.existsSync(look)) fs.writeFileSync(look, starterLook(W, H));
   for (const sc of scenes) fs.writeFileSync(path.join(dir, sc.rel), starterScene(sc.id, W, H));
   fs.writeFileSync(file, yaml);
-  return { file: path.resolve(file), yaml, scenes: scenes.map((sc) => path.join(dir, sc.rel)) };
+  return { file: path.resolve(file), yaml, look, scenes: scenes.map((sc) => path.join(dir, sc.rel)) };
 }
 
-// A scene that already works: a ground, a line that lands on the first phrase and a mark that grows on
-// the second. Replace its picture; keep the contract (template, matching ids, timeline registered).
-// Every scene of a film shares one ground (here the light one the storyboard declares): for a dark film,
-// repaint all of them together and set `ground: dark`.
+// The look sheet a new explainer starts with. It is grey on purpose: a pencil test, the way an animatic
+// is, so that no hue, face or layout is inherited by a film that never chose one. The last starter was
+// warm paper with an orange accent, and that is what half the films made from it looked like.
+function starterLook(W, H) {
+  const u = Math.min(H, W * 1.15) / 1080; // sizes are written for 1920x1080; a portrait frame sizes them by its width
+  const px = (n) => `${Math.round(n * u)}px`;
+  return `/* The look sheet: how this film looks, decided once, before any scene is drawn.
+   \`storyshot guide\`: "Design the film before the first scene".
+
+   Everything below is a grey pencil test. Replace all four parts with choices that come from this
+   film's subject and its audience, then delete the "storyshot-look" line.
+
+   1. Colour       four to six named values, one job each: the ground, the ink, the one colour that
+                   points, a colour for each thing the story tracks, a quiet tone for structure.
+                   Take them from the subject: what it is printed on, drawn with, lit by.
+   2. Type         one family, or two that are plainly different, and four or five sizes. Say what
+                   each size is for. The lettering the subject already comes with is the place to look.
+   3. Composition  where the object sits, which edge the words hang from, how a label reaches its part.
+   4. One bold thing  what a viewer will remember this film looked like. The rest stays quiet.
+
+   Then read it back: would this sheet fit a film on any other subject? Whatever would, change.
+
+   storyshot-look: placeholder
+*/
+:root {
+  /* 1. colour (also repeat ground, ink and point as theme.paper, theme.ink and theme.accent in the storyboard) */
+  --ground: #e3e3e0;
+  --quiet: #b9b9b5;      /* structure: rules, leader lines, what is not being talked about */
+  --point: #5c5c5c;      /* the one colour that points */
+  /* --ink comes from theme.ink */
+
+  /* 2. type */
+  --face: var(--font);   /* theme.font, or a family of your own: put Name.woff2 in scenes/assets/ and add
+                            @font-face { font-family: 'Name'; src: url('../assets/Name.woff2') format('woff2') } above */
+  --t-label: ${px(34)};     /* a name on a part */
+  --t-body: ${px(46)};      /* a sentence */
+  --t-head: ${px(76)};      /* what this scene is about */
+  --t-figure: ${px(200)};   /* a number or a word that is itself the point */
+
+  /* 3. composition */
+  --edge: ${px(150)};       /* the one edge the words hang from */
+}
+/* Every scene's root: <div id="…" class="film" …>. The ground is written as a colour here (not a
+   variable) so storyshot can read whether the film is light or dark. */
+.film { position: absolute; inset: 0; overflow: hidden; background: #e3e3e0; color: var(--ink); font-family: var(--face); }
+.film .label { font-size: var(--t-label); line-height: 1.25; font-weight: 500; }
+.film .head { font-size: var(--t-head); line-height: 1.1; font-weight: 650; letter-spacing: -0.02em; }
+`;
+}
+
+// A scene that already works, drawn from the look sheet: the object takes the frame, one label reaches
+// it with a leader line, and the words hang from one edge. Replace its picture; keep the contract
+// (template, matching ids, timeline registered) and keep the look in the sheet, not in the scene.
 function starterScene(id, W, H) {
+  const tall = H > W;
+  const ox = Math.round(W * (tall ? 0.14 : 0.46)), oy = Math.round(H * (tall ? 0.36 : 0.2)), ow = Math.round(W * (tall ? 0.72 : 0.44)), oh = Math.round(H * (tall ? 0.4 : 0.6));
+  const hx = tall ? ox : 'var(--edge)', hy = Math.round(H * (tall ? 0.14 : 0.3)), hw = Math.round(W * (tall ? 0.72 : 0.3));
+  const lx = tall ? ox : Math.round(W * 0.078), ly = Math.round(H * (tall ? 0.82 : 0.62));
+  const p = (n) => `${n}px`;
   return `<template>
   <style>
-    #${id} { position: absolute; inset: 0; overflow: hidden; background: #f6f2e9; color: var(--ink); font-family: var(--font); }
-    #${id}-line { position: absolute; left: ${Math.round(W * 0.083)}px; right: ${Math.round(W * 0.083)}px; top: ${Math.round(H * 0.33)}px; font-size: ${Math.round(Math.min(W, H * 1.15) * 0.074)}px; font-weight: 600; line-height: 1.25; }
-    #${id}-bar { position: absolute; left: ${Math.round(W * 0.083)}px; top: ${Math.round(H * 0.68)}px; width: ${Math.round(W * 0.5)}px; height: 14px; border-radius: 7px; background: var(--accent); transform-origin: 0 50%; }
+    #${id}-head { position: absolute; left: ${typeof hx === 'number' ? p(hx) : hx}; top: ${p(hy)}; width: ${p(hw)}; }
+    #${id}-obj { position: absolute; left: ${p(ox)}; top: ${p(oy)}; width: ${p(ow)}; height: ${p(oh)}; }
+    #${id}-obj rect { fill: none; stroke: var(--ink); stroke-width: 5; }
+    #${id}-obj path { fill: none; stroke: var(--point); stroke-width: 4; stroke-dasharray: 1; }
+    #${id}-name { position: absolute; left: ${typeof hx === 'number' ? p(lx) : hx}; top: ${p(ly)}; color: var(--point); }
   </style>
-  <div id="${id}" data-composition-id="${id}" data-width="${W}" data-height="${H}">
-    <div id="${id}-line">TODO the picture of this step: the object, diagram or number the voice explains</div>
-    <div id="${id}-bar"></div>
+  <div id="${id}" class="film" data-composition-id="${id}" data-width="${W}" data-height="${H}">
+    <div id="${id}-head" class="head">TODO what this scene is about</div>
+    <!-- the object: at least 40% of the frame, drawn, not an icon -->
+    <svg id="${id}-obj" viewBox="0 0 ${ow} ${oh}">
+      <rect id="${id}-box" x="4" y="4" width="${ow - 8}" height="${oh - 8}" rx="6" pathLength="1" style="stroke-dasharray: 1"/>
+      <path id="${id}-lead" d="M ${Math.round(ow * 0.5)} ${Math.round(oh * 0.5)} L ${tall ? Math.round(ow * 0.1) : 0} ${tall ? oh : Math.round(oh * 0.76)}" pathLength="1"/>
+    </svg>
+    <div id="${id}-name" class="label">TODO the part the voice just named</div>
   </div>
   <script>
     (function () {
@@ -162,8 +229,11 @@ function starterScene(id, W, H) {
       // S.safeBottom (px burned-in subtitles take; 0 without \`subtitles: burn\`), S.cues ([{ text, t, end }]). Run \`storyshot cues\`.
       const S = window.__storyshot;
       const tl = gsap.timeline({ paused: true });
-      tl.fromTo('#${id}-line', { opacity: 0, filter: 'blur(8px)' }, { opacity: 1, filter: 'blur(0px)', duration: 0.4, ease: 'power3.out' }, S.at(0));
-      tl.fromTo('#${id}-bar', { scaleX: 0 }, { scaleX: 1, duration: 0.8, ease: 'expo.out' }, S.at(1));
+      // one move per phrase: the object is drawn, then the label reaches for its part
+      tl.fromTo('#${id}-head', { opacity: 0 }, { opacity: 1, duration: 0.4, ease: 'power2.out' }, S.at(0));
+      tl.fromTo('#${id}-box', { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 1.1, ease: 'power2.inOut', autoRound: false }, S.at(0, 0.2));
+      tl.fromTo('#${id}-lead', { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.5, ease: 'power2.out', autoRound: false }, S.at(1));
+      tl.fromTo('#${id}-name', { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power2.out' }, S.at(1, 0.3));
       window.__timelines['${id}'] = tl;
     })();
   </script>

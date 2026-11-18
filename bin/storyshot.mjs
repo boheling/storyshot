@@ -105,7 +105,7 @@ try {
   } else if (explainerInit) {
     const { initExplainer } = await import('../src/init.mjs');
     const r = initExplainer({ topic: flag('topic'), file: flag('file'), lang: flag('lang'), portrait: args.includes('--portrait') });
-    console.log(`✔ wrote ${r.file}\n${r.scenes.map((f) => `  + ${f}`).join('\n')}\n  next: write the say: lines, then \`storyshot cues ${r.file}\` and the scenes; preview one with \`storyshot scene ${r.file} --step 1\``);
+    console.log(`✔ wrote ${r.file}\n  + ${r.look}  (the look sheet: a grey pencil test until you choose the film's look)\n${r.scenes.map((f) => `  + ${f}`).join('\n')}\n  next: decide the look from the subject and write it into the look sheet (\`storyshot guide\`: "Design the film before the first scene"); write the say: lines, then \`storyshot cues ${r.file}\` and the scenes; preview one with \`storyshot scene ${r.file} --step 1\``);
   } else if (cmd === 'cues') {
     const { sceneCues } = await import('../src/scene-tools.mjs');
     const r = await sceneCues(loadConfig(arg, { draft: args.includes('--draft') }));
